@@ -1,0 +1,36 @@
+# Copyright (C) 2025 Crash Override, Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the FSF, either version 3 of the License, or (at your option) any later version.
+# See the LICENSE file in the root of this repository for full license text or
+# visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
+
+# Each scanner will be a container in the same pod as the downloader.
+# The downloader will run first and write the static assets to the
+# target directory /mnt/target (or the value of the environment variable TARGET_DIR).
+# After the downloader finishes, the scanners will run in parallel with their working
+# directory set to the target directory.
+scanners:
+  - image: "org/example-scanner:latest"
+    imagePullPolicy: "IfNotPresent"
+    command: ["/bin/bash", "-c"]
+    # $RESULTS_DIR is the directory where the results are stored
+    # it is required for any artifacts
+    args:
+      - |
+        scan --filesystem ./ --output ${RESULTS_DIR}/example.json
+artifacts:
+  # These artifacts need to be relative to the results directory
+  # which is /mnt/results (or the value of the environment variable RESULTS_DIR)
+  - gitleaks.json
+# The uploaders are used to send artifacts somewhere
+# The uploaders is a docker image that will have access to the results directory
+# and will be given the artifact paths to upload as arguments, prefixed by '--' as an argument
+# e.g. -- /mnt/results/leaks.json /mnt/results/subdir/results.zip /mnt/results/findings.tar.gz
+uploaders:
+  - name: webhook
+    # Parameters are defined by the uploaders configuration
+    parameters:
+      METHOD: "POST"
+      URL: "http://localhost:3001/api/v1/scans"

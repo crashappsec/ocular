@@ -1,0 +1,12 @@
+.github/
+config.example.yaml
+config.yaml
+Makefile
+README.md
+hack/
+bin/
+docs/
+.git/
+.idea/
+.vscode/
+.env*

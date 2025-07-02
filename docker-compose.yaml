@@ -1,0 +1,43 @@
+# Copyright (C) 2025 Crash Override, Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the FSF, either version 3 of the License, or (at your option) any later version.
+# See the LICENSE file in the root of this repository for full license text or
+# visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
+
+services:
+  api-server:
+    image: "${OCULAR_IMAGE_REGISTRY:-ghcr.io}/${OCULAR_API_SERVER_IMAGE_REPOSITORY:-crashappsec/ocular-api-server}:${OCULAR_IMAGE_TAG:-local}"
+    build:
+      args:
+        - "LDFLAGS=${LDFLAGS:-}"
+        - "COMMAND=api-server"
+      tags:
+        - "${OCULAR_IMAGE_REGISTRY:-ghcr.io}/${OCULAR_API_SERVER_IMAGE_REPOSITORY:-crashappsec/ocular-api-server}:${OCULAR_IMAGE_TAG:-local}"
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    ports:
+      - "3001:3001"
+    volumes:
+      - "$HOME/.kube/config:/etc/kubeconfig"
+    env_file:
+      - ${OCULAR_ENV_FILE:-}
+    environment:
+      - KUBECONFIG=/etc/kubeconfig
+      - OCULAR_LOGGING_LEVEL=debug
+      - OCULAR_LOGGING_FORMAT=console
+    network_mode: host
+  extractor:
+    image: "${OCULAR_IMAGE_REGISTRY:-ghcr.io}/${OCULAR_EXTRACTOR_IMAGE_REPOSITORY:-crashappsec/ocular-extractor}:${OCULAR_IMAGE_TAG:-local}"
+    build:
+      args:
+        - "LDFLAGS=${LDFLAGS:-}"
+        - "COMMAND=extractor"
+      platforms:
+        - linux/amd64
+        - linux/arm64
+      context: .
+      tags:
+        - "${OCULAR_IMAGE_REGISTRY:-ghcr.io}/${OCULAR_EXTRACTOR_IMAGE_REPOSITORY:-crashappsec/ocular-extractor}:${OCULAR_IMAGE_TAG:-local}"
