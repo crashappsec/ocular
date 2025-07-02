@@ -60,7 +60,7 @@ jobs:
           push: true
           build-args: |
             COMMAND=${{ matrix.image }}
-            LDFLAGS=-s -w -X github.com/crashappsec/ocular/internal/config.Version=${{ github.event.release.tag_name }} -X github.com/crashappsec/ocular/internal/config.BuildDate=${{steps.date.outputs.date}} -X github.com/crashappsec/ocular/internal/config.GitCommit=${{ github.sha }}
+            LDFLAGS=-s -w -X github.com/crashappsec/ocular/internal/config.Version=${{ github.event.release.tag_name }} -X github.com/crashappsec/ocular/internal/config.BuildTime=${{steps.date.outputs.date}} -X github.com/crashappsec/ocular/internal/config.Commit=${{ github.sha }}
           tags: |
             ${{ env.TAG }}
             ${{ (github.event.release.prerelease && '') || env.LATEST }}
