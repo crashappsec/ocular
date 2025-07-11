@@ -2264,9 +2264,6 @@
             "type": "string",
             "description": "The cron schedule that the pipeline will run against.",
             "example": "0 0 * * *"
-          },
-          "status": {
-            "$ref": "#/components/schemas/SchemasRunStatus"
           }
         }
       },

@@ -47,5 +47,7 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for instructions on how to run the app
 
 ## Contact
 
+We are constantly learning about emerging use cases and are always interested in hearing about how you use Ocular.
+If you would like to talk, [please get in touch](https://ocularproject.io/contact).
 
 
