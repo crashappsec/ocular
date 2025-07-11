@@ -113,7 +113,7 @@ func BuildJob(
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: CreateLabels(map[string]string{
-						LabelResource: resourceName + "-instance",
+						LabelResource: resourceName + "-execution",
 						LabelID:       id.String(),
 					}),
 				},

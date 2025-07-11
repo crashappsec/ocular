@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Copyright (C) 2025 Crash Override, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -6,6 +6,10 @@
 # the FSF, either version 3 of the License, or (at your option) any later version.
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
+
+# This script will deploy ocular to a development Kubernetes cluster.
+# It creates the necessary resources like ConfigMaps, Secrets, Roles, and ServiceAccounts.
+# The API server is expected to be run locally and connect to the cluster via a kubeconfig file.
 
 
 RED='\033[0;31m'
@@ -23,7 +27,7 @@ set_namespace="$(kubectl config view --minify -o jsonpath='{..namespace}')"
 namespace="${set_namespace:-default}"
 
 echo -e "${YELLOW}WARNING${NC}: this script should never be run on a production cluster."
-echo -e "run 'make devenv-down' to remove created resources"
+echo -e "run 'make remove-devenv' to remove created resources"
 echo -e "using context '${BLUE}${ctx}${NC}' and namespace '${GREEN}${namespace}${NC}'"
 read -erp "Press [Enter] to continue or [Ctrl+C] to cancel..."
 

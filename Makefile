@@ -131,6 +131,10 @@ run-local-apionly:
 apply-devenv:
 	@./hack/development/dev-env.sh up
 
+apply-devenv-defaults:
+	@echo "installing default integrations to the development environment"
+	@./hack/development/defaults.sh
+
 remove-devenv:
 	@./hack/development/dev-env.sh down
 

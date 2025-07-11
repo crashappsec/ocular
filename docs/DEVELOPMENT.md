@@ -4,6 +4,10 @@ This document describes the development process for the project.
 
 ## Getting Started
 
+This guide is a basic overview of how to get started with the project
+when developing locally. We recommend you first read the [documentation site](https://ocularproject.io/docs/)
+to understand the project and how to use the API.
+
 ### Prerequisites
 
 - [Go](https://golang.org/doc/install/source) 1.24 or later
@@ -24,9 +28,8 @@ This document describes the development process for the project.
 ### Configuration
 
 When running the application in production, it is recommended to use the use configuration
-provided by the helm chart in the [`charts/ocular`](/charts/ocular) directory. The `values.yaml` file in that directory
-contains comments on how to configure the application for production use. The following will be configuring the application
-for development use, which is not recommended for production use.
+provided by the chart in the [`helm-charts`](https://github.com/crashappsec/helm-chart) repository.
+The chart can also be viewed on [Artifact Hub](https://artifacthub.io/packages/helm/crashoverride-helm-charts/ocular).
 
 Developers are encouraged to use `make` commands to run the application and manage the development environment.
 Many of the scripts used during development will rely on environment variables to configure settings, which 
@@ -199,29 +202,11 @@ curl -L -X Delete -H "Authorization: Bearer $(make generate-devenv-token)" \
   http://localhost:3001/api/v1/pipelines/1234
 ```
 
-### Configuring Crawlers
+for more information on how to configure Ocular and API usage, please refer to the [Ocular manual](https://ocularproject.io/docs/manual).
 
-A "crawler" is a docker image that will enumerate the static assets to be scanned.
-A crawler will run on a cron schedule (or ad-hoc) and will create a set of targets to be scanned.
-It will have an authenticated token mounted as a secret in the pod that it should use to communicate
-with the API. The crawler will continually call the API to begin pipelines for each target it finds.
-Users will be able to configured custom crawlers via the API, but the API also
-contains a set of pre-configured crawlers that can be used to crawl common static assest storage.
+### OpenAPI & Swagger UI
 
-
-- See the [crawlers documentation](/docs/definitions/CRAWLERS.md) for more information on how to define a crawlers.
-- See the [default crawlers documentation](/docs/definitions/DEFAULTS.md#crawlers) for a list of pre-configured crawlers.
-
-
-### Configuring Uploaders
-
-An "uploader" is a docker image that will process and/or upload the results of the scan of a scan (known as an
-artifact).
-An uploader will run during a pipeline after all scanners have completed and will be passed the results of the scan as
-container arguments (prefixed by the argument '--'). Users will be able to configured custom uploaders via the API, but
-the API also
-contains a set of pre-configured uploaders that can be used to crawl common static assest storage.
-
-- See the [uploaders documentation](/docs/definitions/UPLOADERS.md) for more information on how to define a uploaders.
-- See the [default uploaders documentation](/docs/definitions/DEFAULTS.md#uploaders) for a list of pre-configured uploaders.
+When running the application in development mode, the OpenAPI specification is available at `/api/swagger/openapi.json`.
+This can be set by setting the `OCULAR_ENV` environment variable to `development` in the `.env` file.
+The Swagger UI is available at `/api/swagger/`.
 
