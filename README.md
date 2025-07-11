@@ -10,7 +10,7 @@
   </p>
 </div>
 
-![Static Badge](https://img.shields.io/badge/docs-ocularproject.io-blue)
+[![Documentation Site](https://img.shields.io/badge/docs-ocularproject.io-blue)](https://ocularproject.io/docs/)
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/ocular)](https://artifacthub.io/packages/helm/crashoverride-helm-charts/ocular)
 [![Go Reference](https://pkg.go.dev/badge/github.com/crashappsec/ocular.svg)](https://pkg.go.dev/github.com/crashappsec/ocular)
 [![Go Report Card](https://goreportcard.com/badge/github.com/crashappsec/ocular)](https://goreportcard.com/report/github.com/crashoverride/ocular)
