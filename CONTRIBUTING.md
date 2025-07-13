@@ -18,7 +18,7 @@ Make your pull request be the addition of a single file to the `contributors\cra
 If you are contributing as an individual the contents of the file should look as follows:
 
 ```yaml
-[date in YYYY-MM-DD format]
+[date YYYY-MM-DD]
 
 I hereby agree to the terms of the Individual Contributors License
 Agreement version 1.0 (https://github.com/crashappsec/.github/blob/main/cla-individual-1.0.md), with MD5 checksum

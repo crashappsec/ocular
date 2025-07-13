@@ -133,7 +133,7 @@ apply-devenv:
 
 apply-devenv-defaults:
 	@echo "installing default integrations to the development environment"
-	@./hack/development/defaults.sh
+	@./hack/development/install-defaults.sh
 
 remove-devenv:
 	@./hack/development/dev-env.sh down
@@ -147,9 +147,6 @@ generate-devenv-token:
 .PHONY: generate-api-config-file generate-helm-values-yaml apply-ghcr-secret
 generate-api-config-file:
 	@go run hack/generator/*.go -output - --type api-config
-
-apply-ghcr-secret:
-	@./hack/development/imagepullsecrets.sh ghcr
 
 ###############
 # Development #

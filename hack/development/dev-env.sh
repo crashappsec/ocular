@@ -11,14 +11,13 @@
 # It creates the necessary resources like ConfigMaps, Secrets, Roles, and ServiceAccounts.
 # The API server is expected to be run locally and connect to the cluster via a kubeconfig file.
 
-
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
 set -e
 
@@ -31,8 +30,8 @@ echo -e "run 'make remove-devenv' to remove created resources"
 echo -e "using context '${BLUE}${ctx}${NC}' and namespace '${GREEN}${namespace}${NC}'"
 read -erp "Press [Enter] to continue or [Ctrl+C] to cancel..."
 
-
-manifest="$(cat <<EOF
+manifest="$(
+	cat <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -97,23 +96,21 @@ spec:
 EOF
 )"
 
-
-
 cmd="$1"
 
 case $cmd in
-  up)
-    # Create the resources
-    echo "$manifest" | kubectl apply -f -
-    ;;
-  down)
-     # Delete the resoureces
-     echo "$manifest" | kubectl delete --ignore-not-found=true -f -
-    ;;
-  *)
-    echo "${RED}ERROR${NC}: unknown command '${cmd}'"
-    exit 1
-    ;;
+up)
+	# Create the resources
+	echo "$manifest" | kubectl apply -f -
+	;;
+down)
+	# Delete the resoureces
+	echo "$manifest" | kubectl delete --ignore-not-found=true -f -
+	;;
+*)
+	echo "${RED}ERROR${NC}: unknown command '${cmd}'"
+	exit 1
+	;;
 esac
 
 echo -e "${GREEN}done!${NC} run 'make generate-devenv-token' to get a token for the service account"
