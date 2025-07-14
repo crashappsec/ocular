@@ -35,7 +35,6 @@ type ScheduledSearch struct {
 	Schedule    Schedule          `yaml:"schedule,omitempty" json:"schedule,omitempty"   description:"The cron schedule that the pipeline will run against." example:"0 0 * * *"`
 	CrawlerName string            `yaml:"crawlerName"        json:"crawlerName"          description:"The name of the crawler to run."                       example:"example-crawler"`
 	Parameters  map[string]string `yaml:"params,omitempty"   json:"parameters,omitempty" description:"The parameters to pass to the pipeline execution."`
-	Status      RunStatus         `yaml:"status"             json:"status"               description:"The status of the scheduled search."                   example:"Running"`
 }
 
 type Schedule = string

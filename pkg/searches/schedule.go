@@ -93,7 +93,6 @@ func SetSchedule(
 		Parameters:  params,
 		Schedule:    schedule,
 		CrawlerName: crawlerName,
-		Status:      schemas.RunStatusPending,
 	}, nil
 }
 

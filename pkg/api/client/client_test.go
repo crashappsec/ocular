@@ -9,9 +9,11 @@
 package client
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewClient(t *testing.T) {
@@ -21,7 +23,7 @@ func TestNewClient(t *testing.T) {
 		baseURL        string
 		c              *http.Client
 		opts           []Opt
-		validateClient func(*Client) error
+		validateClient func(*testing.T, *Client)
 		wantErr        bool
 	}{
 		{
@@ -29,14 +31,14 @@ func TestNewClient(t *testing.T) {
 			baseURL: "http://localhost:8080",
 			c:       standardClient,
 			opts:    nil,
-			validateClient: func(c *Client) error {
-				if c.client.Client != standardClient {
-					return fmt.Errorf("client is not given")
-				}
-				if c.client.serverHost != "http://localhost:8080" {
-					return fmt.Errorf("baseURL is not set correctly")
-				}
-				return nil
+			validateClient: func(t *testing.T, c *Client) {
+				assert.Equal(t, standardClient, c.client.Client, "expected standard client")
+				assert.Equal(
+					t,
+					"http://localhost:8080",
+					c.client.serverHost,
+					"expected base URL to match",
+				)
 			},
 			wantErr: false,
 		},
@@ -45,11 +47,8 @@ func TestNewClient(t *testing.T) {
 			baseURL: "http://localhost:8080",
 			c:       nil,
 			opts:    nil,
-			validateClient: func(c *Client) error {
-				if c.client.Client != http.DefaultClient {
-					return fmt.Errorf("client is not default client")
-				}
-				return nil
+			validateClient: func(t *testing.T, c *Client) {
+				assert.Equal(t, http.DefaultClient, c.client.Client, "expceted default client")
 			},
 			wantErr: false,
 		},
@@ -60,18 +59,16 @@ func TestNewClient(t *testing.T) {
 			opts: []Opt{
 				WithContextName("test-context"),
 			},
-			validateClient: func(c *Client) error {
-				if c.client.Transport == nil {
-					return fmt.Errorf("transport is nil")
-				}
+			validateClient: func(t *testing.T, c *Client) {
+				assert.NotNil(t, c.client.Transport, "expected default client")
 				if ctxTransport, ok := c.client.Transport.(*contextTransport); ok {
-					if ctxTransport.ctx != "test-context" {
-						return fmt.Errorf("context name is not set correctly")
-					}
-				} else {
-					return fmt.Errorf("transport is not of type contextTransport")
+					assert.Equal(
+						t,
+						ctxTransport.ctx,
+						"test-context",
+						"expected context name to match",
+					)
 				}
-				return nil
 			},
 			wantErr: false,
 		},
@@ -82,25 +79,28 @@ func TestNewClient(t *testing.T) {
 			opts: []Opt{
 				TokenFileOpt("test-token-file", 10),
 			},
-			validateClient: func(c *Client) error {
-				if c.client.Transport == nil {
-					return fmt.Errorf("transport is nil")
-				}
+			validateClient: func(t *testing.T, c *Client) {
+				assert.NotNil(t, c.client.Transport, "expected transport to be set")
 				if tokenTransport, ok := c.client.Transport.(*tokenFileTransport); ok {
 					if tfRetriever, ok := tokenTransport.retriever.(tokenFileRetriever); ok {
-						if tfRetriever.file != "test-token-file" {
-							return fmt.Errorf("token file is not set correctly")
-						}
-						if tfRetriever.refresh != 10 {
-							return fmt.Errorf("token refresh duration is not set correctly")
-						}
+						assert.Equal(
+							t,
+							"test-token-file",
+							tfRetriever.file,
+							"expected token file to match",
+						)
+						assert.Equal(
+							t,
+							time.Duration(10),
+							tfRetriever.refresh,
+							"expected token file to match",
+						)
 					} else {
-						return fmt.Errorf("retriever is not of type tokenFileRetriever")
+						t.Fatal("expected transport retriever to be of type tokenFileRetriever")
 					}
 				} else {
-					return fmt.Errorf("transport is not of type tokenFileTransport")
+					t.Fatal("expected transport to be of type tokenFileTransport")
 				}
-				return nil
 			},
 		},
 		{
@@ -110,22 +110,22 @@ func TestNewClient(t *testing.T) {
 			opts: []Opt{
 				StaticTokenOpt("test-token"),
 			},
-			validateClient: func(c *Client) error {
-				if c.client.Transport == nil {
-					return fmt.Errorf("transport is nil")
-				}
+			validateClient: func(t *testing.T, c *Client) {
+				assert.NotNil(t, c.client.Transport, "expected transport to be set")
 				if tokenTransport, ok := c.client.Transport.(*tokenFileTransport); ok {
 					if tfRetriever, ok := tokenTransport.retriever.(staticToken); ok {
-						if tfRetriever.token != "test-token" {
-							return fmt.Errorf("static token is not set correctly")
-						}
+						assert.Equal(
+							t,
+							"test-token",
+							tfRetriever.token,
+							"expected static token to match",
+						)
 					} else {
-						return fmt.Errorf("retriever is not of type staticToken")
+						t.Fatal("expected transport retriever to be of type staticToken")
 					}
 				} else {
-					return fmt.Errorf("transport is not of type tokenFileTransport")
+					t.Fatal("expected transport to be of type tokenFileTransport")
 				}
-				return nil
 			},
 		},
 	}
@@ -142,9 +142,7 @@ func TestNewClient(t *testing.T) {
 			}
 
 			if tt.validateClient != nil {
-				if err := tt.validateClient(got); err != nil {
-					t.Errorf("NewClient() validation error = %v", err)
-				}
+				tt.validateClient(t, got)
 			}
 		})
 	}

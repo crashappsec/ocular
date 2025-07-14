@@ -1410,8 +1410,6 @@ components:
           description: The cron schedule that the pipeline will run against.
           example: 0 0 * * *
           type: string
-        status:
-          $ref: '#/components/schemas/SchemasRunStatus'
       type: object
     ScheduledSearchRequest:
       properties:

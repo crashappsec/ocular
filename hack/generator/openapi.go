@@ -10,6 +10,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -229,13 +230,14 @@ type NoParams struct {
 	NoParams bool `json:"NoParams" yaml:"NoParams"`
 }
 
-func WriteOpenAPI(w io.Writer, format string) error {
-	l := zap.L()
+var (
+	str     = openapi3.SchemaTypeString
+	obj     = openapi3.SchemaTypeObject
+	boolean = openapi3.SchemaTypeBoolean
+	array   = openapi3.SchemaTypeArray
+)
 
-	/*********************
-	 * API Wide settings *
-	 *********************/
-
+func baseReflector(l *zap.Logger) *openapi3.Reflector {
 	reflector := openapi3.Reflector{}
 	reflector.Spec = &openapi3.Spec{Openapi: "3.0.3"}
 	reflector.Spec.Info.
@@ -243,20 +245,7 @@ func WriteOpenAPI(w io.Writer, format string) error {
 		WithVersion("0.0.0-beta.3").
 		WithDescription("API to code scanning orchestration engine for Ocular")
 
-	l.Debug("building api routes")
-	gin.SetMode(gin.ReleaseMode) // Set Gin to release mode to avoid debug logs
-	engine, err := api.InitializeEngine(nil)
-	if err != nil {
-		return fmt.Errorf("failed to initialize API engine: %w", err)
-	}
-
-	obj := openapi3.SchemaTypeObject
-	boolean := openapi3.SchemaTypeBoolean
-	array := openapi3.SchemaTypeArray
-	str := openapi3.SchemaTypeString
-
 	l.Debug("ensuring all routes have types defined")
-	var merr *multierror.Error
 
 	if reflector.Spec.Components == nil {
 		reflector.Spec.WithComponents(openapi3.Components{})
@@ -272,6 +261,7 @@ func WriteOpenAPI(w io.Writer, format string) error {
 	if reflector.Spec.Components.SecuritySchemes == nil {
 		reflector.Spec.Components.WithSecuritySchemes(openapi3.ComponentsSecuritySchemes{})
 	}
+
 	/************************
 	 * API Security Schemes *
 	 ************************/
@@ -339,38 +329,30 @@ func WriteOpenAPI(w io.Writer, format string) error {
 			},
 		})
 
+	return &reflector
+}
+
+func WriteOpenAPI(w io.Writer, format string) error {
+	l := zap.L()
+
+	l.Debug("building api routes")
+	gin.SetMode(gin.ReleaseMode) // Set Gin to release mode to avoid debug logs
+	engine, err := api.InitializeEngine(nil)
+	if err != nil {
+		return fmt.Errorf("failed to initialize API engine: %w", err)
+	}
+
+	reflector := baseReflector(l)
+
 	/********************
 	 * API Type Schemas *
 	 ********************/
 
+	var merr *multierror.Error
 	for tName, t := range AllTypes {
-		allSchemas := map[string]jsonschema.Schema{}
-		propertySchema, err := reflector.Reflect(
-			t,
-			jsonschema.CollectDefinitions(func(name string, schema jsonschema.Schema) {
-				allSchemas[name] = schema
-			}),
-			jsonschema.DefinitionsPrefix("#/components/schemas/"),
-		)
-		allSchemas[tName] = propertySchema
-		if err != nil {
-			merr = multierror.Append(
-				merr,
-				fmt.Errorf("failed to reflect type '%s': %w", tName, err),
-			)
+		if err := defineType(reflector, tName, t); err != nil {
+			merr = multierror.Append(merr, err)
 			continue
-		}
-		if reflector.Spec.Components.Schemas == nil {
-			reflector.Spec.Components.WithSchemas(openapi3.ComponentsSchemas{})
-		}
-
-		for name, schemaName := range allSchemas {
-			schemaRef := openapi3.SchemaOrRef{}
-			schemaRef.FromJSONSchema(schemaName.ToSchemaOrBool())
-			reflector.Spec.Components.Schemas.WithMapOfSchemaOrRefValuesItem(
-				name,
-				schemaRef,
-			)
 		}
 	}
 
@@ -378,161 +360,29 @@ func WriteOpenAPI(w io.Writer, format string) error {
 		return fmt.Errorf("failed to reflect types: %w", merr)
 	}
 	l.Debug("iterating over engine routes to build OpenAPI spec")
-	merr = nil
 
 	/**************
 	 * API Routes *
 	 **************/
-
+	merr = nil
 	for _, r := range engine.Routes() {
-		rInfo := RouteInfo{Path: pathParamsToOpenAPI(r.Path), Method: r.Method}
-		route, exists := Routes[rInfo]
-		if _, ignore := IgnoredRoutes[rInfo]; !exists && !ignore {
+		method, err := buildMethodSpec(l, reflector, r)
+		if err != nil && errors.Is(err, errSkipSpec) {
+			continue
+		}
+
+		if err != nil {
 			merr = multierror.Append(
 				merr,
-				fmt.Errorf("route '%s' is not defined", rInfo),
+				fmt.Errorf(
+					"failed to build method spec for route '%s %s': %w",
+					r.Method,
+					r.Path,
+					err,
+				),
 			)
 			continue
-		} else if ignore {
-			continue
 		}
-
-		method, err := reflector.NewOperationContext(strings.ToLower(rInfo.Method), rInfo.Path)
-		if err != nil {
-			merr = multierror.Append(merr, err)
-			continue
-		}
-
-		if !route.DisableSecurity {
-			method.AddSecurity(SecurityName)
-		}
-
-		method.SetDescription(route.Description)
-		method.SetTags(route.Tags...)
-
-		var requestOptions []openapi.ContentOption
-		if route.Request != "" {
-			requestOptions = append(
-				requestOptions,
-				openapi.WithCustomize(func(cor openapi.ContentOrReference) {
-					reqBody, ok := cor.(*openapi3.RequestBodyOrRef)
-					if !ok {
-						l.With(zap.String("path", r.Path), zap.String("method", r.Method)).
-							Error("unexpected type for request body, expected RequestBodyOrRef")
-						return
-					}
-					reqBody.RequestBody = &openapi3.RequestBody{
-						Content: map[string]openapi3.MediaType{
-							"application/json": {
-								Schema: &openapi3.SchemaOrRef{
-									SchemaReference: &openapi3.SchemaReference{
-										Ref: "#/components/schemas/" + route.Request,
-									},
-								},
-							},
-							"application/x-yaml": {
-								Schema: &openapi3.SchemaOrRef{
-									SchemaReference: &openapi3.SchemaReference{
-										Ref: "#/components/schemas/" + route.Request,
-									},
-								},
-							},
-						},
-					}
-				}),
-				openapi.WithContentType("application/json"),
-			)
-		}
-
-		params := route.Parameters
-		if params == nil {
-			params = NoParams{}
-		}
-
-		method.AddReqStructure(
-			params,
-			requestOptions...,
-		)
-
-		method.AddRespStructure(
-			new(struct{}),
-			openapi.WithHTTPStatus(200),
-			openapi.WithCustomize(func(cor openapi.ContentOrReference) {
-				reqBody, ok := cor.(*openapi3.ResponseOrRef)
-				if !ok {
-					l.With(zap.String("path", r.Path), zap.String("method", r.Method)).
-						Error("unexpected type for request body, expected ResponseOrRef")
-					return
-				}
-
-				properties := map[string]openapi3.SchemaOrRef{
-					"success": {
-						Schema: &openapi3.Schema{
-							Type: &boolean,
-							Enum: []interface{}{
-								true,
-							},
-						},
-					},
-				}
-				if route.Response != "" {
-					properties["response"] = openapi3.SchemaOrRef{
-						SchemaReference: &openapi3.SchemaReference{
-							Ref: "#/components/schemas/" + route.Response,
-						},
-					}
-				} else if route.ResponseList != "" {
-					properties["response"] = openapi3.SchemaOrRef{
-						Schema: &openapi3.Schema{
-							Type: &array,
-							Items: &openapi3.SchemaOrRef{
-								SchemaReference: &openapi3.SchemaReference{
-									Ref: "#/components/schemas/" + route.ResponseList,
-								},
-							},
-						},
-					}
-				}
-
-				reqBody.Response = &openapi3.Response{
-					Content: map[string]openapi3.MediaType{
-						"application/json": {
-							Schema: &openapi3.SchemaOrRef{
-								Schema: &openapi3.Schema{
-									Type:       &obj,
-									Properties: properties,
-								},
-							},
-						},
-						"application/x-yaml": {
-							Schema: &openapi3.SchemaOrRef{
-								Schema: &openapi3.Schema{
-									Type:       &obj,
-									Properties: properties,
-								},
-							},
-						},
-					},
-				}
-			}))
-
-		for _, respCode := range []int{4, 5} {
-			method.AddRespStructure(
-				new(struct{}),
-				openapi.WithHTTPStatus(respCode),
-				openapi.WithCustomize(func(cor openapi.ContentOrReference) {
-					reqBody, ok := cor.(*openapi3.ResponseOrRef)
-					if !ok {
-						l.With(zap.String("path", r.Path), zap.String("method", r.Method)).
-							Error("unexpected type for request body, expected RequestBodyOrRef")
-						return
-					}
-					reqBody.SetReference("#/components/responses/ErrorResponse")
-				}),
-			)
-		}
-		method.AddReqStructure(route.Request)
-
 		if err = reflector.AddOperation(method); err != nil {
 			merr = multierror.Append(merr, err)
 			continue
@@ -569,4 +419,184 @@ func pathParamsToOpenAPI(ginPath string) string {
 	pathParams := pathParamRegex.ReplaceAllString(ginPath, `/{${1}}`)
 
 	return pathParams
+}
+
+func defineType(reflector *openapi3.Reflector, tName string, t any) error {
+	allSchemas := map[string]jsonschema.Schema{}
+	propertySchema, err := reflector.Reflect(
+		t,
+		jsonschema.CollectDefinitions(func(name string, schema jsonschema.Schema) {
+			allSchemas[name] = schema
+		}),
+		jsonschema.DefinitionsPrefix("#/components/schemas/"),
+	)
+	allSchemas[tName] = propertySchema
+	if err != nil {
+		return fmt.Errorf("failed to reflect type '%s': %w", tName, err)
+	}
+	if reflector.Spec.Components.Schemas == nil {
+		reflector.Spec.Components.WithSchemas(openapi3.ComponentsSchemas{})
+	}
+
+	for name, schemaName := range allSchemas {
+		schemaRef := openapi3.SchemaOrRef{}
+		schemaRef.FromJSONSchema(schemaName.ToSchemaOrBool())
+		reflector.Spec.Components.Schemas.WithMapOfSchemaOrRefValuesItem(
+			name,
+			schemaRef,
+		)
+	}
+	return nil
+}
+
+var errSkipSpec = fmt.Errorf("skip this spec")
+
+func buildMethodSpec(
+	l *zap.Logger,
+	reflector openapi.Reflector,
+	r gin.RouteInfo,
+) (openapi.OperationContext, error) {
+	rInfo := RouteInfo{Path: pathParamsToOpenAPI(r.Path), Method: r.Method}
+	route, exists := Routes[rInfo]
+	if _, ignore := IgnoredRoutes[rInfo]; !exists && !ignore {
+		return nil, fmt.Errorf("route '%s' is not defined", rInfo)
+	} else if ignore {
+		return nil, errSkipSpec // Skip ignored routes
+	}
+
+	method, err := reflector.NewOperationContext(strings.ToLower(rInfo.Method), rInfo.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	if !route.DisableSecurity {
+		method.AddSecurity(SecurityName)
+	}
+
+	method.SetDescription(route.Description)
+	method.SetTags(route.Tags...)
+
+	var requestOptions []openapi.ContentOption
+	if route.Request != "" {
+		requestOptions = append(
+			requestOptions,
+			openapi.WithCustomize(func(cor openapi.ContentOrReference) {
+				reqBody, ok := cor.(*openapi3.RequestBodyOrRef)
+				if !ok {
+					l.With(zap.String("path", r.Path), zap.String("method", r.Method)).
+						Error("unexpected type for request body, expected RequestBodyOrRef")
+					return
+				}
+				reqBody.RequestBody = &openapi3.RequestBody{
+					Content: map[string]openapi3.MediaType{
+						"application/json": {
+							Schema: &openapi3.SchemaOrRef{
+								SchemaReference: &openapi3.SchemaReference{
+									Ref: "#/components/schemas/" + route.Request,
+								},
+							},
+						},
+						"application/x-yaml": {
+							Schema: &openapi3.SchemaOrRef{
+								SchemaReference: &openapi3.SchemaReference{
+									Ref: "#/components/schemas/" + route.Request,
+								},
+							},
+						},
+					},
+				}
+			}),
+			openapi.WithContentType("application/json"),
+		)
+	}
+
+	params := route.Parameters
+	if params == nil {
+		params = NoParams{}
+	}
+
+	method.AddReqStructure(
+		params,
+		requestOptions...,
+	)
+
+	method.AddRespStructure(
+		new(struct{}),
+		openapi.WithHTTPStatus(200),
+		openapi.WithCustomize(func(cor openapi.ContentOrReference) {
+			reqBody, ok := cor.(*openapi3.ResponseOrRef)
+			if !ok {
+				l.With(zap.String("path", r.Path), zap.String("method", r.Method)).
+					Error("unexpected type for request body, expected ResponseOrRef")
+				return
+			}
+
+			properties := map[string]openapi3.SchemaOrRef{
+				"success": {
+					Schema: &openapi3.Schema{
+						Type: &boolean,
+						Enum: []interface{}{
+							true,
+						},
+					},
+				},
+			}
+			if route.Response != "" {
+				properties["response"] = openapi3.SchemaOrRef{
+					SchemaReference: &openapi3.SchemaReference{
+						Ref: "#/components/schemas/" + route.Response,
+					},
+				}
+			} else if route.ResponseList != "" {
+				properties["response"] = openapi3.SchemaOrRef{
+					Schema: &openapi3.Schema{
+						Type: &array,
+						Items: &openapi3.SchemaOrRef{
+							SchemaReference: &openapi3.SchemaReference{
+								Ref: "#/components/schemas/" + route.ResponseList,
+							},
+						},
+					},
+				}
+			}
+
+			reqBody.Response = &openapi3.Response{
+				Content: map[string]openapi3.MediaType{
+					"application/json": {
+						Schema: &openapi3.SchemaOrRef{
+							Schema: &openapi3.Schema{
+								Type:       &obj,
+								Properties: properties,
+							},
+						},
+					},
+					"application/x-yaml": {
+						Schema: &openapi3.SchemaOrRef{
+							Schema: &openapi3.Schema{
+								Type:       &obj,
+								Properties: properties,
+							},
+						},
+					},
+				},
+			}
+		}))
+
+	for _, respCode := range []int{4, 5} {
+		method.AddRespStructure(
+			new(struct{}),
+			openapi.WithHTTPStatus(respCode),
+			openapi.WithCustomize(func(cor openapi.ContentOrReference) {
+				reqBody, ok := cor.(*openapi3.ResponseOrRef)
+				if !ok {
+					l.With(zap.String("path", r.Path), zap.String("method", r.Method)).
+						Error("unexpected type for request body, expected RequestBodyOrRef")
+					return
+				}
+				reqBody.SetReference("#/components/responses/ErrorResponse")
+			}),
+		)
+	}
+	method.AddReqStructure(route.Request)
+	return method, nil
 }

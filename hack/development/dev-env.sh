@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Copyright (C) 2025 Crash Override, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -7,6 +7,9 @@
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
+# This script will deploy ocular to a development Kubernetes cluster.
+# It creates the necessary resources like ConfigMaps, Secrets, Roles, and ServiceAccounts.
+# The API server is expected to be run locally and connect to the cluster via a kubeconfig file.
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,7 +17,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
 set -e
 
@@ -23,12 +26,12 @@ set_namespace="$(kubectl config view --minify -o jsonpath='{..namespace}')"
 namespace="${set_namespace:-default}"
 
 echo -e "${YELLOW}WARNING${NC}: this script should never be run on a production cluster."
-echo -e "run 'make devenv-down' to remove created resources"
+echo -e "run 'make remove-devenv' to remove created resources"
 echo -e "using context '${BLUE}${ctx}${NC}' and namespace '${GREEN}${namespace}${NC}'"
 read -erp "Press [Enter] to continue or [Ctrl+C] to cancel..."
 
-
-manifest="$(cat <<EOF
+manifest="$(
+	cat <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -93,23 +96,21 @@ spec:
 EOF
 )"
 
-
-
 cmd="$1"
 
 case $cmd in
-  up)
-    # Create the resources
-    echo "$manifest" | kubectl apply -f -
-    ;;
-  down)
-     # Delete the resoureces
-     echo "$manifest" | kubectl delete --ignore-not-found=true -f -
-    ;;
-  *)
-    echo "${RED}ERROR${NC}: unknown command '${cmd}'"
-    exit 1
-    ;;
+up)
+	# Create the resources
+	echo "$manifest" | kubectl apply -f -
+	;;
+down)
+	# Delete the resoureces
+	echo "$manifest" | kubectl delete --ignore-not-found=true -f -
+	;;
+*)
+	echo "${RED}ERROR${NC}: unknown command '${cmd}'"
+	exit 1
+	;;
 esac
 
 echo -e "${GREEN}done!${NC} run 'make generate-devenv-token' to get a token for the service account"
