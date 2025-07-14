@@ -47,7 +47,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Chalk
-        uses: crashappsec/setup-chalk-action@e4bfa48190eb4d01e96c61cffa0bc6deeabdad8a # main
+        uses: crashappsec/setup-chalk-action@dd44d19639af67303e6ab8fe61cd6a8b1ec43f42 # main
       - name: setup qemu
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
       - name: setup buildx
