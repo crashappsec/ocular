@@ -62,6 +62,23 @@ make apply-devenv
 # you can undo this with make remove-devenv
 ```
 
+#### Installing default integrations
+
+When installing via Helm, the [default integrations](https://github.com/crashappsec/ocular-default-integrations)
+(downloaders, scanners, uploaders) are installed automatically.
+
+When running the application locally, you can install the default integrations by running the following command:
+
+```bash
+# Install the default integrations to the development environment.
+# You can set the OCULAR_DEFAULTS_VERSION environment variable to
+# specify a specific version of the defaults to install.
+# defaults to the latest version if not set.
+make apply-devenv-default
+# or: OCULAR_DEFAULTS_VERSION=0.1.0 make apply-devenv-defaults
+```
+
+
 The API can then either be run via docker or locally as a go application:
 
 ```bash

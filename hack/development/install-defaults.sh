@@ -32,12 +32,12 @@ release_version="${1:-latest}"
 required_commands=(jq unzip yq)
 for cmd in "${required_commands[@]}"; do
 	if ! command -v "$cmd" >/dev/null; then
-		echo "'$cmd' not detected, please ensure it is installed and located in your \$PATH"
+		echo -e "${RED}ERROR${NC}: '$cmd' not detected, please ensure it is installed and located in your \$PATH"
 	fi
 done
 
 if [[ ! "$(yq --help)" =~ "github.com/mikefarah/yq" ]]; then
-	echo "wrong version of 'yq' detected, please use https://github.com/mikefarah/yq"
+	echo -e "${RED}ERROR${NC}: wrong version of 'yq' detected, please use https://github.com/mikefarah/yq"
 fi
 
 download_release() {
@@ -93,15 +93,12 @@ esac
 definitions=$(download_release "$release_identifier")
 
 for resource_definitions in "$definitions"/*; do
-	resource_defaults=""
 	resource_type=$(basename "$resource_definitions")
 	for def in "$resource_definitions"/*; do
 		resource_name=$(basename "$def")
-		resource_defaults="$resource_defaults\n${resource_name%.*}: |\n$(cat "$def" | sed 's/^/  /')\n"
+	  kubectl patch "configmap/ocular-$resource_type" \
+		  --type merge \
+		  -p "{\"data\":{\"${resource_name%%.*}\": $(jq -Rs '.' < "$def" )}}"
 	done
 
-	kubectl patch "configmap/ocular-$resource_type" \
-		-n kube-system \
-		--type merge \
-		-p "{\"data\":{\"$resource_name\":\"\"}}"
 done

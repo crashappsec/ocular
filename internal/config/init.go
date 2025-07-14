@@ -186,6 +186,8 @@ func Init() {
 	viper.SetDefault("Runtime%Requests%CPU", "100m")
 	viper.SetDefault("Runtime%Requests%Memory", "128Mi")
 	viper.SetDefault("Runtime%JobTTL", "3m")
+
+	viper.SetDefault("Runtime%ImagePullSecrets", "")
 	viper.SetDefault("Runtime%UploadersServiceAccount", "")
 	viper.SetDefault("Runtime%ScannersServiceAccount", "")
 	viper.SetDefault("Runtime%CrawlersServiceAccount", "")
@@ -233,7 +235,8 @@ func Init() {
 	InitEnv()
 }
 
-func WriteConfig(w io.Writer) error {
+func WriteConfig(w io.Writer, format string) error {
+	viper.SetConfigType(format)
 	if err := viper.WriteConfigTo(w); err != nil {
 		return err
 	}

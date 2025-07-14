@@ -40,7 +40,7 @@ OCULAR_LOGGING_LEVEL ?= debug
 OCULAR_PROFILE_CONFIGMAPNAME ?= ocular-profiles
 OCULAR_CRAWLERS_CONFIGMAPNAME ?= ocular-crawlers
 OCULAR_UPLOADERS_CONFIGMAPNAME ?= ocular-uploaders
-OCULAR_DOWNLOADERS_CONFIGMAPNAME ?= ocular-donwloaders
+OCULAR_DOWNLOADERS_CONFIGMAPNAME ?= ocular-downloaders
 OCULAR_SECRETS_SECRETNAME ?= ocular-secrets
 OCULAR_SERVICE_ACCOUNT ?= ocular-admin
 
@@ -119,9 +119,9 @@ run-local: generate apply-devenv run-local-apionly
 
 run-local-apionly:
 	@export OCULAR_CONFIG_PATH="$$(mktemp -d)" && \
-	 $(MAKE) generate-api-config-file > $$OCULAR_CONFIG_PATH/config.yaml && \
+	 $(MAKE) generate-api-config-file OCULAR_API_HOST=host.docker.internal > $$OCULAR_CONFIG_PATH/config.yaml && \
 	 echo "Running API server locally with config at $$OCULAR_CONFIG_PATH/config.yaml" && \
-	go run cmd/api-server/main.go
+	go run -ldflags='${LDFLAGS}' cmd/api-server/main.go
 
 ###########################
 # Development Environment #
@@ -131,9 +131,10 @@ run-local-apionly:
 apply-devenv:
 	@./hack/development/dev-env.sh up
 
+OCULAR_DEFAULTS_VERSION ?= latest
 apply-devenv-defaults:
 	@echo "installing default integrations to the development environment"
-	@./hack/development/install-defaults.sh
+	@./hack/development/install-defaults.sh ${OCULAR_DEFAULTS_VERSION}
 
 remove-devenv:
 	@./hack/development/dev-env.sh down

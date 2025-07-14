@@ -66,20 +66,12 @@ func init() {
 			ConfigFormatYAML,
 		),
 	)
-	config.InitLogger(
-		os.Getenv("OCULAR_LOGGING_LEVEL"),
-		os.Getenv("OCULAR_LOGGING_FORMAT"))
+	config.Init()
 }
 
 func main() {
 	flag.Parse()
-
-	for _, validType := range validConfigTypes {
-		if configType == validType {
-			zap.L().Info("Generating configuration", zap.String("type", configType))
-			break
-		}
-	}
+	zap.L().Info("Generating configuration", zap.String("type", configType))
 
 	additionalFiles = flag.Args()
 
@@ -103,10 +95,7 @@ func main() {
 	switch configType {
 	case ConfigTypeAPI:
 		zap.L().Info("Generating API configuration")
-		err = config.WriteConfig(w)
-		if err != nil {
-			zap.L().Fatal("Failed to write config", zap.Error(err))
-		}
+		err = config.WriteConfig(w, configFormat)
 	case ConfigTypeOpenAPI:
 		zap.L().Info("Generating OpenAPI configuration")
 		err = WriteOpenAPI(w, configFormat)
@@ -115,7 +104,8 @@ func main() {
 	}
 
 	if err != nil {
-		zap.L().Fatal("Failed to write config", zap.Error(err))
+		zap.L().
+			Fatal("Failed to write config", zap.Error(err), zap.String("type", configType), zap.String("format", configFormat))
 	}
 
 	if len(additionalFiles) == 0 {

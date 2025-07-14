@@ -13,7 +13,7 @@ Thank you for your interest in contributing to the project, below are the steps 
 ## Filing the Pull Request
 If you don't yet know how to file a pull request, [read GitHub's document about it](https://help.github.com/articles/using-pull-requests).
 
-Make your pull request be the addition of a single file to the `contributors\crashappsec:ocular` directory of [crashappsec/.github project](https://github.com/crashappsec/.github). Name the file with the same name as your GitHub userid, with `.md` appended to the end. For example, for the user `ZeroCool_1995`, the full path to the file would be `contributors/crashappsec:ocular/zerocool_1995.md`.
+Make your pull request be the addition of a single file to the `contributors/crashappsec:ocular` directory of [crashappsec/.github project](https://github.com/crashappsec/.github). Name the file with the same name as your GitHub userid, with `.md` appended to the end. For example, for the user `ZeroCool_1995`, the full path to the file would be `contributors/crashappsec:ocular/zerocool_1995.md`.
 
 If you are contributing as an individual the contents of the file should look as follows:
 

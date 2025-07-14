@@ -70,28 +70,13 @@ func pipelineFromScanJob(
 		}
 	}
 
-	var target schemas.Target
-	if len(scanJob.Spec.Template.Spec.Containers) != 0 {
-		anyContainer := scanJob.Spec.Template.Spec.Containers[0]
-		if len(anyContainer.Env) != 0 {
-			for _, env := range anyContainer.Env {
-				switch env.Name {
-				case schemas.EnvVarTargetDownloader:
-					target.Downloader = env.Value
-				case schemas.EnvVarTargetIdentifier:
-					target.Identifier = env.Value
-				case schemas.EnvVarTargetVersion:
-					target.Version = env.Value
-				}
-			}
-		}
+	pipeline.Target = schemas.Target{
+		Downloader: scanJob.Annotations[annotationTargetDownloader],
+		Identifier: scanJob.Annotations[annotationTargetIdentifier],
+		Version:    scanJob.Annotations[annotationTargetVersion],
 	}
-	pipeline.Target = target
-	if len(scanJob.Annotations) != 0 {
-		if profileName, ok := scanJob.Annotations[annotationProfileName]; ok {
-			pipeline.Profile = profileName
-		}
-	}
+
+	pipeline.Profile = scanJob.Annotations[annotationProfileName]
 
 	return pipeline, nil
 }
