@@ -10,7 +10,10 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"gopkg.in/yaml.v3"
 	"io"
 	"os"
 	"reflect"
@@ -100,7 +103,9 @@ type Config struct {
 			// Memory is the memory limit for the container.
 			Memory string `json:"memory" yaml:"memory"`
 		}
-		Labels      map[string]string `json:"labels" yaml:"labels" mapstructure:"labels"`
+		// Labels are the labels that will be attached to all jobs created by Ocular.
+		Labels map[string]string `json:"labels" yaml:"labels" mapstructure:"labels"`
+		// Annotations are the annotations that will be attached to all jobs created by Ocular.
 		Annotations map[string]string `json:"annotations" yaml:"annotations" mapstructure:"annotations"`
 		// ImagePullSecrets is a list of image pull secrets that will be attached to
 		// all jobs created by Ocular.
@@ -153,6 +158,8 @@ func Init() {
 		viper.AddConfigPath(configPath)
 	}
 
+	// Viper configuration setup
+	viper.SetEnvPrefix("ocular")
 	// have to use something that will most likely not be a
 	// key anywhere in the config file, so that we can
 	// use it as a delimiter for the viper keys.
@@ -162,40 +169,40 @@ func Init() {
 	// "my.custom.label: value" becomes {"my": {"custom": {"label": "value"}}}
 	delimiter := "%"
 	viper.SetOptions(viper.KeyDelimiter(delimiter))
-
-	viper.SetEnvPrefix("ocular")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(delimiter, "_"))
-	viper.SetDefault("ClusterAccess%Kubeconfig%Path", "~/.kube/config")
-	// only errors if no input is given, so can ignore
-	_ = viper.BindEnv("ClusterAccess%Kubeconfig%Path", "KUBECONFIG")
-	viper.SetDefault("API%TLS%Enabled", false)
-	viper.SetDefault("API%Port", "3001")
+
+	// Global Settings
 	viper.SetDefault("Environment", "production")
-	viper.SetDefault("API%Host", "ocular-api-server.ocular.svc.cluster.local")
-
-	viper.SetDefault("Crawlers%ConfigMapName", "ocular-crawlers")
-
-	viper.SetDefault("Downloaders%ConfigMapName", "ocular-downloaders")
-
-	viper.SetDefault("Extractor%Image", "ocular-extractor")
-
 	viper.SetDefault("Logging%Level", "info")
 	viper.SetDefault("Logging%Format", "json")
 
-	viper.SetDefault("Profiles%ConfigMapName", "ocular-profiles")
+	// K8s Cluster Access Settings
+	viper.SetDefault("ClusterAccess%Kubeconfig%Path", "~/.kube/config")
+	_ = viper.BindEnv("ClusterAccess%Kubeconfig%Path", "KUBECONFIG") // only errors if no input is given, so can ignore
 
+	// API Settings
+	viper.SetDefault("API%TLS%Enabled", false)
+	viper.SetDefault("API%Port", "3001")
+	viper.SetDefault("API%Host", "ocular-api-server.ocular.svc.cluster.local")
+
+	viper.SetDefault("Crawlers%ConfigMapName", "ocular-crawlers")
+	viper.SetDefault("Profiles%ConfigMapName", "ocular-profiles")
+	viper.SetDefault("Downloaders%ConfigMapName", "ocular-downloaders")
+	viper.SetDefault("Secrets%SecretName", "ocular-secrets")
+	viper.SetDefault("Uploaders%ConfigMapName", "ocular-uploaders")
+
+	viper.SetDefault("Extractor%Image", "ocular-extractor")
+
+	// Runtime Settings
 	viper.SetDefault("Runtime%Requests%CPU", "100m")
 	viper.SetDefault("Runtime%Requests%Memory", "128Mi")
+	viper.SetDefault("Runtime%Labels", map[string]string{})
+	viper.SetDefault("Runtime%Annotations", map[string]string{})
 	viper.SetDefault("Runtime%JobTTL", "3m")
-
 	viper.SetDefault("Runtime%ImagePullSecrets", "")
 	viper.SetDefault("Runtime%UploadersServiceAccount", "")
 	viper.SetDefault("Runtime%ScannersServiceAccount", "")
 	viper.SetDefault("Runtime%CrawlersServiceAccount", "")
-
-	viper.SetDefault("Secrets%SecretName", "ocular-secrets")
-
-	viper.SetDefault("Uploaders%ConfigMapName", "ocular-uploaders")
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -219,6 +226,38 @@ func Init() {
 						return time.ParseDuration(data.(string))
 					}
 				}
+				// Custom decode hook for map[string]string
+				if t == reflect.TypeOf(map[string]string{}) {
+					if f.Kind() == reflect.String {
+						// we assume the string is of the form "key1=value1;key2=value2"
+						// and convert it to a map[string]string
+						result := make(map[string]string)
+						if str, ok := data.(string); ok {
+							pairs := strings.Split(str, ";")
+							for _, pair := range pairs {
+								kv := strings.SplitN(pair, "=", 2)
+								if len(kv) == 2 {
+									key := strings.TrimSpace(kv[0])
+									value := strings.TrimSpace(kv[1])
+									if len(key) > 0 && len(value) > 0 {
+										result[key] = value
+									}
+								}
+							}
+							return result, nil
+						}
+					}
+				}
+				// Custom decode hook for []string
+				if t == reflect.TypeOf([]string{}) {
+					if f.Kind() == reflect.String {
+						// we assume the string is of the form "value1,value2,value3"
+						// and convert it to a []string
+						if str, ok := data.(string); ok {
+							return strings.Split(str, ","), nil
+						}
+					}
+				}
 
 				return data, nil
 			},
@@ -238,8 +277,12 @@ func Init() {
 
 func WriteConfig(w io.Writer, format string) error {
 	viper.SetConfigType(format)
-	if err := viper.WriteConfigTo(w); err != nil {
-		return err
+	switch format {
+	case "yaml":
+		return yaml.NewEncoder(w).Encode(State)
+	case "json":
+		return json.NewEncoder(w).Encode(State)
 	}
-	return nil
+
+	return fmt.Errorf("unsupported config format: %s", format)
 }
