@@ -32,8 +32,8 @@ import (
 const (
 	labelCrawlerName      = "crawler-name"
 	searchJobType         = "search"
-	annotationCrawlerName = "crashoverride.run/crawler-name"
-	annotationRunID       = "crashoverride.run/search-id"
+	annotationCrawlerName = "ocularproject.io/crawler-name"
+	annotationRunID       = "ocularproject.io/search-id"
 
 	secretVolumeName = "search-secret-volume"
 )
@@ -160,7 +160,8 @@ func buildJob(
 
 	jobOpts := []runtime.JobOpt{
 		runtime.JobOptWithLabels(map[string]string{
-			labelCrawlerName: crawlerName,
+			labelCrawlerName:       crawlerName,
+			runtime.LabelExecution: "search",
 		}),
 		runtime.JobOptWithAnnotations(map[string]string{
 			annotationCrawlerName: crawlerName,

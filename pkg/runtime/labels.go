@@ -18,6 +18,11 @@ const (
 	LabelResource = "resource"
 	// LabelID is the label used to identify the resource ID.
 	LabelID = "id"
+	// LabelExecution is the label used to identify the execution type.
+	// either a pipeline or a search
+	LabelExecution = "execution"
+
+	AnnotationVersion = "ocularproject.io/version"
 )
 
 // CreateLabels creates a map of labels for the container.
@@ -43,5 +48,30 @@ func CreateLabels(additional map[string]string) map[string]string {
 	for k, v := range additional {
 		merged[k] = v
 	}
+	return merged
+}
+
+func CreateAnnotations(additional map[string]string) map[string]string {
+	merged := make(map[string]string)
+	for key, val := range config.State.Runtime.Annotations {
+		if len(key) == 0 {
+			continue
+		}
+		if len(key) > 63 {
+			zap.L().Debug("annotation key too long, truncating", zap.String("key", key))
+			key = key[:63]
+		}
+		if len(val) > 63 {
+			zap.L().Debug("annotation value too long, truncating",
+				zap.String("key", key), zap.String("value", val))
+			val = val[:63]
+		}
+		merged[key] = val
+	}
+	for k, v := range additional {
+		merged[k] = v
+	}
+
+	merged[AnnotationVersion] = config.Version
 	return merged
 }

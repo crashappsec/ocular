@@ -27,9 +27,9 @@ type Pipeline schemas.Pipeline
 
 /* Annotation Labels */
 const (
-	annotationTargetDownloader = "crashoverride.run/target-downloader"
-	annotationTargetIdentifier = "crashoverride.run/target-identifier"
-	annotationTargetVersion    = "crashoverride.run/target-version"
-	annotationProfileName      = "crashoverride.run/profile-name"
-	annotationPipelineID       = "crashoverride.run/pipeline-id"
+	annotationTargetDownloader = "ocularproject.io/target-downloader"
+	annotationTargetIdentifier = "ocularproject.io/target-identifier"
+	annotationTargetVersion    = "ocularproject.io/target-version"
+	annotationProfileName      = "ocularproject.io/profile-name"
+	annotationPipelineID       = "ocularproject.io/pipeline-id"
 )

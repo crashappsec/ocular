@@ -96,14 +96,17 @@ func BuildJob(
 	}
 
 	jobTTL := config.State.Runtime.JobTTL.Seconds()
+	labels := CreateLabels(map[string]string{
+		LabelResource: resourceName,
+		LabelID:       id.String(),
+	})
+	annotations := CreateAnnotations(nil)
 
 	jobReq := batchV1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: resourceName + "-" + id.String(),
-			Labels: CreateLabels(map[string]string{
-				LabelResource: resourceName,
-				LabelID:       id.String(),
-			}),
+			Name:        resourceName + "-" + id.String(),
+			Labels:      labels,
+			Annotations: annotations,
 		},
 		Spec: batchV1.JobSpec{
 			TTLSecondsAfterFinished: ptr.To[int32](int32(jobTTL)), // 3 minutes
@@ -112,10 +115,8 @@ func BuildJob(
 			Completions:             ptr.To[int32](1),
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: CreateLabels(map[string]string{
-						LabelResource: resourceName + "-execution",
-						LabelID:       id.String(),
-					}),
+					Labels:      labels,
+					Annotations: annotations,
 				},
 				Spec: v1.PodSpec{
 					RestartPolicy:    "Never",
