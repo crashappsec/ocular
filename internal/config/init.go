@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"io"
 	"os"
 	"reflect"
@@ -23,6 +22,7 @@ import (
 	"github.com/crashappsec/ocular/pkg/schemas"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 // ResourceConfig is the configuration for a resource type in Ocular.
@@ -178,7 +178,10 @@ func Init() {
 
 	// K8s Cluster Access Settings
 	viper.SetDefault("ClusterAccess%Kubeconfig%Path", "~/.kube/config")
-	_ = viper.BindEnv("ClusterAccess%Kubeconfig%Path", "KUBECONFIG") // only errors if no input is given, so can ignore
+	_ = viper.BindEnv(
+		"ClusterAccess%Kubeconfig%Path",
+		"KUBECONFIG",
+	) // only errors if no input is given, so can ignore
 
 	// API Settings
 	viper.SetDefault("API%TLS%Enabled", false)
