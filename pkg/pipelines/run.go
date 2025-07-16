@@ -387,8 +387,9 @@ func buildUploadJob(
 		uploadContainers,
 		append(jobOpts,
 			runtime.JobOptWithLabels(map[string]string{
-				"profile-name": profileName,
-				"pipeline-id":  id.String(),
+				"profile-name":         profileName,
+				"pipeline-id":          id.String(),
+				runtime.LabelExecution: "pipeline",
 			}),
 			runtime.JobOptWithAnnotations(map[string]string{
 				annotationPipelineID:  id.String(),

@@ -100,7 +100,8 @@ type Config struct {
 			// Memory is the memory limit for the container.
 			Memory string `json:"memory" yaml:"memory"`
 		}
-		Labels map[string]string `json:"labels" yaml:"labels" mapstructure:"labels"`
+		Labels      map[string]string `json:"labels" yaml:"labels" mapstructure:"labels"`
+		Annotations map[string]string `json:"annotations" yaml:"annotations" mapstructure:"annotations"`
 		// ImagePullSecrets is a list of image pull secrets that will be attached to
 		// all jobs created by Ocular.
 		ImagePullSecrets []string `json:"imagePullSecrets,omitempty" yaml:"imagePullSecrets,omitempty,flow" mapstructure:"imagePullSecrets"`
