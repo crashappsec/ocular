@@ -23,7 +23,7 @@
 
 ## Overview
 
-Ocular is a Kubernetes-native API that allows you to perform security scans on static software assets.
+Ocular is a set of Kubernetes-native APIs that allows you to perform security scans on static software assets.
 It provides a set of RESTful endpoints that allow you to configure and run security or compliance scanning tools over static software assets,
 such as git repositories, container images, or any static content that can be represented on a file system.
 
