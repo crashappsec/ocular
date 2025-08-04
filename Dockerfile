@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     go build -ldflags="${LDFLAGS}" -o /app/entrypoint /app/cmd/${COMMAND}/main.go
 
-FROM alpine:3.22@sha256:ddf52008bce1be455fe2b22d780b6693259aaf97b16383b6372f4b22dd33ad66
+FROM alpine:3.22@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
 
 COPY --from=builder /app/entrypoint /bin/entrypoint
 
