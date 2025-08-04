@@ -6,15 +6,27 @@ updates:
       prefix: "chore(deps)"
     schedule:
       interval: "monthly"
+    groups:
+      update:
+        patterns:
+          - "*"
   - package-ecosystem: "gomod"
     directory: "/"
     commit-message:
       prefix: "chore(deps)"
     schedule:
       interval: "monthly"
+    groups:
+      update:
+        patterns:
+          - "*"
   - package-ecosystem: "docker"
     directory: "/"
     commit-message:
       prefix: "chore(deps)"
     schedule:
       interval: "monthly"
+    groups:
+      update:
+        patterns:
+          - "*"

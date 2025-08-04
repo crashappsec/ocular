@@ -50,7 +50,7 @@ ifneq ($(DOCKER_DEFAULT_PLATFORM),)
 	export DOCKER_DEFAULT_PLATFORM
 endif
 OCULAR_IMAGE_REGISTRY ?= ghcr.io
-OCULAR_IMAGE_TAG ?= local
+OCULAR_IMAGE_TAG ?= latest
 OCULAR_API_SERVER_IMAGE_REPOSITORY ?= crashappsec/ocular-api-server
 OCULAR_EXTRACTOR_IMAGE_REPOSITORY ?= crashappsec/ocular-extractor
 
