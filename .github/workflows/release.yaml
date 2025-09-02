@@ -37,7 +37,7 @@ jobs:
         id: date
         run: echo "::set-output name=date::$(date +'%Y-%m-%dT%H:%M:%SZ')"
       - name: checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
         with:
           persist-credentials: false
       - name: Login to GitHub Container Registry
@@ -47,7 +47,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Chalk
-        uses: crashappsec/setup-chalk-action@cf01792d450e4abb7716a5cd146e4f5e40243a97 # main
+        uses: crashappsec/setup-chalk-action@b344425f1ccb5b15535e5b873f7080fdfa10fc00 # main
       - name: setup qemu
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
       - name: setup buildx
