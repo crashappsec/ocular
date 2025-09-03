@@ -6,8 +6,17 @@
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
+
+OCULAR_ENV_FILE ?= .env
+
+# Only if .env file is present
+ifneq (,$(wildcard ${OCULAR_ENV_FILE}))
+	include ${OCULAR_ENV_FILE}
+endif
+
+
 # Image URL to use all building/pushing image targets
-CONTROLLER_IMG ?= ghcr.io/crashappsec/ocular-controller:latest
+OCULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/ocular-controller:latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
