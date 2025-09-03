@@ -5,7 +5,7 @@
     </h1>
     
   <p align="center">
-        Ocular is an API built on top of Kubernetes that allows you to perform regular or ad-hoc security scans over static software assets.
+        Ocular is a static scanning configuration Kubernetes that allows you to perform regular or ad-hoc security scans over static software assets.
         It provides a set of RESTful endpoints that allow you to configure and run security or compliance scanning tools.
   </p>
 </div>

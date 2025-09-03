@@ -1,0 +1,27 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Profile
+metadata:
+  labels:
+    app.kubernetes.io/name: ocular
+    app.kubernetes.io/managed-by: kustomize
+  name: profile-sample
+spec:
+  containers:
+    - name: trufflehog
+      image: trufflesecurity/trufflehog:latest
+      imagePullPolicy: IfNotPresent
+      command: [ /bin/sh, -c ]
+      args: [ "trufflehog git file://. -j --no-update > $OCULAR_RESULTS_DIR/thog.trufflehogjson" ]
+    - name: semgrep
+      image: semgrep/semgrep:latest-nonroot
+      imagePullPolicy: IfNotPresent
+      command: [ /bin/sh, -c ]
+      args: [ "semgrep scan --config=auto --json . > $OCULAR_RESULTS_DIR/output.semgrepjson" ]
+  artifacts:
+    - thog.trufflehogjson
+    - output.semgrepjson
+  uploaderRefs:
+    - name: uploader-sample
+      parameters:
+        - name: EXAMPLE
+          value: example value

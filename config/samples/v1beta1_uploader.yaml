@@ -1,0 +1,19 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Uploader
+metadata:
+  labels:
+    app.kubernetes.io/name: ocular
+    app.kubernetes.io/managed-by: kustomize
+  name: uploader-sample
+spec:
+  container:
+    name: example-uploader
+    image: ubuntu:latest
+    command: ["/bin/bash", "-c", "echo param is $OCULAR_PARAM_EXAMPLE; ls -al $OCULAR_RESULTS_DIR; for fileArg in \"${@:1}\"; do \n echo reading $fileArg; cat $fileArg; done;"]
+  parameters:
+    - name: "EXAMPLE"
+      description: "My example parameter."
+      required: true
+    - name: "OPTIONAL_PARAM"
+      description: "An optional parameter."
+      required: false

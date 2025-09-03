@@ -1,0 +1,19 @@
+resources:
+- manager.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: controller
+  newName: ghcr.io/crashappsec/ocular-controller
+  newTag: latest
+patches:
+- patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/env/0
+      value:
+        name: OCULAR_MANAGER_IMAGE
+        value: ghcr.io/crashappsec/ocular-controller:latest
+  target:
+    kind: Deployment
+    name: controller-manager
+    namespace: system

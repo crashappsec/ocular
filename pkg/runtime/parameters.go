@@ -8,30 +8,32 @@
 
 package runtime
 
-import (
-	"github.com/crashappsec/ocular/pkg/schemas"
-	"go.uber.org/zap"
-	v1 "k8s.io/api/core/v1"
-)
+import "os"
 
-// EnvForParameters converts a map of parameters to a list of environment variables
-// that can be passed to a container. It will check that the parameters are defined
-// in the parameter definitions and that the required parameters are set.
-func EnvForParameters(
-	params map[string]string,
-	definitions map[string]schemas.ParameterDefinition,
-) []v1.EnvVar {
-	var vars []v1.EnvVar
-	for name, value := range params {
-		_, exists := definitions[schemas.FormatParamName(name)]
-		if !exists {
-			zap.L().Warn("parameter not found", zap.String("param", name))
-			continue
+// ParameterToEnvironmentVariable converts a parameter name to an environment variable name.
+// It converts the name to uppercase, replaces invalid characters with underscores,
+// and prefixes it with "OCULAR_PARAM_".
+func ParameterToEnvironmentVariable(name string) string {
+	result := make([]rune, 0)
+	for _, char := range name {
+		nextChar := '_'
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_' {
+			nextChar = char
 		}
-		vars = append(vars, v1.EnvVar{
-			Name:  schemas.ParameterNameToEnv(name),
-			Value: value,
-		})
+
+		result = append(result, nextChar)
 	}
-	return vars
+	return "OCULAR_PARAM_" + string(result)
+}
+
+// GetParameterFromEnvironment retrieves the value of a parameter from the environment variables.
+// It returns the value and a boolean indicating whether the parameter was set.
+func GetParameterFromEnvironment(name string) (string, bool) {
+	paramName := ParameterToEnvironmentVariable(name)
+	value, exists := os.LookupEnv(paramName)
+	if !exists {
+		return "", false
+	}
+
+	return value, true
 }

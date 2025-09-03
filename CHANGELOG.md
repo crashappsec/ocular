@@ -1,6 +1,25 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
 
+# [v0.2.0](https://github.com/crashappsec/ocular/releases/tag/v0.2.0) - **October 1, 2025**
+
+### Added
+
+- Support for custom resource definitions (CRDs) to define uploaders, downloaders, crawlers, profiles, and secrets.
+- Use of a Kubernetes controller to manage the lifecycle of scanning jobs.
+- Enhanced API endpoints for managing pipelines, searches, and resources.
+- Improved logging and monitoring capabilities.
+
+### Changed
+- Refactored the API server to work seamlessly with the Kubernetes controller and CRDs.
+- Updated documentation to reflect the new architecture and usage patterns.
+- Use of domain `ocular.crashoverride.run` for all annotations, and resource API group.
+
+### Deprecated
+
+- Deprecated the standalone API server in favor of a Kubernetes-native approach.
+- Deprecated old resource definitions in favor of CRDs.
+
 # [v0.1.1](https://github.com/crashappsec/ocular/releases/tag/v0.1.1) - **July 16, 2025**
 
 ### Added

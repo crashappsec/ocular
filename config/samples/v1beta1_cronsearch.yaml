@@ -1,0 +1,17 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: CronSearch
+metadata:
+  labels:
+    app.kubernetes.io/name: ocular
+    app.kubernetes.io/managed-by: kustomize
+  name: cronsearch-sample
+spec:
+  schedule: "0 0 * * *" # every day at midnight
+  searchTemplate:
+    spec:
+      crawlerRef:
+        name: crawler-sample
+        parameters:
+          - name: LOG_MSG
+            value: "Hello from CronSearch!"
+      ttlSecondsAfterFinished: 30
