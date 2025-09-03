@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: ocular
     app.kubernetes.io/managed-by: kustomize
 spec:
-  downloaderRef:  git-lost-and-found
+  downloaderRef:  example-downloader
   profileRef: example-profile
   target:
     identifier: "https://github.com/crashappsec/chalk"
