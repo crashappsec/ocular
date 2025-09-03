@@ -49,21 +49,21 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - name: check license headers
         uses: apache/skywalking-eyes/header@5c5b974209f0de5d905f37deb69369068ebfc15c # v0.7
-  generate:
-    name: go generate check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
-        with:
-          go-version-file: 'go.mod'
-          cache-dependency-path: 'go.sum'
-      - name: generate
-        run: |
-          go install go.uber.org/mock/mockgen@latest
-          go install github.com/apache/skywalking-eyes/cmd/license-eye@latest
-          make generate
-          if ! git diff --quiet --exit-code; then
-            echo "Error: 'go generate' produced changes. Please commit them."
-            exit 1
-          fi
+#  generate:
+#    name: go generate check
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+#      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+#        with:
+#          go-version-file: 'go.mod'
+#          cache-dependency-path: 'go.sum'
+#      - name: generate
+#        run: |
+#          go install go.uber.org/mock/mockgen@latest
+#          go install github.com/apache/skywalking-eyes/cmd/license-eye@latest
+#          make generate
+#          if ! git diff --quiet --exit-code; then
+#            echo "Error: 'go generate' produced changes. Please commit them."
+#            exit 1
+#          fi

@@ -20,19 +20,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/crashappsec/ocular/internal/utilities"
-	"github.com/crashappsec/ocular/pkg/schemas"
+	v1 "github.com/crashappsec/ocular/api/v1"
+	"github.com/crashappsec/ocular/internal/utils"
 	"go.uber.org/zap"
 )
 
-func Receive(files []string) error {
-	port := os.Getenv(schemas.EnvVarExtractorPort)
+func Receive(ctx context.Context, files []string) error {
+	port := os.Getenv(v1.EnvVarExtractorPort)
 	var (
 		mux             = http.NewServeMux()
 		downloadedFiles = map[string]bool{}
 		mutex           = &sync.Mutex{}
 		wg              = &sync.WaitGroup{}
-		ctx             = context.Background()
 	)
 
 	for _, file := range files {
@@ -50,8 +49,7 @@ func Receive(files []string) error {
 			return
 		}
 
-		if !filepath.IsAbs(file) ||
-			!strings.HasPrefix(file, os.Getenv(schemas.EnvVarResultsDir)) {
+		if !filepath.IsAbs(file) {
 			w.WriteHeader(http.StatusBadRequest)
 			zap.L().Warn("file is not absolute path", zap.String("path", file))
 			return
@@ -72,14 +70,14 @@ func Receive(files []string) error {
 		}
 
 		defer wg.Done()
-		defer utilities.CloseAndLog(r.Body)
+		utils.CloseAndLog(ctx, r.Body, "closing upload request body")
 		dst, err := os.Create(filepath.Clean(file))
 		if err != nil {
 			zap.L().Error("failed to create file", zap.String("path", file), zap.Error(err))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		defer utilities.CloseAndLog(dst)
+		utils.CloseAndLog(ctx, dst, "closing uploaded file writer")
 		if _, err = io.Copy(dst, r.Body); err != nil && !errors.Is(err, io.EOF) {
 			zap.L().Error("failed to write file", zap.String("path", file), zap.Error(err))
 			w.WriteHeader(http.StatusInternalServerError)

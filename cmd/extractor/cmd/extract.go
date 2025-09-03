@@ -9,6 +9,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -17,25 +18,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/crashappsec/ocular/internal/utilities"
-	"github.com/crashappsec/ocular/pkg/schemas"
+	v1 "github.com/crashappsec/ocular/api/v1"
+	"github.com/crashappsec/ocular/internal/utils"
 	"github.com/hashicorp/go-multierror"
 	"go.uber.org/zap"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func Extract(files []string) error {
-	uploaderURL := os.Getenv(schemas.EnvVarUploaderHost)
-	err := uploadFiles(uploaderURL, files)
+func Extract(ctx context.Context, files []string) error {
+	l := log.FromContext(ctx)
+	uploaderURL := os.Getenv(v1.EnvVarExtractorHost)
+	err := uploadFiles(ctx, uploaderURL, files)
 	if err != nil {
-		zap.L().Error("Error uploading files, failing receiver", zap.Error(err))
-		if failErr := fail(uploaderURL); failErr != nil {
-			zap.L().Error("Error uploading files, failing receiver", zap.Error(failErr))
+		l.Error(err, "error uploading files, failing receiver")
+		if failErr := fail(ctx, uploaderURL); failErr != nil {
+			l.Error(failErr, "failed to notify receiver of failure")
 		}
 	}
 	return err
 }
 
-func uploadFiles(uploaderURL string, files []string) error {
+func uploadFiles(ctx context.Context, uploaderURL string, files []string) error {
 	var (
 		wg   = &sync.WaitGroup{}
 		merr *multierror.Error
@@ -49,7 +52,7 @@ func uploadFiles(uploaderURL string, files []string) error {
 				merr = multierror.Append(merr, err)
 				return
 			}
-			defer utilities.CloseAndLog(src)
+			defer utils.CloseAndLog(ctx, src, "closing source file", "file", file)
 
 			u := fmt.Sprintf("%s/upload/%s", uploaderURL, url.PathEscape(file))
 			zap.L().Debug("Uploading file", zap.String("file", file), zap.String("url", u))
@@ -67,8 +70,11 @@ func uploadFiles(uploaderURL string, files []string) error {
 			for {
 				resp, err := http.DefaultClient.Do(req)
 				if err != nil || resp.StatusCode >= http.StatusInternalServerError {
-					zap.L().
-						Error("Error uploading file", zap.String("file", file), zap.String("url", u), zap.Error(err), zap.Int("retries", retries))
+					zap.L().Error("Error uploading file",
+						zap.String("file", file),
+						zap.String("url", u),
+						zap.Error(err),
+						zap.Int("retries", retries))
 					if retries > 5 {
 						merr = multierror.Append(merr, err)
 						return
@@ -80,7 +86,7 @@ func uploadFiles(uploaderURL string, files []string) error {
 					continue
 				}
 
-				utilities.CloseAndLog(resp.Body)
+				utils.CloseAndLog(ctx, resp.Body, "closing upload response body")
 				break
 			}
 			zap.L().Info("Uploaded file", zap.String("file", file))
@@ -91,7 +97,7 @@ func uploadFiles(uploaderURL string, files []string) error {
 	return merr.ErrorOrNil()
 }
 
-func fail(uploaderURL string) error {
+func fail(ctx context.Context, uploaderURL string) error {
 	u := fmt.Sprintf("%s/fail", uploaderURL)
 
 	req, err := http.NewRequest(http.MethodDelete, u, nil)
@@ -102,6 +108,6 @@ func fail(uploaderURL string) error {
 	if err != nil {
 		return err
 	}
-	utilities.CloseAndLog(resp.Body)
+	utils.CloseAndLog(ctx, resp.Body, "closing fail upload response body")
 	return nil
 }

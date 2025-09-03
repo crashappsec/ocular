@@ -1,0 +1,16 @@
+apiVersion: ocular.crashoverride.run/v1
+kind: Uploader
+metadata:
+  labels:
+    app.kubernetes.io/name: ocular
+    app.kubernetes.io/managed-by: kustomize
+  name: uploader-sample
+spec:
+  container:
+    name: example-uploader
+    image: ubuntu:latest
+    command: ["/bin/bash", "-c", "echo files $@; echo param is $OCULAR_PARAM_EXAMPLE; ls -al $OCULAR_RESULTS_DIR"]
+  parameters:
+    EXAMPLE:
+      description: My example parameter.
+      required: true

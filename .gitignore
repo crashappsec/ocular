@@ -266,13 +266,22 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/go,vim,emacs,macos,windows,jetbrains+all,visualstudiocode,dotenv
 
+#######################
+# Kubebuilder Ignores #
+#######################
+
+# Binaries for programs and plugins
+bin/*
+Dockerfile.cross
+
+# Kubernetes Generated files - skip generated files, except for vendored files
+!vendor/**/zz_generated.*
 
 ##################
 # Custom Ignores #
 ##################
 
 bin/**/*
-bin/*
 config.yaml
 conifg.yml
 

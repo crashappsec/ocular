@@ -1,0 +1,12 @@
+apiVersion: ocular.crashoverride.run/v1
+kind: Pipeline
+metadata:
+  name: example-pipeline
+  labels:
+    app.kubernetes.io/name: ocular
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  downloaderRef:  git-lost-and-found
+  profileRef: example-profile
+  target:
+    identifier: "https://github.com/crashappsec/chalk"

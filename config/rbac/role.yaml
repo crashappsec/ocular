@@ -1,0 +1,65 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ocular.crashoverride.run
+  resources:
+  - downloaders
+  - pipelines
+  - profiles
+  - uploaders
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ocular.crashoverride.run
+  resources:
+  - downloaders/finalizers
+  - pipeliness/finalizers
+  - profiles/finalizers
+  - uploaders/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - ocular.crashoverride.run
+  resources:
+  - downloaders/status
+  - pipelines/status
+  - profiles/status
+  - uploaders/status
+  verbs:
+  - get
+  - patch
+  - update

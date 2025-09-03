@@ -17,21 +17,32 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"fmt"
 	"os"
 
 	"github.com/crashappsec/ocular/cmd/extractor/cmd"
-	"github.com/crashappsec/ocular/internal/config"
-	"go.uber.org/zap"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
-func init() {
-	config.Init()
-}
-
 func main() {
+	ctx := context.Background()
+
+	opts := zap.Options{}
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+
+	logger := zap.New(zap.UseFlagOptions(&zap.Options{}))
+	logf.SetLogger(logger)
+	ctx = logf.IntoContext(ctx, logger)
+
+	logger.Info("starting ocular extractor")
 	if len(os.Args) < 2 {
-		zap.L().Fatal("Usage: extractor <command> [args...]")
+		logger.Error(fmt.Errorf("no command specified"), "no command specified for extractor")
+		fmt.Println("Usage: extractor <command> [args...]")
+		os.Exit(1)
 	}
 
 	var (
@@ -47,22 +58,22 @@ func main() {
 		}
 	}
 
-	zap.L().
-		Info("starting extractor in mode "+command, zap.Strings("files", files), zap.String("command", command))
+	logger.Info("starting extractor in mode "+command, "files", files, "command", command)
 	switch command {
 	case "receive":
-		err = cmd.Receive(files)
+		err = cmd.Receive(ctx, files)
 	case "extract":
 		cmd.AwaitSigterm()
-		err = cmd.Extract(files)
+		err = cmd.Extract(ctx, files)
 	case "ignore":
 		cmd.AwaitSigterm()
-		zap.L().Info("no uploaders specified, ignoring files and shutting down gracefully")
+		logger.Info("no uploaders specified, ignoring files and shutting down gracefully")
 	default:
 		err = fmt.Errorf("unknown argument: %s", command)
 	}
 
 	if err != nil {
-		zap.L().Fatal("failed to extract", zap.Error(err))
+		logger.Error(err, "failed to extract files", "command", command)
+		os.Exit(1)
 	}
 }
