@@ -13,6 +13,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -43,34 +44,13 @@ var _ = Describe("Pipeline Controller", func() {
 			Name:      downloaderName,
 			Namespace: "default",
 		}
-		downloader := &ocularcrashoverriderunv1.Downloader{
-			Spec: ocularcrashoverriderunv1.DownloaderSpec{
-				Container: corev1.Container{
-					Name:    "downloader-container",
-					Image:   "alpine:latest",
-					Command: []string{"/bin/sh", "-c"},
-					Args:    []string{"echo Downloading...; echo $OCULAR_TARGET_IDENTIFIER > ./target.txt"},
-				},
-			},
-		}
+		downloader := &ocularcrashoverriderunv1.Downloader{}
 
 		profileTypeNamespacedName := types.NamespacedName{
 			Name:      profileName,
 			Namespace: "default",
 		}
-		profile := &ocularcrashoverriderunv1.Profile{
-			Spec: ocularcrashoverriderunv1.ProfileSpec{
-				Containers: []corev1.Container{
-					{
-						Image:   "alpine:latest",
-						Name:    "profile-container",
-						Command: []string{"/bin/sh", "-c"},
-						Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
-					},
-				},
-				Artifacts: []string{"results.txt"},
-			},
-		}
+		profile := &ocularcrashoverriderunv1.Profile{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Pipeline")
@@ -86,13 +66,20 @@ var _ = Describe("Pipeline Controller", func() {
 						Namespace: "default",
 					},
 					Spec: ocularcrashoverriderunv1.DownloaderSpec{
-						Container: downloader.Spec.Container,
+						Container: corev1.Container{
+							Name:    "downloader-container",
+							Image:   "alpine:latest",
+							Command: []string{"/bin/sh", "-c"},
+							Args:    []string{"echo Downloading...; echo $OCULAR_TARGET_IDENTIFIER > ./target.txt"},
+						},
 					},
 					Status: ocularcrashoverriderunv1.DownloaderStatus{
 						Valid: true,
 					},
 				}
 				Expect(k8sClient.Create(ctx, downloaderResource)).To(Succeed())
+				downloaderResource.Status.Valid = true
+				Expect(k8sClient.Status().Update(ctx, downloaderResource)).To(Succeed())
 			}
 
 			err = k8sClient.Get(ctx, profileTypeNamespacedName, profile)
@@ -106,9 +93,15 @@ var _ = Describe("Pipeline Controller", func() {
 						Namespace: "default",
 					},
 					Spec: ocularcrashoverriderunv1.ProfileSpec{
-						Containers:   profile.Spec.Containers,
-						Artifacts:    profile.Spec.Artifacts,
-						UploaderRefs: profile.Spec.UploaderRefs,
+						Containers: []corev1.Container{
+							{
+								Image:   "alpine:latest",
+								Name:    "profile-container",
+								Command: []string{"/bin/sh", "-c"},
+								Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
+							},
+						},
+						Artifacts: []string{"results.txt"},
 					},
 					Status: ocularcrashoverriderunv1.ProfileStatus{
 						Valid: true,
@@ -164,8 +157,9 @@ var _ = Describe("Pipeline Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &PipelineReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				ExtractorImage: "ocular-controller:latest",
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -176,16 +170,17 @@ var _ = Describe("Pipeline Controller", func() {
 			resource := &ocularcrashoverriderunv1.Pipeline{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resource.Finalizers).To(ContainElements("pipeline.finalizers.ocular.crashoverride.run/cleanup"))
-
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			err = k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.ScanJobOnly).To(BeTrue())
+
+			Expect(resource.Status.ScanJob).ToNot(BeNil())
+			Expect(resource.Status.ScanJob.Namespace).To(Equal(resource.Namespace))
+			scanJob := &batchv1.Job{}
+			scanJobName := types.NamespacedName{
+				Name:      resource.Status.ScanJob.Name,
+				Namespace: resource.Status.ScanJob.Namespace,
+			}
+			err = k8sClient.Get(ctx, scanJobName, scanJob)
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })

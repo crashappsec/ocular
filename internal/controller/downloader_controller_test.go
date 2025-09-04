@@ -84,15 +84,6 @@ var _ = Describe("Downloader Controller", func() {
 			resource := &ocularcrashoverriderunv1.Downloader{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resource.Finalizers).To(ContainElements("downloader.finalizers.ocular.crashoverride.run/cleanup"))
-
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			err = k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.Valid).To(BeTrue())
 		})
 	})

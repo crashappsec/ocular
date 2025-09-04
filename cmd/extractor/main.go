@@ -63,10 +63,10 @@ func main() {
 	case "receive":
 		err = cmd.Receive(ctx, files)
 	case "extract":
-		cmd.AwaitSigterm()
+		cmd.AwaitSigterm(ctx)
 		err = cmd.Extract(ctx, files)
 	case "ignore":
-		cmd.AwaitSigterm()
+		cmd.AwaitSigterm(ctx)
 		logger.Info("no uploaders specified, ignoring files and shutting down gracefully")
 	default:
 		err = fmt.Errorf("unknown argument: %s", command)

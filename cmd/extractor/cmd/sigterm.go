@@ -9,18 +9,21 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"go.uber.org/zap"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func AwaitSigterm() {
+func AwaitSigterm(ctx context.Context) {
+	l := log.FromContext(ctx)
 	sigTerm := make(chan os.Signal, 1)
 	// catch SIGETRM or SIGINTERRUPT
 	signal.Notify(sigTerm, syscall.SIGTERM, syscall.SIGINT)
-	zap.L().Info("awaiting SIGTERM")
+	l.Info("awaiting SIGTERM")
 	sig := <-sigTerm
-	zap.L().Info("Received signal", zap.String("signal", sig.String()))
+	l.Info("Received signal", zap.String("signal", sig.String()))
 }

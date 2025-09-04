@@ -10,6 +10,7 @@ package resources
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 )
 
 type ContainerRunRequest struct {
@@ -20,25 +21,25 @@ type ContainerRunRequest struct {
 
 type ContainerOption = func(*corev1.Container)
 
-func WithAdditionalEnvVars(envs ...corev1.EnvVar) ContainerOption {
+func ContainerWithAdditionalEnvVars(envs ...corev1.EnvVar) ContainerOption {
 	return func(c *corev1.Container) {
 		c.Env = append(c.Env, envs...)
 	}
 }
 
-func WithAdditionalArgs(args ...string) ContainerOption {
+func ContainerWithAdditionalArgs(args ...string) ContainerOption {
 	return func(c *corev1.Container) {
 		c.Args = append(c.Args, args...)
 	}
 }
 
-func WithAdditionalVolumeMounts(mounts ...corev1.VolumeMount) ContainerOption {
+func ContainerWithAdditionalVolumeMounts(mounts ...corev1.VolumeMount) ContainerOption {
 	return func(c *corev1.Container) {
 		c.VolumeMounts = append(c.VolumeMounts, mounts...)
 	}
 }
 
-func WithWorkingDir(dir string) ContainerOption {
+func ContainerWithWorkingDir(dir string) ContainerOption {
 	return func(c *corev1.Container) {
 		c.WorkingDir = dir
 	}
@@ -54,4 +55,20 @@ func ApplyOptionsToContainers(
 		}
 	}
 	return containers
+}
+
+func ContainerWithPodSecurityStandardRestricted() ContainerOption {
+	return func(c *corev1.Container) {
+		c.SecurityContext = &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			RunAsNonRoot:             ptr.To(true),
+			RunAsUser:                ptr.To[int64](43690),
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+		}
+	}
 }

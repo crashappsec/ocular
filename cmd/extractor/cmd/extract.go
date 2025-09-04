@@ -27,6 +27,7 @@ import (
 
 func Extract(ctx context.Context, files []string) error {
 	l := log.FromContext(ctx)
+	l.Info("beginning file extraction", "file_count", len(files))
 	uploaderURL := os.Getenv(v1.EnvVarExtractorHost)
 	err := uploadFiles(ctx, uploaderURL, files)
 	if err != nil {
