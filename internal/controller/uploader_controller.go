@@ -50,8 +50,6 @@ func (r *UploaderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	l.Info("handling finalizers for uploader", "name", uploader.GetName())
-
 	finalized, err := resources.PerformFinalizer(ctx, uploader, "uploader.finalizers.ocular.crashoverride.run/cleanup", nil)
 	if err != nil {
 		l.Error(err, "error performing finalizer for uploader", "name", uploader.GetName())

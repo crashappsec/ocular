@@ -58,8 +58,6 @@ func (r *DownloaderReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	l.Info("handling finalizers for downloader", "name", downloader.GetName())
-
 	finalized, err := resources.PerformFinalizer(ctx, downloader, "downloader.finalizers.ocular.crashoverride.run/cleanup", nil)
 	if err != nil {
 		l.Error(err, "error performing finalizer for downloader", "name", downloader.GetName())

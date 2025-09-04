@@ -57,8 +57,6 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	l.Info("handling finalizers for profile", "name", profile.GetName())
-
 	finalized, err := resources.PerformFinalizer(ctx, profile, "profile.finalizers.ocular.crashoverride.run/cleanup", nil)
 
 	if err != nil {

@@ -70,13 +70,5 @@ func PerformFinalizer[T FinalizerObject](ctx context.Context, t T, finalizerId s
 		return false, nil
 	}
 
-	if !slices.Contains(finalizers, finalizerId) {
-		l.Info(fmt.Sprintf("adding finalizer for %s %s", kind, t.GetName()), "name", t.GetName(), "kind", kind, "finalizer", finalizerId, "finalizers", finalizers)
-		t.SetFinalizers(append(finalizers, finalizerId))
-
-		l.Info("new finalizers", "finalizers", t.GetFinalizers())
-		return true, nil
-	}
-
 	return false, nil
 }

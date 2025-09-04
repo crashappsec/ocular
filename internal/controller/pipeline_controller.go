@@ -139,8 +139,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	l.Info("handling finalizers for pipeline", "name", pipeline.GetName(), "finalizers", pipeline.GetFinalizers())
-
 	finalized, err := resources.PerformFinalizer(ctx, pipeline, "pipeline.finalizers.ocular.crashoverride.run/cleanup", nil)
 	if err != nil {
 		l.Error(err, "error performing finalizer for pipeline", "name", pipeline.GetName())
@@ -169,7 +167,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			},
 		}
-		return r.updateAndReturn(ctx, pipeline, "step", "profile not found")
+		return ctrl.Result{}, r.updateStatus(ctx, pipeline, "step", "profile not found")
 	}
 
 	if !profile.Status.Valid {
@@ -183,17 +181,13 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			},
 		}
-		return r.updateAndReturn(ctx, pipeline, "step", "invalid profile")
+		return ctrl.Result{}, r.updateStatus(ctx, pipeline, "step", "profile is invalid")
 	}
 
 	shouldRunUploadJob := len(profile.Spec.Artifacts) > 0 && len(profile.Spec.UploaderRefs) > 0
 	if !shouldRunUploadJob && !pipeline.Status.ScanJobOnly {
 		pipeline.Status.ScanJobOnly = true
-		if err := r.Status().Update(ctx, pipeline); err != nil {
-			l.Error(err, "error updating pipeline status to scanJobOnly", "name", req.Name)
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.updateStatus(ctx, pipeline, "step", "profile is valid")
 	}
 
 	downloader, exists, err := r.getDownloader(pipeline)
@@ -211,7 +205,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			},
 		}
-		return r.updateAndReturn(ctx, pipeline, "step", "downloader not found")
+		return ctrl.Result{}, r.updateStatus(ctx, pipeline, "step", "downloader not found")
 	}
 
 	if !downloader.Status.Valid {
@@ -225,7 +219,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			},
 		}
-		return r.updateAndReturn(ctx, pipeline, "step", "downloader is invalid")
+		return ctrl.Result{}, r.updateStatus(ctx, pipeline, "step", "downloader is invalid")
 	}
 
 	target := pipeline.Spec.Target
@@ -367,10 +361,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				Message:            fmt.Sprintf("The upload service %s has been created.", uploadService.Name),
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			})
-		if err := r.Status().Update(ctx, pipeline); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil // wait for service to be ready
+		return ctrl.Result{}, r.updateStatus(ctx, pipeline, "step", "upload service created")
 	}
 
 	if scanJob == nil {
@@ -704,15 +695,6 @@ func (r *PipelineReconciler) createUploaderJob(ctx context.Context, pipeline *v1
 		Namespace: uploadJob.Namespace,
 	}
 
-	pipeline.Status.Conditions = append(pipeline.Status.Conditions,
-		metav1.Condition{
-			Type:               "UploadJobCreated",
-			Status:             metav1.ConditionTrue,
-			Reason:             "UploadJobCreated",
-			Message:            fmt.Sprintf("The upload job %s has been created.", uploadJob.Name),
-			LastTransitionTime: metav1.NewTime(time.Now()),
-		})
-
 	if err := r.Status().Update(ctx, pipeline); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -791,19 +773,24 @@ func (r *PipelineReconciler) createScanJob(ctx context.Context,
 	}
 	l.Info("created scan job for pipeline", "name", pipeline.GetName(), "scanJob", scanJob.Name)
 
+	reason, message := "ScanJobCreated", fmt.Sprintf("The scan job %s has been created.", scanJob.Name)
+	if !pipeline.Status.ScanJobOnly {
+		reason = "ScanAndUploadJobCreated"
+		message = fmt.Sprintf("The scan job %s and upload job %s have been created.", scanJob.GetName(), pipeline.Status.UploadJob.Name)
+	}
+	startTime := metav1.NewTime(time.Now())
 	pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 		metav1.Condition{
-			Type:               "ScanJobCreated",
+			Type:               "Ready",
 			Status:             metav1.ConditionTrue,
-			Reason:             "ScanJobCreated",
-			Message:            fmt.Sprintf("The scan job %s has been created.", scanJob.Name),
-			LastTransitionTime: metav1.NewTime(time.Now()),
+			Reason:             reason,
+			Message:            message,
+			LastTransitionTime: startTime,
 		})
-	startTime := metav1.NewTime(time.Now())
 	pipeline.Status.StartTime = &startTime
-	if err := r.Status().Update(ctx, pipeline); err != nil {
+	if err := r.updateStatus(ctx, pipeline, "step", "scan job created"); err != nil {
 		return ctrl.Result{}, err
 	}
-	l.Info("scan job created for pipeline", "name", pipeline.GetName(), "scanJob", scanJob.Name)
-	return ctrl.Result{RequeueAfter: time.Minute}, nil // wait for job to start/run
+	// TODO(bryce): possibly re-queue after some time to check on job status?
+	return ctrl.Result{}, nil
 }
