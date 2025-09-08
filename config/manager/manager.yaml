@@ -97,6 +97,8 @@ spec:
         env:
           - name: OCULAR_MANAGER_IMAGE
             value: controller:latest
+          - name: OCULAR_SEARCH_CLUSTER_ROLE
+            value: ocular-search-cluster-role
       volumes: []
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

@@ -14,7 +14,7 @@ spec:
     singular: downloader
   scope: Namespaced
   versions:
-  - name: v1
+  - name: v1beta1
     schema:
       openAPIV3Schema:
         description: Downloader is the Schema for the downloaders API

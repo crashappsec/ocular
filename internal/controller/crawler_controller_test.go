@@ -23,7 +23,7 @@ import (
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
-var _ = Describe("Profile Controller", func() {
+var _ = Describe("Crawler Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
@@ -33,44 +33,35 @@ var _ = Describe("Profile Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		profile := &ocularcrashoverriderunv1beta1.Profile{}
+		crawler := &ocularcrashoverriderunv1beta1.Crawler{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind Profile")
-			err := k8sClient.Get(ctx, typeNamespacedName, profile)
+			By("creating the custom resource for the Kind Crawler")
+			err := k8sClient.Get(ctx, typeNamespacedName, crawler)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &ocularcrashoverriderunv1beta1.Profile{
-					TypeMeta: metav1.TypeMeta{
-						Kind: "Profile",
-					},
+				resource := &ocularcrashoverriderunv1beta1.Crawler{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: ocularcrashoverriderunv1beta1.ProfileSpec{
-						Containers: []corev1.Container{
-							{
-								Image: "alpine:latest",
-								Name:  "profile-container",
-								Env: []corev1.EnvVar{
-									{
-										Name:  "PROFILE_ENV",
-										Value: "value",
-									},
-								},
-								Command: []string{"/bin/sh", "-c"},
-								Args:    []string{"echo Hello from profile container > $OCULAR_RESULTS_DIR/profile.txt"},
-							},
-							{
-								Image:   "busybox:latest",
-								Name:    "another-container",
-								Command: []string{"/bin/sh", "-c"},
-								Args:    []string{"echo Hello from another container > $OCULAR_RESULTS_DIR/another.txt"},
-							},
+					Spec: ocularcrashoverriderunv1beta1.CrawlerSpec{
+						Container: corev1.Container{
+							Image:   "alpine:latest",
+							Name:    "uploader-container",
+							Env:     []corev1.EnvVar{},
+							Command: []string{"/bin/sh", "-c"},
+							Args:    []string{"echo hello world"},
 						},
-						Artifacts: []string{
-							"profile.txt",
-							"another.txt",
+						Parameters: map[string]ocularcrashoverriderunv1beta1.ParameterDefinition{
+							"MY_PARAM": {
+								Description: "A sample parameter",
+								Required:    true,
+							},
+							"OPTIONAL_PARAM": {
+								Description: "An optional parameter",
+								Required:    false,
+								Default:     "default_value",
+							},
 						},
 					},
 				}
@@ -79,16 +70,16 @@ var _ = Describe("Profile Controller", func() {
 		})
 
 		AfterEach(func() {
-			resource := &ocularcrashoverriderunv1beta1.Profile{}
+			resource := &ocularcrashoverriderunv1beta1.Crawler{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance Profile")
+			By("Cleanup the specific resource instance Crawler")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &ProfileReconciler{
+			controllerReconciler := &CrawlerReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
@@ -98,7 +89,7 @@ var _ = Describe("Profile Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &ocularcrashoverriderunv1beta1.Profile{}
+			resource := &ocularcrashoverriderunv1beta1.Crawler{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.Valid).To(BeTrue())

@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	v1 "github.com/crashappsec/ocular/api/v1"
+	v1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
 // ProfileReconciler reconciles a Profile object
@@ -45,7 +45,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	l := logf.FromContext(ctx)
 
 	// Fetch the profile instance
-	profile := &v1.Profile{}
+	profile := &v1beta1.Profile{}
 	err := r.Get(ctx, req.NamespacedName, profile)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -90,7 +90,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, nil
 		}
 		duplicates[uploaderRef.Name] = struct{}{}
-		uploader := &v1.Uploader{}
+		uploader := &v1beta1.Uploader{}
 		err := r.Get(ctx, client.ObjectKey{
 			Name:      uploaderRef.Name,
 			Namespace: profile.Namespace,
@@ -160,7 +160,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 // SetupWithManager sets up the controller with the Manager.
 func (r *ProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1.Profile{}).
+		For(&v1beta1.Profile{}).
 		Named("profile").
 		Complete(r)
 }

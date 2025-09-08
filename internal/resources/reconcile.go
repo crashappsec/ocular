@@ -1,3 +1,11 @@
+// Copyright (C) 2025 Crash Override, Inc.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the FSF, either version 3 of the License, or (at your option) any later version.
+// See the LICENSE file in the root of this repository for full license text or
+// visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
+
 package resources
 
 import (
@@ -17,8 +25,10 @@ func ReconcileChildResource[T client.Object](ctx context.Context, c client.Clien
 		return nil
 	}
 
-	if err := ctrl.SetControllerReference(owner, desired, scheme); err != nil {
-		return err
+	if owner != nil {
+		if err := ctrl.SetControllerReference(owner, desired, scheme); err != nil {
+			return err
+		}
 	}
 
 	found := desired.DeepCopyObject().(client.Object)

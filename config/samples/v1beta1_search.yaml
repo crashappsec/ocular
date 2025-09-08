@@ -1,0 +1,12 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Search
+metadata:
+  labels:
+    app.kubernetes.io/name: ocular
+    app.kubernetes.io/managed-by: kustomize
+  name: search-sample
+spec:
+  crawlerRef: crawler-sample
+  parameters:
+    LOG_MSG: "Hello from Search!"
+  ttlSecondsAfterFinished: 180 # delete 3 minutes after finished

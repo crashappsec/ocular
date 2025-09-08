@@ -13,7 +13,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -23,7 +22,7 @@ import (
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
-var _ = Describe("Profile Controller", func() {
+var _ = Describe("CronSearch Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
@@ -33,62 +32,40 @@ var _ = Describe("Profile Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		profile := &ocularcrashoverriderunv1beta1.Profile{}
+		cronsearch := &ocularcrashoverriderunv1beta1.CronSearch{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind Profile")
-			err := k8sClient.Get(ctx, typeNamespacedName, profile)
+			By("creating the custom resource for the Kind CronSearch")
+			err := k8sClient.Get(ctx, typeNamespacedName, cronsearch)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &ocularcrashoverriderunv1beta1.Profile{
-					TypeMeta: metav1.TypeMeta{
-						Kind: "Profile",
-					},
+				resource := &ocularcrashoverriderunv1beta1.CronSearch{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: ocularcrashoverriderunv1beta1.ProfileSpec{
-						Containers: []corev1.Container{
-							{
-								Image: "alpine:latest",
-								Name:  "profile-container",
-								Env: []corev1.EnvVar{
-									{
-										Name:  "PROFILE_ENV",
-										Value: "value",
-									},
-								},
-								Command: []string{"/bin/sh", "-c"},
-								Args:    []string{"echo Hello from profile container > $OCULAR_RESULTS_DIR/profile.txt"},
-							},
-							{
-								Image:   "busybox:latest",
-								Name:    "another-container",
-								Command: []string{"/bin/sh", "-c"},
-								Args:    []string{"echo Hello from another container > $OCULAR_RESULTS_DIR/another.txt"},
-							},
-						},
-						Artifacts: []string{
-							"profile.txt",
-							"another.txt",
+					Spec: ocularcrashoverriderunv1beta1.CronSearchSpec{
+						Schedule: "*/1 * * * *",
+						SearchSpec: ocularcrashoverriderunv1beta1.SearchSpec{
+							CrawlerRef: "example-crawler",
 						},
 					},
+					// TODO(user): Specify other spec details if needed.
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			resource := &ocularcrashoverriderunv1beta1.Profile{}
+			resource := &ocularcrashoverriderunv1beta1.CronSearch{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance Profile")
+			By("Cleanup the specific resource instance CronSearch")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &ProfileReconciler{
+			controllerReconciler := &CronSearchReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
@@ -97,11 +74,8 @@ var _ = Describe("Profile Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-
-			resource := &ocularcrashoverriderunv1beta1.Profile{}
-			err = k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resource.Status.Valid).To(BeTrue())
+			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
+			// Example: If you expect a certain status condition after reconciliation, verify it here.
 		})
 	})
 })

@@ -29,7 +29,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	ocularcrashoverriderunv1 "github.com/crashappsec/ocular/api/v1"
+	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
@@ -42,7 +42,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(ocularcrashoverriderunv1.AddToScheme(scheme))
+	utilruntime.Must(ocularcrashoverriderunv1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -217,6 +217,29 @@ func main() {
 		ExtractorImage: os.Getenv("OCULAR_MANAGER_IMAGE"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Pipeline")
+		os.Exit(1)
+	}
+	if err := (&controller.CrawlerReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Crawler")
+		os.Exit(1)
+	}
+	if err := (&controller.SearchReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		SearchClusterRole: os.Getenv("OCULAR_SEARCH_CLUSTER_ROLE"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Search")
+		os.Exit(1)
+	}
+	if err := (&controller.CronSearchReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		SearchClusterRole: os.Getenv("OCULAR_SEARCH_CLUSTER_ROLE"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CronSearch")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

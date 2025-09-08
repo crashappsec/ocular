@@ -20,7 +20,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	ocularcrashoverriderunv1 "github.com/crashappsec/ocular/api/v1"
+	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
 var _ = Describe("Uploader Controller", func() {
@@ -33,13 +33,13 @@ var _ = Describe("Uploader Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		uploader := &ocularcrashoverriderunv1.Uploader{}
+		uploader := &ocularcrashoverriderunv1beta1.Uploader{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Uploader")
 			err := k8sClient.Get(ctx, typeNamespacedName, uploader)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &ocularcrashoverriderunv1.Uploader{
+				resource := &ocularcrashoverriderunv1beta1.Uploader{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "Uploader",
 						APIVersion: "ocular.crashoverride.run/v1",
@@ -48,7 +48,7 @@ var _ = Describe("Uploader Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: ocularcrashoverriderunv1.UploaderSpec{
+					Spec: ocularcrashoverriderunv1beta1.UploaderSpec{
 						Container: corev1.Container{
 							Image: "alpine:latest",
 							Name:  "uploader-container",
@@ -61,7 +61,7 @@ var _ = Describe("Uploader Controller", func() {
 							Command: []string{"/bin/sh", "-c"},
 							Args:    []string{"for file in \"${@:1}\"; do; curl -X POST -F \"file=@${file}\" $UPLOAD_URL; done"},
 						},
-						Parameters: map[string]ocularcrashoverriderunv1.ParameterDefinition{
+						Parameters: map[string]ocularcrashoverriderunv1beta1.ParameterDefinition{
 							"MY_PARAM": {
 								Description: "A sample parameter",
 								Required:    true,
@@ -79,7 +79,7 @@ var _ = Describe("Uploader Controller", func() {
 		})
 
 		AfterEach(func() {
-			resource := &ocularcrashoverriderunv1.Uploader{}
+			resource := &ocularcrashoverriderunv1beta1.Uploader{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -98,7 +98,7 @@ var _ = Describe("Uploader Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &ocularcrashoverriderunv1.Uploader{}
+			resource := &ocularcrashoverriderunv1beta1.Uploader{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.Valid).To(BeTrue())

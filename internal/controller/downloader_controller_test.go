@@ -20,7 +20,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	ocularcrashoverriderunv1 "github.com/crashappsec/ocular/api/v1"
+	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
 var _ = Describe("Downloader Controller", func() {
@@ -33,13 +33,13 @@ var _ = Describe("Downloader Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		downloader := &ocularcrashoverriderunv1.Downloader{}
+		downloader := &ocularcrashoverriderunv1beta1.Downloader{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Downloader")
 			err := k8sClient.Get(ctx, typeNamespacedName, downloader)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &ocularcrashoverriderunv1.Downloader{
+				resource := &ocularcrashoverriderunv1beta1.Downloader{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "Downloader",
 						APIVersion: "ocular.crashoverride.run/v1",
@@ -48,7 +48,7 @@ var _ = Describe("Downloader Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: ocularcrashoverriderunv1.DownloaderSpec{
+					Spec: ocularcrashoverriderunv1beta1.DownloaderSpec{
 						Container: corev1.Container{
 							Image:   "alpine:latest",
 							Name:    "downloader-container",
@@ -62,7 +62,7 @@ var _ = Describe("Downloader Controller", func() {
 		})
 
 		AfterEach(func() {
-			resource := &ocularcrashoverriderunv1.Downloader{}
+			resource := &ocularcrashoverriderunv1beta1.Downloader{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -81,7 +81,7 @@ var _ = Describe("Downloader Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &ocularcrashoverriderunv1.Downloader{}
+			resource := &ocularcrashoverriderunv1beta1.Downloader{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.Valid).To(BeTrue())

@@ -157,11 +157,11 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 
 CURRENT_DIR := $(shell pwd)
 
-license:
+license: ## Check license headers
 	@echo "Checking license headers ..."
 	@docker run --rm -v $(CURRENT_DIR):/github/workspace apache/skywalking-eyes header check
 
-license-fix:
+license-fix: ## Fix license headers
 	@echo "Formatting license headers ..."
 	@docker run --rm -v $(CURRENT_DIR):/github/workspace apache/skywalking-eyes header fix
 

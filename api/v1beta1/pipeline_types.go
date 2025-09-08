@@ -6,7 +6,7 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-package v1
+package v1beta1
 
 import (
 	v1 "k8s.io/api/core/v1"
@@ -17,30 +17,22 @@ type PipelineSpec struct {
 	// DownloaderRef is a reference to the downloader that will be used in this pipeline.
 	// It should point to a valid Downloader resource in the same namespace.
 	// +required
-	DownloaderRef string `json:"downloaderRef,omitempty" protobuf:"bytes,1,opt,name=downloaderRef"`
+	DownloaderRef string `json:"downloaderRef,omitempty" description:"A reference to the downloader that will be used in this pipeline."`
 
 	// ProfileRef is a reference to the profile that will be used in this pipeline.
 	// It should point to a valid Profile resource in the same namespace.
 	// +required
-	ProfileRef string `json:"profileRef,omitempty" protobuf:"bytes,2,opt,name=profileRef"`
+	ProfileRef string `json:"profileRef,omitempty" description:"A reference to the profile that will be used in this pipeline."`
 
 	// Target is the target where the pipeline will operate.
 	// +required
-	Target Target `json:"target,omitempty" protobuf:"bytes,3,opt,name=target"`
+	Target Target `json:"target,omitempty" description:"The target where the pipeline will operate."`
 
 	// TTLSecondsAfterFinished
 	// If set, the pipeline and its associated resources will be automatically deleted
 	// after the specified number of seconds have passed since the pipeline finished.
 	// +optional
-	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,4,opt,name=ttlSecondsAfterFinished"`
-}
-
-type ScanStatus struct {
-	Job *v1.ObjectReference `json:"job,omitempty" description:"A reference to the scan job associated with this pipeline."`
-
-	CompletionTime *metav1.Time `json:"completionTime,omitempty" protobuf:"bytes,4,opt,name=completionTime"`
-
-	StartTime *metav1.Time `json:"startTime,omitempty" protobuf:"bytes,5,opt,name=startTime"`
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" description:"If set, the pipeline and its associated resources will be automatically deleted after the specified number of seconds have passed since the pipeline finished."`
 }
 
 type PipelineStatus struct {
@@ -74,11 +66,11 @@ type PipelineStatus struct {
 
 	// StartTime is the time when the pipeline started.
 	// +optional
-	StartTime *metav1.Time `json:"startTime,omitempty" protobuf:"bytes,3,opt,name=startTime"`
+	StartTime *metav1.Time `json:"startTime,omitempty" description:"The time when the pipeline was started, nil represents that the pipeline has not started yet."`
 
 	// CompletionTime is the time when the pipeline completed.
 	// +optional
-	CompletionTime *metav1.Time `json:"completionTime,omitempty" protobuf:"bytes,4,opt,name=completionTime"`
+	CompletionTime *metav1.Time `json:"completionTime,omitempty" description:"The time when the pipeline completed, nil represents that the pipeline has not completed yet."`
 }
 
 // +kubebuilder:object:root=true

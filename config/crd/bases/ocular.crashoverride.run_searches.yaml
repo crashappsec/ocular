@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: pipelines.ocular.crashoverride.run
+  name: searches.ocular.crashoverride.run
 spec:
   group: ocular.crashoverride.run
   names:
-    kind: Pipeline
-    listKind: PipelineList
-    plural: pipelines
-    singular: pipeline
+    kind: Search
+    listKind: SearchList
+    plural: searches
+    singular: search
   scope: Namespaced
   versions:
   - name: v1beta1
     schema:
       openAPIV3Schema:
-        description: Pipeline is the Schema for the downloaders API
+        description: Search is the Schema for the searches API
         properties:
           apiVersion:
             description: |-
@@ -37,43 +37,33 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of Pipeline
+            description: spec defines the desired state of Search
             properties:
-              downloaderRef:
+              crawlerRef:
                 description: |-
-                  DownloaderRef is a reference to the downloader that will be used in this pipeline.
-                  It should point to a valid Downloader resource in the same namespace.
+                  CrawlerRef is a reference to the crawler that will be run in this search.
+                  It should point to a valid Crawler resource in the same namespace.
                 type: string
-              profileRef:
+              parameters:
+                additionalProperties:
+                  type: string
                 description: |-
-                  ProfileRef is a reference to the profile that will be used in this pipeline.
-                  It should point to a valid Profile resource in the same namespace.
-                type: string
-              target:
-                description: Target is the target where the pipeline will operate.
-                properties:
-                  identifier:
-                    type: string
-                  version:
-                    type: string
+                  Parameters is a map of parameters that will be passed to the crawler.
+                  These parameters should be defined in the referenced Crawler spec.
                 type: object
               ttlSecondsAfterFinished:
-                description: |-
-                  TTLSecondsAfterFinished
-                  If set, the pipeline and its associated resources will be automatically deleted
-                  after the specified number of seconds have passed since the pipeline finished.
+                description: TTLSecondsAfterFinished is the number of seconds to retain
+                  the search after it has finished.
                 format: int32
                 type: integer
             required:
-            - downloaderRef
-            - profileRef
-            - target
+            - crawlerRef
             type: object
           status:
-            description: status defines the observed state of Pipeline
+            description: status defines the observed state of Search
             properties:
               completionTime:
-                description: CompletionTime is the time when the pipeline completed.
+                description: CompletionTime is the time when the search completed.
                 format: date-time
                 type: string
               conditions:
@@ -135,11 +125,13 @@ spec:
                   type: object
                 type: array
               failed:
-                description: Failed indicates if the pipeline has failed.
+                description: |-
+                  Failed indicates if the search has failed, meaning that the crawler exited with a non-zero status code.
+                  A nil value indicates that the search is still in progress or has not started yet.
                 type: boolean
               scanJob:
                 description: |-
-                  ScanJob is a reference to the scan job associated with this pipeline.
+                  SearchJob is a reference to the job associated with this search.
                   A nil value indicates that the scan job has not been created yet.
                 properties:
                   apiVersion:
@@ -182,105 +174,10 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
-              scanJobOnly:
-                description: |-
-                  ScanJobOnly indicates if the pipeline is configured to run only the scan job without uploading results.
-                  This is true when the profile associated with the pipeline has no artifacts or uploaders defined.
-                type: boolean
               startTime:
-                description: StartTime is the time when the pipeline started.
+                description: StartTime is the time when the search started.
                 format: date-time
                 type: string
-              uploadJob:
-                description: |-
-                  UploadJob is a reference to the uploader associated with this pipeline.
-                  A nil value indicates that the upload job has not been created yet.
-                properties:
-                  apiVersion:
-                    description: API version of the referent.
-                    type: string
-                  fieldPath:
-                    description: |-
-                      If referring to a piece of an object instead of an entire object, this string
-                      should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
-                      For example, if the object reference is to a container within a pod, this would take on a value like:
-                      "spec.containers{name}" (where "name" refers to the name of the container that triggered
-                      the event) or if no container name is specified "spec.containers[2]" (container with
-                      index 2 in this pod). This syntax is chosen only to have some well-defined way of
-                      referencing a part of an object.
-                    type: string
-                  kind:
-                    description: |-
-                      Kind of the referent.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-                    type: string
-                  name:
-                    description: |-
-                      Name of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                  namespace:
-                    description: |-
-                      Namespace of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
-                    type: string
-                  resourceVersion:
-                    description: |-
-                      Specific resourceVersion to which this reference is made, if any.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
-                    type: string
-                  uid:
-                    description: |-
-                      UID of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
-              uploadService:
-                description: |-
-                  UploadService is a reference to the service that exposes the upload job.
-                  A nil value indicates that the service has not been created yet.
-                properties:
-                  apiVersion:
-                    description: API version of the referent.
-                    type: string
-                  fieldPath:
-                    description: |-
-                      If referring to a piece of an object instead of an entire object, this string
-                      should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
-                      For example, if the object reference is to a container within a pod, this would take on a value like:
-                      "spec.containers{name}" (where "name" refers to the name of the container that triggered
-                      the event) or if no container name is specified "spec.containers[2]" (container with
-                      index 2 in this pod). This syntax is chosen only to have some well-defined way of
-                      referencing a part of an object.
-                    type: string
-                  kind:
-                    description: |-
-                      Kind of the referent.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-                    type: string
-                  name:
-                    description: |-
-                      Name of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                  namespace:
-                    description: |-
-                      Namespace of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
-                    type: string
-                  resourceVersion:
-                    description: |-
-                      Specific resourceVersion to which this reference is made, if any.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
-                    type: string
-                  uid:
-                    description: |-
-                      UID of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
             type: object
         required:
         - spec

@@ -1,10 +1,10 @@
-apiVersion: ocular.crashoverride.run/v1
+apiVersion: ocular.crashoverride.run/v1beta1
 kind: Profile
 metadata:
   labels:
     app.kubernetes.io/name: ocular
     app.kubernetes.io/managed-by: kustomize
-  name: example-profile
+  name: profile-sample
 spec:
   containers:
     - name: trufflehog
@@ -12,11 +12,6 @@ spec:
       imagePullPolicy: IfNotPresent
       command: [ /bin/sh, -c ]
       args: [ "trufflehog git file://. -j > $OCULAR_RESULTS_DIR/thog.trufflehogjson" ]
-    - name: poutine
-      image: ghcr.io/boostsecurityio/poutine:latest
-      imagePullPolicy: IfNotPresent
-      command: [ /bin/sh, -c ]
-      args: [ "poutine analyze_local . -f json > $OCULAR_RESULTS_DIR/p.poutinejson" ]
     - name: semgrep
       image: semgrep/semgrep:latest
       imagePullPolicy: IfNotPresent
@@ -24,7 +19,6 @@ spec:
       args: [ "semgrep --config=auto --json . > $OCULAR_RESULTS_DIR/output.semgrepjson" ]
   artifacts:
     - thog.trufflehogjson
-    - p.poutinejson
     - output.semgrepjson
   uploaderRefs:
     - name: example-uploader

@@ -21,7 +21,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	ocularcrashoverriderunv1 "github.com/crashappsec/ocular/api/v1"
+	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
 var _ = Describe("Pipeline Controller", func() {
@@ -38,26 +38,26 @@ var _ = Describe("Pipeline Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		pipeline := &ocularcrashoverriderunv1.Pipeline{}
+		pipeline := &ocularcrashoverriderunv1beta1.Pipeline{}
 
 		downloaderTypeNamespacedName := types.NamespacedName{
 			Name:      downloaderName,
 			Namespace: "default",
 		}
-		downloader := &ocularcrashoverriderunv1.Downloader{}
+		downloader := &ocularcrashoverriderunv1beta1.Downloader{}
 
 		profileTypeNamespacedName := types.NamespacedName{
 			Name:      profileName,
 			Namespace: "default",
 		}
-		profile := &ocularcrashoverriderunv1.Profile{}
+		profile := &ocularcrashoverriderunv1beta1.Profile{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Pipeline")
 
 			err := k8sClient.Get(ctx, downloaderTypeNamespacedName, downloader)
 			if err != nil && errors.IsNotFound(err) {
-				downloaderResource := &ocularcrashoverriderunv1.Downloader{
+				downloaderResource := &ocularcrashoverriderunv1beta1.Downloader{
 					TypeMeta: metav1.TypeMeta{
 						Kind: "Downloader",
 					},
@@ -65,7 +65,7 @@ var _ = Describe("Pipeline Controller", func() {
 						Name:      downloaderName,
 						Namespace: "default",
 					},
-					Spec: ocularcrashoverriderunv1.DownloaderSpec{
+					Spec: ocularcrashoverriderunv1beta1.DownloaderSpec{
 						Container: corev1.Container{
 							Name:    "downloader-container",
 							Image:   "alpine:latest",
@@ -73,7 +73,7 @@ var _ = Describe("Pipeline Controller", func() {
 							Args:    []string{"echo Downloading...; echo $OCULAR_TARGET_IDENTIFIER > ./target.txt"},
 						},
 					},
-					Status: ocularcrashoverriderunv1.DownloaderStatus{
+					Status: ocularcrashoverriderunv1beta1.DownloaderStatus{
 						Valid: true,
 					},
 				}
@@ -84,7 +84,7 @@ var _ = Describe("Pipeline Controller", func() {
 
 			err = k8sClient.Get(ctx, profileTypeNamespacedName, profile)
 			if err != nil && errors.IsNotFound(err) {
-				profileResource := &ocularcrashoverriderunv1.Profile{
+				profileResource := &ocularcrashoverriderunv1beta1.Profile{
 					TypeMeta: metav1.TypeMeta{
 						Kind: "Profile",
 					},
@@ -92,7 +92,7 @@ var _ = Describe("Pipeline Controller", func() {
 						Name:      profileName,
 						Namespace: "default",
 					},
-					Spec: ocularcrashoverriderunv1.ProfileSpec{
+					Spec: ocularcrashoverriderunv1beta1.ProfileSpec{
 						Containers: []corev1.Container{
 							{
 								Image:   "alpine:latest",
@@ -103,7 +103,7 @@ var _ = Describe("Pipeline Controller", func() {
 						},
 						Artifacts: []string{"results.txt"},
 					},
-					Status: ocularcrashoverriderunv1.ProfileStatus{
+					Status: ocularcrashoverriderunv1beta1.ProfileStatus{
 						Valid: true,
 					},
 				}
@@ -114,7 +114,7 @@ var _ = Describe("Pipeline Controller", func() {
 
 			err = k8sClient.Get(ctx, typeNamespacedName, pipeline)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &ocularcrashoverriderunv1.Pipeline{
+				resource := &ocularcrashoverriderunv1beta1.Pipeline{
 					TypeMeta: metav1.TypeMeta{
 						Kind: "Pipeline",
 					},
@@ -122,10 +122,10 @@ var _ = Describe("Pipeline Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: ocularcrashoverriderunv1.PipelineSpec{
+					Spec: ocularcrashoverriderunv1beta1.PipelineSpec{
 						DownloaderRef: downloaderName,
 						ProfileRef:    profileName,
-						Target: ocularcrashoverriderunv1.Target{
+						Target: ocularcrashoverriderunv1beta1.Target{
 							Identifier: "https://example.com/samplefile.txt",
 						},
 					},
@@ -135,15 +135,15 @@ var _ = Describe("Pipeline Controller", func() {
 		})
 
 		AfterEach(func() {
-			downloaderResource := &ocularcrashoverriderunv1.Downloader{}
+			downloaderResource := &ocularcrashoverriderunv1beta1.Downloader{}
 			err := k8sClient.Get(ctx, downloaderTypeNamespacedName, downloaderResource)
 			Expect(err).NotTo(HaveOccurred())
 
-			profileResource := &ocularcrashoverriderunv1.Profile{}
+			profileResource := &ocularcrashoverriderunv1beta1.Profile{}
 			err = k8sClient.Get(ctx, profileTypeNamespacedName, profileResource)
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &ocularcrashoverriderunv1.Pipeline{}
+			resource := &ocularcrashoverriderunv1beta1.Pipeline{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -167,7 +167,7 @@ var _ = Describe("Pipeline Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &ocularcrashoverriderunv1.Pipeline{}
+			resource := &ocularcrashoverriderunv1beta1.Pipeline{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.ScanJobOnly).To(BeTrue())

@@ -24,7 +24,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	ocularcrashoverriderunv1 "github.com/crashappsec/ocular/api/v1"
+	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -51,7 +51,7 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.TODO())
 
 	var err error
-	err = ocularcrashoverriderunv1.AddToScheme(scheme.Scheme)
+	err = ocularcrashoverriderunv1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme

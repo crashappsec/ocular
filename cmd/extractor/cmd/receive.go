@@ -11,6 +11,7 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -20,13 +21,15 @@ import (
 	"sync"
 	"time"
 
-	v1 "github.com/crashappsec/ocular/api/v1"
+	v1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/utils"
 	"go.uber.org/zap"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func Receive(ctx context.Context, files []string) error {
-	port := os.Getenv(v1.EnvVarExtractorPort)
+	logger := logf.FromContext(ctx)
+	port := os.Getenv(v1beta1.EnvVarExtractorPort)
 	var (
 		mux             = http.NewServeMux()
 		downloadedFiles = map[string]bool{}
@@ -41,52 +44,50 @@ func Receive(ctx context.Context, files []string) error {
 	mux.HandleFunc("/upload/", func(w http.ResponseWriter, r *http.Request) {
 		// check if file is already downloaded
 		path := strings.TrimPrefix(r.URL.Path, "/upload/")
-		zap.L().Info("received upload request", zap.String("path", path))
+		logger.Info("received upload request", zap.String("path", path))
 		file, err := url.PathUnescape(path)
 		if err != nil {
-			zap.L().Warn("file name is not valid", zap.String("path", path))
+			logger.Info("file name is not valid", "path", path)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		if !filepath.IsAbs(file) {
 			w.WriteHeader(http.StatusBadRequest)
-			zap.L().Warn("file is not absolute path", zap.String("path", file))
+			logger.Info("file is not absolute path", "path", file)
 			return
 		}
 
 		mutex.Lock()
+		defer mutex.Unlock()
 		written, exists := downloadedFiles[file]
-		mutex.Unlock()
 		if !exists {
-			zap.L().Warn("file is not in the list of files to download", zap.String("path", file))
+			logger.Info("file is not in the list of files to download", zap.String("path", file))
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		if written {
-			zap.L().Warn("file is already downloaded", zap.String("path", file))
+			logger.Info("file is already downloaded", zap.String("path", file))
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
 
 		defer wg.Done()
-		utils.CloseAndLog(ctx, r.Body, "closing upload request body")
+		defer utils.CloseAndLog(ctx, r.Body, "closing upload request body")
 		dst, err := os.Create(filepath.Clean(file))
 		if err != nil {
-			zap.L().Error("failed to create file", zap.String("path", file), zap.Error(err))
+			logger.Error(err, "failed to create file", "path", file)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		utils.CloseAndLog(ctx, dst, "closing uploaded file writer")
+		defer utils.CloseAndLog(ctx, dst, "closing uploaded file writer")
 		if _, err = io.Copy(dst, r.Body); err != nil && !errors.Is(err, io.EOF) {
-			zap.L().Error("failed to write file", zap.String("path", file), zap.Error(err))
+			logger.Error(err, "failed to write file", "path", file)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		zap.L().Info("file downloaded", zap.String("path", file))
+		logger.Info("file downloaded", "path", file)
 		w.WriteHeader(http.StatusOK)
-		mutex.Lock()
-		defer mutex.Unlock()
 		downloadedFiles[file] = true
 	})
 
@@ -97,21 +98,21 @@ func Receive(ctx context.Context, files []string) error {
 		Handler:           mux,
 	}
 	mux.HandleFunc("/fail", func(w http.ResponseWriter, r *http.Request) {
-		zap.L().Error("Received /fail request")
+		logger.Error(fmt.Errorf("received /fail request"), "shutting down, received /fail request")
 		w.WriteHeader(http.StatusCreated)
 		err := srv.Shutdown(ctx)
 		if err != nil {
-			zap.L().Error("Error shutting down server from fail request", zap.Error(err))
+			logger.Error(err, "Error shutting down server from fail request")
 		}
 	})
 	go func() {
 		wg.Wait()
 		err := srv.Shutdown(ctx)
 		if err != nil {
-			zap.L().Error("Error shutting down server from completion", zap.Error(err))
+			logger.Error(err, "Error shutting down server from completion")
 		}
 	}()
-	zap.L().Info("Starting server", zap.String("address", srv.Addr))
+	logger.Info("starting server", "address", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

@@ -1,4 +1,4 @@
-apiVersion: ocular.crashoverride.run/v1
+apiVersion: ocular.crashoverride.run/v1beta1
 kind: Uploader
 metadata:
   labels:
@@ -9,7 +9,7 @@ spec:
   container:
     name: example-uploader
     image: ubuntu:latest
-    command: ["/bin/bash", "-c", "echo files $@; echo param is $OCULAR_PARAM_EXAMPLE; ls -al $OCULAR_RESULTS_DIR"]
+    command: ["/bin/bash", "-c", "echo param is $OCULAR_PARAM_EXAMPLE; ls -al $OCULAR_RESULTS_DIR; for fileArg in \"${@:1}\"; do \n echo reading $fileArg; cat $fileArg; done;"]
   parameters:
     EXAMPLE:
       description: My example parameter.

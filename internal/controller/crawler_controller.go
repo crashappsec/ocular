@@ -12,34 +12,32 @@ import (
 	"context"
 	"time"
 
+	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/resources"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-
-	v1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
-// UploaderReconciler reconciles a Uploader object
-type UploaderReconciler struct {
+// CrawlerReconciler reconciles a Crawler object
+type CrawlerReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=uploaders,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=uploaders/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=uploaders/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=crawlers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=crawlers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=crawlers/finalizers,verbs=update
 
-func (r *UploaderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *CrawlerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
 
-	// Fetch the profile instance
-	uploader := &v1beta1.Uploader{}
-	err := r.Get(ctx, req.NamespacedName, uploader)
+	// Fetch the crawler instance
+	crawler := &v1beta1.Crawler{}
+	err := r.Get(ctx, req.NamespacedName, crawler)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -50,30 +48,30 @@ func (r *UploaderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	finalized, err := resources.PerformFinalizer(ctx, uploader, "uploader.finalizers.ocular.crashoverride.run/cleanup", nil)
+	finalized, err := resources.PerformFinalizer(ctx, crawler, "crawler.finalizers.ocular.crashoverride.run/cleanup", nil)
 	if err != nil {
-		l.Error(err, "error performing finalizer for uploader", "name", uploader.GetName())
+		l.Error(err, "error performing finalizer for crawler", "name", crawler.GetName())
 		return ctrl.Result{}, err
 	} else if finalized {
-		if err = r.Update(ctx, uploader); err != nil {
-			l.Error(err, "error updating uploader after finalizer handling", "name", uploader.GetName())
+		if err = r.Update(ctx, crawler); err != nil {
+			l.Error(err, "error updating crawler after finalizer handling", "name", crawler.GetName())
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
-	if !uploader.Status.Valid {
-		uploader.Status.Valid = true
-		uploader.Status.Conditions = []metav1.Condition{
+	if !crawler.Status.Valid {
+		crawler.Status.Valid = true
+		crawler.Status.Conditions = []metav1.Condition{
 			{
 				Type:               "Ready",
 				Status:             metav1.ConditionTrue,
 				Reason:             "Reconciled",
-				Message:            "Uploader is ready and its spec is valid.",
+				Message:            "Crawler is ready and its spec is valid.",
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			},
 		}
-		if err := r.Status().Update(ctx, uploader); err != nil {
+		if err := r.Status().Update(ctx, crawler); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -81,9 +79,10 @@ func (r *UploaderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	return ctrl.Result{}, nil
 }
 
-func (r *UploaderReconciler) SetupWithManager(mgr ctrl.Manager) error {
+// SetupWithManager sets up the controller with the Manager.
+func (r *CrawlerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1beta1.Uploader{}).
-		Named("uploader").
+		For(&v1beta1.Crawler{}).
+		Named("crawler").
 		Complete(r)
 }

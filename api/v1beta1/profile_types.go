@@ -6,7 +6,7 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-package v1
+package v1beta1
 
 import (
 	v1 "k8s.io/api/core/v1"

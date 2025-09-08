@@ -20,7 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	v1 "github.com/crashappsec/ocular/api/v1"
+	v1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
 // DownloaderReconciler reconciles a Downloader object
@@ -46,7 +46,7 @@ func (r *DownloaderReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	l := logf.FromContext(ctx)
 
 	// Fetch the Downloader instance
-	downloader := &v1.Downloader{}
+	downloader := &v1beta1.Downloader{}
 	err := r.Get(ctx, req.NamespacedName, downloader)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -93,7 +93,7 @@ func (r *DownloaderReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 // SetupWithManager sets up the controller with the Manager.
 func (r *DownloaderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1.Downloader{}).
+		For(&v1beta1.Downloader{}).
 		Named("downloader").
 		Complete(r)
 }
