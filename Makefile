@@ -101,9 +101,10 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(MAKE) generate-clientset
 
 .PHONY: generate-clientset
-generate-clientset: client-gen ## Generate clientset for custom resources.
+generate-clientset: client-gen ## Generate clientset for our CRDs.
 	$(CLIENT_GEN) \
  		--input-base "" \
 		--input "github.com/crashappsec/ocular/api/v1beta1" \
@@ -111,7 +112,6 @@ generate-clientset: client-gen ## Generate clientset for custom resources.
 		--output-dir "pkg/generated" \
 		--output-pkg "github.com/crashappsec/ocular/pkg/generated" \
 		--go-header-file "hack/boilerplate.go.txt" \
-#		--trim-path-prefix pkg/github.com/crashappsec/ocular
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
