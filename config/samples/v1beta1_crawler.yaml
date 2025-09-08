@@ -9,7 +9,7 @@ spec:
   container:
     name: example-uploader
     image: bitnami/kubectl:latest
-    command: [ "/bin/bash", "-c", "echo message: $LOG_MSG ; kubectl auth whoami; echo ---; kubectl auth can-i create pipelines; echo ---; kubectl auth can-i create searches" ]
+    command: [ "/bin/bash", "-c", "echo running search $OCULAR_SEARCH_NAME; echo message: $LOG_MSG ; kubectl auth whoami; echo ---; kubectl auth can-i create pipelines; echo ---; kubectl auth can-i create searches" ]
   parameters:
     LOG_MSG:
       description: Log message to print.

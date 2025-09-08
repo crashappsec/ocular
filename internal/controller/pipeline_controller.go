@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	v1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/api/v1beta1"
 )
 
 const (
@@ -653,8 +653,8 @@ func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline, profile *v1beta
 			Value: profile.Name,
 		},
 		{
-			Name:  v1beta1.EnvVarPipelineName,
-			Value: pipeline.Name,
+			Name:      v1beta1.EnvVarPipelineName,
+			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}},
 		},
 		{
 			Name:  v1beta1.EnvVarTargetDir,
@@ -663,6 +663,10 @@ func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline, profile *v1beta
 		{
 			Name:  v1beta1.EnvVarResultsDir,
 			Value: ResultsDirectory,
+		},
+		{
+			Name:      v1beta1.EnvVarNamespaceName,
+			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 		},
 	}
 

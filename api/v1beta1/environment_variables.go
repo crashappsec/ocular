@@ -15,6 +15,12 @@ package v1beta1
 type EnvironmentVariableName = string
 
 const (
+	/* Common environment variables */
+
+	// EnvVarNamespaceName is the environment variable name for the name of the namespace
+	// the pipeline or search is running in.
+	EnvVarNamespaceName EnvironmentVariableName = "OCULAR_NAMESPACE_NAME"
+
 	/* Pipeline and Profile related environment variables */
 
 	// EnvVarTargetIdentifier is the environment variable name for the target identifier.

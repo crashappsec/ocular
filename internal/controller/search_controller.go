@@ -366,12 +366,16 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 func generateBaseSearchEnvironment(search *v1beta1.Search, crawler *v1beta1.Crawler) []corev1.EnvVar {
 	return []corev1.EnvVar{
 		{
-			Name:  v1beta1.EnvVarSearchName,
-			Value: search.GetName(),
+			Name:      v1beta1.EnvVarSearchName,
+			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}},
 		},
 		{
 			Name:  v1beta1.EnvVarCrawlerName,
 			Value: crawler.GetName(),
+		},
+		{
+			Name:      v1beta1.EnvVarNamespaceName,
+			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 		},
 	}
 }
