@@ -55,6 +55,7 @@ type SearchStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +genclient
 
 // Search is the Schema for the searches API
 type Search struct {

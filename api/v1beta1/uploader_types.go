@@ -46,6 +46,7 @@ type UploaderStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +genclient
 
 // Uploader is the Schema for the uploaders API
 type Uploader struct {

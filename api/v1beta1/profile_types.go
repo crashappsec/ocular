@@ -45,6 +45,7 @@ type ProfileStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +genclient
 
 // Profile is the Schema for the profiles API
 type Profile struct {

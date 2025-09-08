@@ -36,6 +36,7 @@ type DownloaderStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +genclient
 
 // Downloader is the Schema for the downloaders API
 type Downloader struct {

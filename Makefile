@@ -102,6 +102,17 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: generate-clientset
+generate-clientset: client-gen ## Generate clientset for custom resources.
+	$(CLIENT_GEN) \
+ 		--input-base "" \
+		--input "github.com/crashappsec/ocular/api/v1beta1" \
+	 	--clientset-name "clientset" \
+		--output-dir "pkg/generated" \
+		--output-pkg "github.com/crashappsec/ocular/pkg/generated" \
+		--go-header-file "hack/boilerplate.go.txt" \
+#		--trim-path-prefix pkg/github.com/crashappsec/ocular
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
@@ -225,6 +236,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 YQ ?= $(LOCALBIN)/yq
+CLIENT_GEN ?= $(LOCALBIN)/client-gen
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.6.0
@@ -235,6 +247,7 @@ ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 GOLANGCI_LINT_VERSION ?= v2.1.6
 YQ_VERSION ?= v4.47.1
+CODE_GENERATOR_VERSION ?= v0.34.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -267,6 +280,10 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
 	$(call go-install-tool,$(YQ),github.com/mikefarah/yq/v4,$(YQ_VERSION))
+
+client-gen: $(CLIENT_GEN) ## Download code-generator locally if necessary.
+$(CLIENT_GEN): $(LOCALBIN)
+	$(call go-install-tool,$(CLIENT_GEN),k8s.io/code-generator/cmd/client-gen,$(CODE_GENERATOR_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

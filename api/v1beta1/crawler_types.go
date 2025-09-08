@@ -49,6 +49,7 @@ type CrawlerSpec struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +genclient
 
 // Crawler is the Schema for the crawlers API
 type Crawler struct {
