@@ -31,7 +31,7 @@ type DownloaderStatus struct {
 
 	// Valid indicates whether the downloader is valid.
 	// +optional
-	Valid *bool `json:"valid" description:"Whether or not the downloader is valid."`
+	Valid *bool `json:"valid,omitempty" description:"Whether or not the downloader is valid."`
 }
 
 // +kubebuilder:object:root=true

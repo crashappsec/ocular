@@ -41,7 +41,7 @@ type UploaderStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Uploader's current state."`
 	// Valid indicates whether the uploader is valid.
 	// +optional
-	Valid *bool `json:"valid" description:"Whether or not the uploader is valid."`
+	Valid *bool `json:"valid,omitempty" description:"Whether or not the uploader is valid."`
 }
 
 // +kubebuilder:object:root=true
