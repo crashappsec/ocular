@@ -101,7 +101,9 @@ var _ = Describe("Profile Controller", func() {
 			resource := &ocularcrashoverriderunv1beta1.Profile{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resource.Status.Valid).To(BeTrue())
+
+			Expect(resource.Status.Valid).To(Not(BeNil()))
+			Expect(*resource.Status.Valid).To(BeTrue())
 		})
 	})
 })

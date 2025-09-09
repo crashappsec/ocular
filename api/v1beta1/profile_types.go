@@ -40,7 +40,9 @@ type ProfileStatus struct {
 	// Conditions represent the latest available observations of a Profile's current state.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Profile's current state."`
-	Valid      bool               `json:"valid" description:"Whether or not the profile is valid."`
+	// Valid indicates whether the profile is valid.
+	// +optional
+	Valid *bool `json:"valid" description:"Whether or not the profile is valid."`
 }
 
 // +kubebuilder:object:root=true

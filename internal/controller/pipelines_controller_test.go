@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -74,11 +75,11 @@ var _ = Describe("Pipeline Controller", func() {
 						},
 					},
 					Status: ocularcrashoverriderunv1beta1.DownloaderStatus{
-						Valid: true,
+						Valid: ptr.To(true),
 					},
 				}
 				Expect(k8sClient.Create(ctx, downloaderResource)).To(Succeed())
-				downloaderResource.Status.Valid = true
+				downloaderResource.Status.Valid = ptr.To(true)
 				Expect(k8sClient.Status().Update(ctx, downloaderResource)).To(Succeed())
 			}
 
@@ -104,11 +105,11 @@ var _ = Describe("Pipeline Controller", func() {
 						Artifacts: []string{"results.txt"},
 					},
 					Status: ocularcrashoverriderunv1beta1.ProfileStatus{
-						Valid: true,
+						Valid: ptr.To(true),
 					},
 				}
 				Expect(k8sClient.Create(ctx, profileResource)).To(Succeed())
-				profileResource.Status.Valid = true
+				profileResource.Status.Valid = ptr.To(true)
 				Expect(k8sClient.Status().Update(ctx, profileResource)).To(Succeed())
 			}
 

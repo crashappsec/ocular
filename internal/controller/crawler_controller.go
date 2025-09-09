@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -60,8 +61,8 @@ func (r *CrawlerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
-	if !crawler.Status.Valid {
-		crawler.Status.Valid = true
+	if crawler.Status.Valid == nil {
+		crawler.Status.Valid = ptr.To(true)
 		crawler.Status.Conditions = []metav1.Condition{
 			{
 				Type:               "Ready",

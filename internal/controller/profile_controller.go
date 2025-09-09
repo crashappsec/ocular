@@ -15,6 +15,7 @@ import (
 	"github.com/crashappsec/ocular/internal/resources"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -74,7 +75,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	for _, uploaderRef := range profile.Spec.UploaderRefs {
 		if _, exists := duplicates[uploaderRef.Name]; exists {
 			// Duplicate uploader reference found
-			profile.Status.Valid = false
+			profile.Status.Valid = ptr.To(false)
 			profile.Status.Conditions = []metav1.Condition{
 				{
 					Type:               "Ready",
@@ -98,7 +99,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if err != nil {
 			if errors.IsNotFound(err) {
 				// Uploader not found
-				profile.Status.Valid = false
+				profile.Status.Valid = ptr.To(false)
 				profile.Status.Conditions = []metav1.Condition{
 					{
 						Type:               "Ready",
@@ -119,7 +120,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		for paramName, paramDef := range uploader.Spec.Parameters {
 			if _, exists := uploaderRef.Parameters[paramName]; !exists && paramDef.Required {
 				// Required parameter missing in profile
-				profile.Status.Valid = false
+				profile.Status.Valid = ptr.To(false)
 				profile.Status.Conditions = []metav1.Condition{
 					{
 						Type:               "Ready",
@@ -137,8 +138,8 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	if !profile.Status.Valid {
-		profile.Status.Valid = true
+	if profile.Status.Valid == nil {
+		profile.Status.Valid = ptr.To(true)
 
 		profile.Status.Conditions = []metav1.Condition{
 			{

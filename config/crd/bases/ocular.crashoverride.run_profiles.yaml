@@ -3545,9 +3545,8 @@ spec:
                   type: object
                 type: array
               valid:
+                description: Valid indicates whether the profile is valid.
                 type: boolean
-            required:
-            - valid
             type: object
         required:
         - spec

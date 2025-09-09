@@ -15,6 +15,7 @@ import (
 	"github.com/crashappsec/ocular/internal/resources"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -62,8 +63,8 @@ func (r *UploaderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	if !uploader.Status.Valid {
-		uploader.Status.Valid = true
+	if uploader.Status.Valid == nil {
+		uploader.Status.Valid = ptr.To(true)
 		uploader.Status.Conditions = []metav1.Condition{
 			{
 				Type:               "Ready",

@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -70,11 +71,11 @@ var _ = Describe("Search Controller", func() {
 						},
 					},
 					Status: ocularcrashoverriderunv1beta1.CrawlerStatus{
-						Valid: true,
+						Valid: ptr.To(true),
 					},
 				}
 				Expect(k8sClient.Create(ctx, crawlerResource)).To(Succeed())
-				crawlerResource.Status.Valid = true
+				crawlerResource.Status.Valid = ptr.To(true)
 				Expect(k8sClient.Status().Update(ctx, crawlerResource)).To(Succeed())
 			}
 

@@ -106,7 +106,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, updateStatus(ctx, r.Client, search, "step", "crawler not found")
 	}
 
-	if !crawler.Status.Valid {
+	if crawler.Status.Valid == nil || !*crawler.Status.Valid {
 		l.Error(err, "crawler is not valid for pipeline", "name", search.GetName(), "crawlerRef", search.Spec.CrawlerRef)
 		search.Status.Conditions = []metav1.Condition{
 			{

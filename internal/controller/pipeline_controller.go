@@ -130,7 +130,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "profile not found")
 	}
 
-	if !profile.Status.Valid {
+	if profile.Status.Valid == nil || !*profile.Status.Valid {
 		l.Error(err, "profile is not valid for pipeline", "name", pipeline.GetName(), "profileRef", pipeline.Spec.ProfileRef)
 		pipeline.Status.Conditions = []metav1.Condition{
 			{
@@ -163,7 +163,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "downloader not found")
 	}
 
-	if !downloader.Status.Valid {
+	if downloader.Status.Valid == nil || !*downloader.Status.Valid {
 		l.Error(err, "downloader is not valid for pipeline", "name", pipeline.GetName(), "downloaderRef", pipeline.Spec.DownloaderRef)
 		pipeline.Status.Conditions = []metav1.Condition{
 			{
