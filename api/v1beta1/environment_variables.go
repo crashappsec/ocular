@@ -47,6 +47,9 @@ const (
 	// It specifies the directory path where analysis results should be stored within the container.
 	// This variable is set for both [ProfileSpec.Containers] and [Uploader] containers.
 	EnvVarResultsDir EnvironmentVariableName = "OCULAR_RESULTS_DIR"
+	// EnvVarUploaderName is the environment variable name for the uploader name.
+	// It specifies the name of the [Uploader] resource used in the pipeline to upload analysis results.
+	EnvVarUploaderName EnvironmentVariableName = "OCULAR_UPLOADER_NAME"
 
 	/* Search related environment variables */
 

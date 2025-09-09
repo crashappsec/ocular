@@ -483,6 +483,10 @@ func (r *PipelineReconciler) newUploaderJob(pipeline *v1beta1.Pipeline, _ *v1bet
 	)
 	for _, invocation := range uploaderInvocations {
 		baseContainer := invocation.Uploader.Spec.Container
+		baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
+			Name:  v1beta1.EnvVarUploaderName,
+			Value: invocation.Uploader.GetName(),
+		})
 		for paramName, paramDef := range invocation.Uploader.Spec.Parameters {
 			paramValue, paramSet := invocation.UploadRef.Parameters[paramName]
 			envVarName := v1beta1.ParameterToEnvironmentVariable(paramName)
