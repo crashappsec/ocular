@@ -8,7 +8,9 @@
 
 package v1beta1
 
-import v1 "k8s.io/api/core/v1"
+import (
+	v1 "k8s.io/api/core/v1"
+)
 
 type Target struct {
 	Identifier string `json:"identifier,omitempty" yaml:"identifier,omitempty" description:"A unique identifier for the target. This could be a URL, a file path, or any other string that uniquely identifies the target."`
@@ -33,6 +35,26 @@ type ParameterDefinition struct {
 	// Default is the default value for the parameter.
 	// It is only valid if Required is false.
 	Default string `json:"default,omitempty"     yaml:"default,omitempty"`
+}
+
+// ParameterToEnvironmentVariable converts a parameter name to an environment variable name.
+// It converts the name to uppercase, replaces invalid characters with underscores,
+// and prefixes it with "OCULAR_PARAM_".
+func ParameterToEnvironmentVariable(name string) string {
+	result := make([]rune, 0)
+	for _, char := range name {
+		nextChar := '_'
+		if char >= 'a' && char <= 'z' {
+			char -= 'a' - 'A'
+		}
+
+		if char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_' {
+			nextChar = char
+		}
+
+		result = append(result, nextChar)
+	}
+	return "OCULAR_PARAM_" + string(result)
 }
 
 type ServiceAccountDefinition struct {

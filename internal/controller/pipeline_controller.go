@@ -485,7 +485,7 @@ func (r *PipelineReconciler) newUploaderJob(pipeline *v1beta1.Pipeline, _ *v1bet
 		baseContainer := invocation.Uploader.Spec.Container
 		for paramName, paramDef := range invocation.Uploader.Spec.Parameters {
 			paramValue, paramSet := invocation.UploadRef.Parameters[paramName]
-			envVarName := "OCULAR_PARAM_" + paramName
+			envVarName := v1beta1.ParameterToEnvironmentVariable(paramName)
 			if paramSet {
 				baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
 					Name:  envVarName,

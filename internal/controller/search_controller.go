@@ -269,7 +269,7 @@ func (r *SearchReconciler) newSearchJob(search *v1beta1.Search, crawler *v1beta1
 	var envVars []corev1.EnvVar
 	for paramName, paramDef := range crawler.Spec.Parameters {
 		paramValue, paramSet := search.Spec.Parameters[paramName]
-		envVarName := "OCULAR_PARAM_" + paramName
+		envVarName := v1beta1.ParameterToEnvironmentVariable(paramName)
 		if paramSet {
 			envVars = append(envVars, corev1.EnvVar{
 				Name:  envVarName,
@@ -363,7 +363,7 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 	return ctrl.Result{}, nil
 }
 
-func generateBaseSearchEnvironment(search *v1beta1.Search, crawler *v1beta1.Crawler) []corev1.EnvVar {
+func generateBaseSearchEnvironment(_ *v1beta1.Search, crawler *v1beta1.Crawler) []corev1.EnvVar {
 	return []corev1.EnvVar{
 		{
 			Name:      v1beta1.EnvVarSearchName,
