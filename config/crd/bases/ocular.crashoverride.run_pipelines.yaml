@@ -49,6 +49,11 @@ spec:
                   ProfileRef is a reference to the profile that will be used in this pipeline.
                   It should point to a valid Profile resource in the same namespace.
                 type: string
+              scanServiceAccountName:
+                description: |-
+                  ScanServiceAccountName is the name of the service account that will be used to run the scan job.
+                  If not set, the default service account of the namespace will be used.
+                type: string
               target:
                 description: Target is the target where the pipeline will operate.
                 properties:
@@ -64,6 +69,11 @@ spec:
                   after the specified number of seconds have passed since the pipeline finished.
                 format: int32
                 type: integer
+              uploadServiceAccountName:
+                description: |-
+                  UploadServiceAccountName is the name of the service account that will be used to run the upload job.
+                  If not set, the default service account of the namespace will be used.
+                type: string
             required:
             - downloaderRef
             - profileRef

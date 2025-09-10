@@ -121,7 +121,6 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	if err = v1beta1.ValidateCrawlerParameters(*crawler, search.Spec.Parameters); err != nil {
-		l.Error(err, "error validating crawler parameters for search", "name", search.GetName())
 		search.Status.Conditions = []metav1.Condition{
 			{
 				Type:               "Ready",

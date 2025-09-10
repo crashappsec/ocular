@@ -567,6 +567,11 @@ func (r *PipelineReconciler) newUploaderJob(pipeline *v1beta1.Pipeline, _ *v1bet
 			},
 		},
 	}
+
+	if pipeline.Spec.UploadServiceAccountName != nil {
+		uploadJob.Spec.Template.Spec.ServiceAccountName = *pipeline.Spec.UploadServiceAccountName
+	}
+
 	return uploadJob
 }
 
@@ -622,6 +627,11 @@ func (r *PipelineReconciler) newScanJob(pipeline *v1beta1.Pipeline, profile *v1b
 			},
 		},
 	}
+
+	if pipeline.Spec.ScanServiceAccountName != nil {
+		scanJob.Spec.Template.Spec.ServiceAccountName = *pipeline.Spec.ScanServiceAccountName
+	}
+
 	return scanJob
 }
 

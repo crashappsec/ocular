@@ -444,6 +444,16 @@ func (in *PipelineList) DeepCopyObject() runtime.Object {
 func (in *PipelineSpec) DeepCopyInto(out *PipelineSpec) {
 	*out = *in
 	out.Target = in.Target
+	if in.ScanServiceAccountName != nil {
+		in, out := &in.ScanServiceAccountName, &out.ScanServiceAccountName
+		*out = new(string)
+		**out = **in
+	}
+	if in.UploadServiceAccountName != nil {
+		in, out := &in.UploadServiceAccountName, &out.UploadServiceAccountName
+		*out = new(string)
+		**out = **in
+	}
 	if in.TTLSecondsAfterFinished != nil {
 		in, out := &in.TTLSecondsAfterFinished, &out.TTLSecondsAfterFinished
 		*out = new(int32)

@@ -28,6 +28,16 @@ type PipelineSpec struct {
 	// +required
 	Target Target `json:"target,omitempty" description:"The target where the pipeline will operate."`
 
+	// ScanServiceAccountName is the name of the service account that will be used to run the scan job.
+	// If not set, the default service account of the namespace will be used.
+	// +optional
+	ScanServiceAccountName *string `json:"scanServiceAccountName,omitempty" description:"The name of the service account that will be used to run the scan job."`
+
+	// UploadServiceAccountName is the name of the service account that will be used to run the upload job.
+	// If not set, the default service account of the namespace will be used.
+	// +optional
+	UploadServiceAccountName *string `json:"uploadServiceAccountName,omitempty" description:"The name of the service account that will be used to run the upload job."`
+
 	// TTLSecondsAfterFinished
 	// If set, the pipeline and its associated resources will be automatically deleted
 	// after the specified number of seconds have passed since the pipeline finished.

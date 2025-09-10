@@ -155,12 +155,14 @@ cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
 
 .PHONY: lint
-lint: golangci-lint ## Run golangci-lint linter
+lint: golangci-lint license-eye ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run
+	$(LICENSE_EYE) header check
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
+	$(LICENSE_EYE) header fix
 
 .PHONY: lint-config
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
@@ -168,13 +170,9 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 
 CURRENT_DIR := $(shell pwd)
 
-license: ## Check license headers
-	@echo "Checking license headers ..."
-	@docker run --rm -v $(CURRENT_DIR):/github/workspace apache/skywalking-eyes header check
-
 license-fix: ## Fix license headers
 	@echo "Formatting license headers ..."
-	@docker run --rm -v $(CURRENT_DIR):/github/workspace apache/skywalking-eyes header fix
+	@$(LICENSE_EYE) header fix
 
 
 ##@ Build
@@ -237,6 +235,7 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 YQ ?= $(LOCALBIN)/yq
 CLIENT_GEN ?= $(LOCALBIN)/client-gen
+LICENSE_EYE ?= $(LOCALBIN)/license-eye
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.6.0
@@ -248,6 +247,7 @@ ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -
 GOLANGCI_LINT_VERSION ?= v2.1.6
 YQ_VERSION ?= v4.47.1
 CODE_GENERATOR_VERSION ?= v0.34.0
+LICENSE_EYE_VERSION ?= v0.7.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -284,6 +284,11 @@ $(YQ): $(LOCALBIN)
 client-gen: $(CLIENT_GEN) ## Download code-generator locally if necessary.
 $(CLIENT_GEN): $(LOCALBIN)
 	$(call go-install-tool,$(CLIENT_GEN),k8s.io/code-generator/cmd/client-gen,$(CODE_GENERATOR_VERSION))
+
+license-eye: $(LICENSE_EYE) ## Download skywalking-eyes locally if necessary.
+$(LICENSE_EYE): $(LOCALBIN)
+	$(call go-install-tool,$(LICENSE_EYE),github.com/apache/skywalking-eyes/cmd/license-eye,$(LICENSE_EYE_VERSION))
+
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
