@@ -17,62 +17,52 @@ type PipelineSpec struct {
 	// DownloaderRef is a reference to the downloader that will be used in this pipeline.
 	// It should point to a valid Downloader resource in the same namespace.
 	// +required
-	DownloaderRef string `json:"downloaderRef,omitempty" description:"A reference to the downloader that will be used in this pipeline."`
+	DownloaderRef v1.ObjectReference `json:"downloaderRef" protobuf:"bytes,1,opt,name=downloaderRef"`
 
 	// ProfileRef is a reference to the profile that will be used in this pipeline.
 	// It should point to a valid Profile resource in the same namespace.
 	// +required
-	ProfileRef string `json:"profileRef,omitempty" description:"A reference to the profile that will be used in this pipeline."`
+	ProfileRef v1.ObjectReference `json:"profileRef" protobuf:"bytes,2,opt,name=profileRef"`
 
-	// Target is the target where the pipeline will operate.
+	// Target is the actual software asset that will be processed by this pipeline.
+	// It is up to the Downloader to interpret the target correctly.
 	// +required
-	Target Target `json:"target,omitempty" description:"The target where the pipeline will operate."`
+	Target Target `json:"target" protobuf:"bytes,3,opt,name=target"`
 
 	// ScanServiceAccountName is the name of the service account that will be used to run the scan job.
 	// If not set, the default service account of the namespace will be used.
 	// +optional
-	ScanServiceAccountName *string `json:"scanServiceAccountName,omitempty" description:"The name of the service account that will be used to run the scan job."`
+	ScanServiceAccountName string `json:"scanServiceAccountName,omitempty" protobuf:"bytes,4,opt,name=scanServiceAccountName" description:"The name of the service account that will be used to run the scan job."`
 
 	// UploadServiceAccountName is the name of the service account that will be used to run the upload job.
 	// If not set, the default service account of the namespace will be used.
 	// +optional
-	UploadServiceAccountName *string `json:"uploadServiceAccountName,omitempty" description:"The name of the service account that will be used to run the upload job."`
+	UploadServiceAccountName string `json:"uploadServiceAccountName,omitempty" protobuf:"bytes,5,opt,name=uploadServiceAccountName" description:"The name of the service account that will be used to run the upload job."`
 
 	// TTLSecondsAfterFinished
 	// If set, the pipeline and its associated resources will be automatically deleted
 	// after the specified number of seconds have passed since the pipeline finished.
 	// +optional
-	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" description:"If set, the pipeline and its associated resources will be automatically deleted after the specified number of seconds have passed since the pipeline finished."`
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"  protobuf:"bytes,6,opt,name=ttlSecondsAfterFinished"`
 }
 
 type PipelineStatus struct {
-	// Conditions represent the latest available observations of a Pipeline's current state.
+	// Conditions latest available observations of an object's current state. When a Search
+	// fails, one of the conditions will have type [FailedConditionType] and status true.
+	// A search is considered finished when it is in a terminal condition, either
+	// [CompleteConditionType] or [FailedConditionType]. A Search cannot have both the [CompleteConditionType]  and FailedConditionType] conditions.
+	//
+	// More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Pipeline's current state."`
-
-	// ScanJob is a reference to the scan job associated with this pipeline.
-	// A nil value indicates that the scan job has not been created yet.
-	// +optional
-	ScanJob *v1.ObjectReference `json:"scanJob,omitempty" description:"A reference to the scan job associated with this pipeline."`
-
-	// UploadJob is a reference to the uploader associated with this pipeline.
-	// A nil value indicates that the upload job has not been created yet.
-	// +optional
-	UploadJob *v1.ObjectReference `json:"uploadJob,omitempty" description:"A reference to the uploader associated with this pipeline."`
-
-	// UploadService is a reference to the service that exposes the upload job.
-	// A nil value indicates that the service has not been created yet.
-	// +optional
-	UploadService *v1.ObjectReference `json:"uploadService,omitempty" description:"A reference to the service that exposes the upload job."`
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=atomic
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
 	// ScanJobOnly indicates if the pipeline is configured to run only the scan job without uploading results.
 	// This is true when the profile associated with the pipeline has no artifacts or uploaders defined.
 	// +optional
 	ScanJobOnly bool `json:"scanJobOnly,omitempty" description:"Indicates if the pipeline is configured to run only the scan job without uploading results."`
-
-	// Failed indicates if the pipeline has failed.
-	// +optional
-	Failed *bool `json:"failed,omitempty" description:"Indicates if the pipeline has failed."`
 
 	// StartTime is the time when the pipeline started.
 	// +optional

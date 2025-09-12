@@ -21,9 +21,8 @@ import (
 	"sync"
 	"time"
 
-	v1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/utils"
-	"go.uber.org/zap"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -44,7 +43,7 @@ func Receive(ctx context.Context, files []string) error {
 	mux.HandleFunc("/upload/", func(w http.ResponseWriter, r *http.Request) {
 		// check if file is already downloaded
 		path := strings.TrimPrefix(r.URL.Path, "/upload/")
-		logger.Info("received upload request", zap.String("path", path))
+		logger.Info("received upload request", "path", path)
 		file, err := url.PathUnescape(path)
 		if err != nil {
 			logger.Info("file name is not valid", "path", path)
@@ -62,12 +61,12 @@ func Receive(ctx context.Context, files []string) error {
 		defer mutex.Unlock()
 		written, exists := downloadedFiles[file]
 		if !exists {
-			logger.Info("file is not in the list of files to download", zap.String("path", file))
+			logger.Info("file is not in the list of files to download", "path", file)
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		if written {
-			logger.Info("file is already downloaded", zap.String("path", file))
+			logger.Info("file is already downloaded", "path", file)
 			w.WriteHeader(http.StatusConflict)
 			return
 		}

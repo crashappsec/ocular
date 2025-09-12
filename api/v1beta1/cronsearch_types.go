@@ -9,31 +9,111 @@
 package v1beta1
 
 import (
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type SearchTemplateSpec struct {
+	// Standard object's metadata of the searches created from this template.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// Spec is the specification of the search to be created when executing the CronSearch.
+	// +required
+	Spec SearchSpec `json:"spec" protobuf:"bytes,1,opt,name=spec"`
+}
+
 // CronSearchSpec defines the desired state of CronSearch
 type CronSearchSpec struct {
-	SearchSpec `json:",inline"`
+	// SearchTemplate is the template for the search that will be created when executing the CronSearch.
+	// +required
+	SearchTemplate SearchTemplateSpec `json:"searchTemplate" protobuf:"bytes,1,opt,name=searchTemplate"`
 
 	// The schedule in Cron format, see https://en.wikipedia.org/wiki/Cron.
-	Schedule string `json:"schedule" protobuf:"bytes,1,opt,name=schedule"`
+	Schedule string `json:"schedule" protobuf:"bytes,2,opt,name=schedule"`
+
+	// suspend tells the controller to suspend subsequent executions, it does
+	// not apply to already started executions.  Defaults to false.
+	// +optional
+	Suspend *bool `json:"suspend,omitempty" protobuf:"varint,3,opt,name=suspend"`
+
+	// successfulJobsHistoryLimit defines the number of successful finished jobs to retain.
+	// This is a pointer to distinguish between explicit zero and not specified.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	SuccessfulJobsHistoryLimit *int32 `json:"successfulJobsHistoryLimit,omitempty"`
+
+	// failedJobsHistoryLimit defines the number of failed finished jobs to retain.
+	// This is a pointer to distinguish between explicit zero and not specified.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	FailedJobsHistoryLimit *int32 `json:"failedJobsHistoryLimit,omitempty"`
+
+	// concurrencyPolicy specifies how to treat concurrent executions of a Job.
+	// Valid values are:
+	// - "Allow" (default): allows CronJobs to run concurrently;
+	// - "Forbid": forbids concurrent runs, skipping next run if previous run hasn't finished yet;
+	// - "Replace": cancels currently running search and replaces it with a new one
+	// +optional
+	// +kubebuilder:default:=Allow
+	ConcurrencyPolicy ConcurrencyPolicy `json:"concurrencyPolicy,omitempty"`
+
+	// startingDeadlineSeconds defines in seconds for starting the search if it misses scheduled
+	// time for any reason.  Missed searches executions will be counted as failed ones.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	StartingDeadlineSeconds *int64 `json:"startingDeadlineSeconds,omitempty"`
 }
+
+// ConcurrencyPolicy describes how the job will be handled.
+// Only one of the following concurrent policies may be specified.
+// If none of the following policies is specified, the default one
+// is AllowConcurrent.
+// +kubebuilder:validation:Enum=Allow;Forbid;Replace
+type ConcurrencyPolicy string
+
+const (
+	// AllowConcurrent allows CronSearches to run concurrently.
+	AllowConcurrent ConcurrencyPolicy = "Allow"
+
+	// ForbidConcurrent forbids concurrent runs, skipping next run if previous
+	// hasn't finished yet.
+	ForbidConcurrent ConcurrencyPolicy = "Forbid"
+
+	// ReplaceConcurrent cancels currently running search and replaces it with a new one.
+	ReplaceConcurrent ConcurrencyPolicy = "Replace"
+)
 
 // CronSearchStatus defines the observed state of CronSearch.
 type CronSearchStatus struct {
-	// CronSearchJob is a reference to the CronJob associated with this CronSearch.
-	// A nil value indicates that the CronJob has not been created yet.
+	// Active defines a list of pointers to currently running searches.
 	// +optional
-	CronSearchJob *corev1.ObjectReference `json:"cronSearchJob,omitempty" protobuf:"bytes,1,opt,name=cronSearchJob"`
+	// +listType=atomic
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=10
+	Active []corev1.ObjectReference `json:"active,omitempty"`
 
-	// CronSearchJobStatus represents the status of the CronJob associated with this CronSearch.
-	// A nil value indicates that the CronJob has not been created yet.
-	// This is useful to check status of the CronJob without having to fetch the CronJob resource itself.
+	// LastScheduleTime defines when was the last time the job was successfully scheduled.
 	// +optional
-	CronSearchJobStatus *batchv1.CronJobStatus `json:"cronSearchJobStatus,omitempty" protobuf:"bytes,2,opt,name=cronSearchJobStatus"`
+	LastScheduleTime *metav1.Time `json:"lastScheduleTime,omitempty"`
+
+	// For Kubernetes API conventions, see:
+	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
+
+	// Conditions represent the current state of the CronSearch resource.
+	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
+	//
+	// Standard condition types include:
+	// - "Available": the resource is fully functional
+	// - "Progressing": the resource is being created or updated
+	// - "Degraded": the resource failed to reach or maintain its desired state
+	//
+	// The status of each condition is one of True, False, or Unknown.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true

@@ -12,7 +12,6 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/zap"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -29,22 +28,15 @@ func CloseAndLog(ctx context.Context, c Closer, msg string, keysAndValues ...any
 	}
 }
 
-// CallAndLogWithArg is a utility function that calls a function with an argument and logs any error that occurs.
-// It is useful for defers to ensure that the function is called properly and any errors are logged.
-func CallAndLogWithArg[A any](ctx context.Context, c func(A) error, arg A) {
-	if err := c(arg); err != nil {
-		zap.L().Error("failed to close", zap.Error(err))
-	}
-}
-
 type CloserIgnore[I any] interface {
 	Close() (I, error)
 }
 
 // CloseIgnoreAndLog is a utility function that closes a resource and logs any error that occurs, and ignores
 // the result. It should be used for defers to ensure that the resource is closed properly and any errors are logged.
-func CloseIgnoreAndLog[I any](c CloserIgnore[I]) {
+func CloseIgnoreAndLog[I any](ctx context.Context, c CloserIgnore[I]) {
+	l := logf.FromContext(ctx)
 	if _, err := c.Close(); err != nil {
-		zap.L().Error("failed to close", zap.Error(err))
+		l.Error(err, "failed to close")
 	}
 }

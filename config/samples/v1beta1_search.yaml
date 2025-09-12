@@ -6,7 +6,9 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: search-sample
 spec:
-  crawlerRef: crawler-sample
+  crawlerRef:
+    name: crawler-sample
   parameters:
-    LOG_MSG: "Hello from Search!"
+    - name: "LOG_MSG"
+      value: "Hello from Search!"
   ttlSecondsAfterFinished: 180 # delete 3 minutes after finished

@@ -10,6 +10,7 @@ package resources
 
 import (
 	"context"
+	goerrors "errors"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -17,6 +18,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+var ErrCreation = goerrors.New("error creating resource")
 
 type ReconcileFunc[T client.Object] func(ctx context.Context, c client.Client, actual, desired T) error
 

@@ -33,12 +33,15 @@ rules:
   - ocular.crashoverride.run
   resources:
   - crawlers
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - ocular.crashoverride.run
+  resources:
   - cronsearches
-  - downloaders
   - pipelines
-  - profiles
   - searches
-  - uploaders
   verbs:
   - create
   - delete
@@ -50,29 +53,31 @@ rules:
 - apiGroups:
   - ocular.crashoverride.run
   resources:
-  - crawlers/finalizers
   - cronsearches/finalizers
-  - downloaders/finalizers
   - pipeliness/finalizers
-  - profiles/finalizers
   - searches/finalizers
-  - uploaders/finalizers
   verbs:
   - update
 - apiGroups:
   - ocular.crashoverride.run
   resources:
-  - crawlers/status
   - cronsearches/status
-  - downloaders/status
   - pipelines/status
-  - profiles/status
   - searches/status
-  - uploaders/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - ocular.crashoverride.run
+  resources:
+  - downloaders
+  - profiles
+  - uploaders
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:

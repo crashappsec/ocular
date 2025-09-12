@@ -15,9 +15,9 @@ import (
 	. "github.com/onsi/gomega"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -63,20 +63,16 @@ var _ = Describe("Search Controller", func() {
 							Command: []string{"/bin/sh", "-c"},
 							Args:    []string{"echo crawling $CRAWL_TARGET ...; sleep 10; echo done."},
 						},
-						Parameters: map[string]ocularcrashoverriderunv1beta1.ParameterDefinition{
-							"CRAWL_TARGET": {
+						Parameters: []ocularcrashoverriderunv1beta1.ParameterDefinition{
+							{
+								Name:        "CRAWL_TARGET",
 								Description: "The search query to execute",
 								Required:    true,
 							},
 						},
 					},
-					Status: ocularcrashoverriderunv1beta1.CrawlerStatus{
-						Valid: ptr.To(true),
-					},
 				}
 				Expect(k8sClient.Create(ctx, crawlerResource)).To(Succeed())
-				crawlerResource.Status.Valid = ptr.To(true)
-				Expect(k8sClient.Status().Update(ctx, crawlerResource)).To(Succeed())
 			}
 
 			err = k8sClient.Get(ctx, typeNamespacedName, search)
@@ -87,9 +83,14 @@ var _ = Describe("Search Controller", func() {
 						Namespace: "default",
 					},
 					Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-						CrawlerRef: crawlerName,
-						Parameters: map[string]string{
-							"CRAWL_TARGET": "example search query",
+						CrawlerRef: corev1.ObjectReference{
+							Name: crawlerName,
+						},
+						Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+							{
+								Name:  "CRAWL_TARGET",
+								Value: "example search query",
+							},
 						},
 					},
 				}
@@ -129,15 +130,30 @@ var _ = Describe("Search Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.StartTime).ToNot(BeNil())
 
-			Expect(resource.Status.SearchJob).ToNot(BeNil())
-			Expect(resource.Status.SearchJob.Namespace).To(Equal(resource.Namespace))
 			searchJob := &batchv1.Job{}
 			searchJobName := types.NamespacedName{
-				Name:      resource.Status.SearchJob.Name,
-				Namespace: resource.Status.SearchJob.Namespace,
+				Name:      resource.GetName() + searchResourceSuffix,
+				Namespace: resource.GetNamespace(),
 			}
 			err = k8sClient.Get(ctx, searchJobName, searchJob)
 			Expect(err).NotTo(HaveOccurred())
+
+			searchSA := &corev1.ServiceAccount{}
+			searchSAName := types.NamespacedName{
+				Name:      resource.GetName() + searchResourceSuffix,
+				Namespace: resource.GetNamespace(),
+			}
+			err = k8sClient.Get(ctx, searchSAName, searchSA)
+			Expect(err).NotTo(HaveOccurred())
+
+			searchRB := &rbacv1.RoleBinding{}
+			searchRBName := types.NamespacedName{
+				Name:      resource.GetName() + searchResourceSuffix,
+				Namespace: resource.GetNamespace(),
+			}
+			err = k8sClient.Get(ctx, searchRBName, searchRB)
+			Expect(err).NotTo(HaveOccurred())
+
 		})
 	})
 })

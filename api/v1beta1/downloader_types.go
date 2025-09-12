@@ -17,21 +17,22 @@ type DownloaderSpec struct {
 	// Container is the container that will be run to download the target.
 	// It must be a valid [v1.Container] that can be run in a Kubernetes pod.
 	// +required
-	Container v1.Container `json:"container" yaml:"container" description:"The container that will be run to download the target."`
+	Container v1.Container `json:"container" protobuf:"bytes,1,opt,name=container"`
 
-	// Volumes is a list of volumes that will be appended to the [k8s.io/api/core/v1.PodSpec]
+	// List of volumes that can be mounted by containers belonging to the pod.
+	// More info: https://kubernetes.io/docs/concepts/storage/volumes
 	// +optional
-	Volumes []v1.Volume `json:"volumes,omitempty" yaml:"volumes,omitempty" description:"A list of volumes that will be mounted into the downloader container. This is useful for sharing data between downloaders or for providing configuration files."`
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
+	Volumes []v1.Volume `json:"volumes,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,1,rep,name=volumes"`
 }
 
 type DownloaderStatus struct {
 	// Conditions represent the latest available observations of a Downloader's current state.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Downloader's current state."`
-
-	// Valid indicates whether the downloader is valid.
-	// +optional
-	Valid *bool `json:"valid,omitempty" description:"Whether or not the downloader is valid."`
 }
 
 // +kubebuilder:object:root=true

@@ -30,19 +30,16 @@ type ProfileSpec struct {
 
 	// UploaderRefs is a list of [UploaderRunSpec] that will be used to upload
 	// the results of the scanners. An uploader will be passed each of the artifacts
-	// as command line arguments, prefixed by the argument '--' . Each [UploaderRunRef] must specify the
+	// as command line arguments, prefixed by the argument '--' . Each [UploaderObjectReference] must specify the
 	// name of the uploader and any parameters that are required.
 	// +optional
-	UploaderRefs []UploaderRunRef `json:"uploaderRefs" yaml:"uploaderRefs" description:"A list of uploaders that will be used to upload the results of the scanners. An uploader will be passed each of the artifacts as command line arguments, prefixed by the argument '--'. Each UploaderRunRequest must specify the name of the uploader and any parameters that are required."`
+	UploaderRefs []UploaderObjectReference `json:"uploaderRefs" yaml:"uploaderRefs" description:"A list of uploaders that will be used to upload the results of the scanners. An uploader will be passed each of the artifacts as command line arguments, prefixed by the argument '--'. Each UploaderRunRequest must specify the name of the uploader and any parameters that are required."`
 }
 
 type ProfileStatus struct {
 	// Conditions represent the latest available observations of a Profile's current state.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Profile's current state."`
-	// Valid indicates whether the profile is valid.
-	// +optional
-	Valid *bool `json:"valid,omitempty" description:"Whether or not the profile is valid."`
 }
 
 // +kubebuilder:object:root=true

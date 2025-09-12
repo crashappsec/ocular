@@ -6,4 +6,12 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: cronsearch-sample
 spec:
-  # TODO(user): Add fields here
+  schedule: "0 0 * * *"
+  searchTemplate:
+    spec:
+      crawlerRef:
+        name: github
+      ttlSecondsAfterFinished: 180
+      parameters:
+        - name: PROFILE
+          value:

@@ -13,6 +13,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -45,11 +46,14 @@ var _ = Describe("CronSearch Controller", func() {
 					},
 					Spec: ocularcrashoverriderunv1beta1.CronSearchSpec{
 						Schedule: "*/1 * * * *",
-						SearchSpec: ocularcrashoverriderunv1beta1.SearchSpec{
-							CrawlerRef: "example-crawler",
+						SearchTemplate: ocularcrashoverriderunv1beta1.SearchTemplateSpec{
+							Spec: ocularcrashoverriderunv1beta1.SearchSpec{
+								CrawlerRef: v1.ObjectReference{
+									Name: "example-crawler",
+								},
+							},
 						},
 					},
-					// TODO(user): Specify other spec details if needed.
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -68,14 +72,13 @@ var _ = Describe("CronSearch Controller", func() {
 			controllerReconciler := &CronSearchReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
+				Clock:  realClock{},
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
 		})
 	})
 })

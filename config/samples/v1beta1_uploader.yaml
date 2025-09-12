@@ -11,6 +11,9 @@ spec:
     image: ubuntu:latest
     command: ["/bin/bash", "-c", "echo param is $OCULAR_PARAM_EXAMPLE; ls -al $OCULAR_RESULTS_DIR; for fileArg in \"${@:1}\"; do \n echo reading $fileArg; cat $fileArg; done;"]
   parameters:
-    EXAMPLE:
-      description: My example parameter.
+    - name: "EXAMPLE"
+      description: "My example parameter."
       required: true
+    - name: "OPTIONAL_PARAM"
+      description: "An optional parameter."
+      required: false

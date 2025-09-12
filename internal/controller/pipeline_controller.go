@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/crashappsec/ocular/internal/resources"
+	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -23,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -38,6 +38,10 @@ const (
 	TargetDirectory  = "/mnt/target"
 
 	ExtractorPort = 2121
+
+	scanJobSuffix       = "-scan"
+	uploadJobSuffix     = "-upload"
+	uploadServiceSuffix = "-upload-svc"
 )
 
 // PipelineReconciler reconciles a Pipeline object
@@ -52,12 +56,12 @@ func (r *PipelineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Pipeline{}).
 		Named("pipeline").
-		Owns(&batchv1.Job{}, builder.MatchEveryOwner).
+		Owns(&batchv1.Job{}).
 		Complete(r)
 }
 
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=profiles;downloaders;uploaders,verbs=get;list
+// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=profiles;downloaders;uploaders,verbs=get;list;watch
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipeliness/finalizers,verbs=update
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
@@ -92,102 +96,37 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	// Handle finalizers (i.e. remove finalizer from resource if needed)
-	finalized, err := resources.PerformFinalizer(ctx, pipeline, "pipeline.finalizers.ocular.crashoverride.run/cleanup", nil)
-	if err != nil {
-		l.Error(err, "error performing finalizer for pipeline", "name", pipeline.GetName())
-		return ctrl.Result{}, err
-	} else if finalized {
-		l.Info("pipeline has been finalized", "name", pipeline.GetName(), "finalizers", pipeline.GetFinalizers())
-		if updateErr := r.Update(ctx, pipeline); updateErr != nil {
-			l.Error(updateErr, "failed to update after finalization", "name", pipeline.GetName())
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{}, nil
-	}
-
 	// If the pipeline has a completion time, handle post-completion logic
 	if pipeline.Status.CompletionTime != nil {
 		return r.handlePostCompletion(ctx, pipeline)
 	}
 
-	// Check referenced profile exists and is valid
-	profile, exists, err := r.getProfile(pipeline)
-	if err != nil {
-		l.Error(err, "error fetching profile for pipeline", "name", pipeline.GetName(), "profileRef", pipeline.Spec.ProfileRef)
+	profile := &v1beta1.Profile{}
+	if err = r.Get(ctx, client.ObjectKey{
+		Namespace: pipeline.GetNamespace(),
+		Name:      pipeline.Spec.ProfileRef.Name,
+	}, profile); err != nil {
 		return ctrl.Result{}, err
-	} else if !exists {
-		l.Error(err, "profile not found for pipeline", "name", pipeline.GetName(), "profileRef", pipeline.Spec.ProfileRef)
-		pipeline.Status.Conditions = []metav1.Condition{
-			{
-				Type:               "Ready",
-				Status:             metav1.ConditionFalse,
-				Reason:             "ProfileNotFound",
-				Message:            "The specified profile does not exist.",
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			},
-		}
-		return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "profile not found")
 	}
 
-	if profile.Status.Valid == nil || !*profile.Status.Valid {
-		l.Error(err, "profile is not valid for pipeline", "name", pipeline.GetName(), "profileRef", pipeline.Spec.ProfileRef)
-		pipeline.Status.Conditions = []metav1.Condition{
-			{
-				Type:               "Ready",
-				Status:             metav1.ConditionFalse,
-				Reason:             "ProfileNotValid",
-				Message:            "The specified profile is not valid.",
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			},
-		}
-		return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "profile is invalid")
-	}
-
-	// Check referenced downloader exists and is valid
-	downloader, exists, err := r.getDownloader(pipeline)
-	if err != nil {
-		l.Error(err, "error fetching downloader for pipeline", "name", pipeline.GetName(), "downloaderRef", pipeline.Spec.DownloaderRef)
+	downloader := &v1beta1.Downloader{}
+	if err = r.Get(ctx, client.ObjectKey{
+		Namespace: pipeline.GetNamespace(),
+		Name:      pipeline.Spec.DownloaderRef.Name,
+	}, downloader); err != nil {
 		return ctrl.Result{}, err
-	} else if !exists {
-		l.Error(err, "downloader not found for pipeline", "name", pipeline.GetName(), "downloaderRef", pipeline.Spec.DownloaderRef)
-		pipeline.Status.Conditions = []metav1.Condition{
-			{
-				Type:               "Ready",
-				Status:             metav1.ConditionFalse,
-				Reason:             "DownloaderNotFound",
-				Message:            "The specified downloader does not exist.",
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			},
-		}
-		return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "downloader not found")
 	}
 
-	if downloader.Status.Valid == nil || !*downloader.Status.Valid {
-		l.Error(err, "downloader is not valid for pipeline", "name", pipeline.GetName(), "downloaderRef", pipeline.Spec.DownloaderRef)
-		pipeline.Status.Conditions = []metav1.Condition{
-			{
-				Type:               "Ready",
-				Status:             metav1.ConditionFalse,
-				Reason:             "DownloaderNotValid",
-				Message:            "The specified downloader is not valid.",
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			},
-		}
-		return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "downloader is invalid")
+	uploaders, err := r.getUploaders(ctx, profile)
+	if err != nil {
+		l.Error(err, "error fetching uploaders for pipeline", "name", req.Name)
+		return ctrl.Result{}, err
 	}
 
 	// In the case where no artifacts or uploaders are defined, we only need to run the scan job
 	shouldRunUploadJob := len(profile.Spec.Artifacts) > 0 && len(profile.Spec.UploaderRefs) > 0
 	if !shouldRunUploadJob && !pipeline.Status.ScanJobOnly {
 		pipeline.Status.ScanJobOnly = true
-	}
-
-	// fetch the uploader definitions referenced by the profile and tie them to their invocation parameters
-	uploaderInvocations, err := r.getUploaderInvocations(ctx, pipeline, profile)
-	if err != nil {
-		l.Error(err, "error fetching uploader invocations for pipeline", "name", req.Name)
-		return ctrl.Result{}, err
 	}
 
 	envVars := generateBasePipelineEnvironment(pipeline, profile, downloader)
@@ -197,7 +136,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	artifactsArgs := generateArtifactArguments(profile)
 
 	// generate desired upload job, service, and scan job
-	uploadJob := r.newUploaderJob(pipeline, profile, uploaderInvocations,
+	uploadJob := r.newUploaderJob(pipeline, profile, uploaders,
 		append(containerOpts,
 			resources.ContainerWithAdditionalArgs(artifactsArgs...),
 			resources.ContainerWithWorkingDir(ResultsDirectory),
@@ -231,10 +170,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			l.Error(err, "error reconciling upload job for pipeline", "name", pipeline.GetName())
 			return ctrl.Result{}, err
 		}
-		pipeline.Status.UploadJob = &corev1.ObjectReference{
-			Name:      uploadJob.Name,
-			Namespace: uploadJob.Namespace,
-		}
 	}
 
 	if uploadService != nil {
@@ -242,19 +177,11 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			l.Error(err, "error reconciling upload service for pipeline", "name", pipeline.GetName())
 			return ctrl.Result{}, err
 		}
-		pipeline.Status.UploadService = &corev1.ObjectReference{
-			Name:      uploadService.Name,
-			Namespace: uploadService.Namespace,
-		}
 	}
 
 	if err = resources.ReconcileChildResource[*batchv1.Job](ctx, r.Client, scanJob, pipeline, r.Scheme, copyStatus); err != nil {
 		l.Error(err, "error reconciling scan job for pipeline", "name", pipeline.GetName())
 		return ctrl.Result{}, err
-	}
-	pipeline.Status.ScanJob = &corev1.ObjectReference{
-		Name:      scanJob.Name,
-		Namespace: scanJob.Namespace,
 	}
 
 	// Update status to reflect jobs have been created
@@ -262,12 +189,12 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		reason, message := "ScanJobCreated", fmt.Sprintf("The scan job %s has been created.", scanJob.Name)
 		if !pipeline.Status.ScanJobOnly {
 			reason = "ScanAndUploadJobCreated"
-			message = fmt.Sprintf("The scan job %s and upload job %s have been created.", scanJob.GetName(), pipeline.Status.UploadJob.Name)
+			message = fmt.Sprintf("The scan job %s and upload job %s have been created.", scanJob.GetName(), uploadJob.GetName())
 		}
 		startTime := metav1.NewTime(time.Now())
 		pipeline.Status.Conditions = []metav1.Condition{
 			{
-				Type:               "Ready",
+				Type:               v1beta1.StartedConditionType,
 				Status:             metav1.ConditionTrue,
 				Reason:             reason,
 				Message:            message,
@@ -312,32 +239,53 @@ func (r *PipelineReconciler) createScanExtractorContainer(pipeline *v1beta1.Pipe
 func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1beta1.Pipeline, scanJob, uploadJob *batchv1.Job) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
 	l.Info("checking for scan & upload job completion")
-	if !pipeline.Status.ScanJobOnly {
+	if pipeline.Status.ScanJobOnly {
 		if scanJob.Status.CompletionTime != nil {
 			pipeline.Status.CompletionTime = scanJob.Status.CompletionTime
-			pipeline.Status.Failed = ptr.To(scanJob.Status.Failed > 0)
-			pipeline.Status.Conditions = append(pipeline.Status.Conditions,
-				metav1.Condition{
-					Type:               "Complete",
-					Status:             metav1.ConditionTrue,
-					Reason:             "ScanJobComplete",
-					Message:            "The scan job has completed.",
-					LastTransitionTime: metav1.NewTime(time.Now()),
-				})
+			if scanJob.Status.Failed > 0 {
+				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
+					metav1.Condition{
+						Type:               v1beta1.FailedConditionType,
+						Status:             metav1.ConditionTrue,
+						Reason:             "ScanJobComplete",
+						Message:            "The scan job has completed.",
+						LastTransitionTime: metav1.NewTime(time.Now()),
+					})
+			} else {
+				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
+					metav1.Condition{
+						Type:               v1beta1.CompleteConditionType,
+						Status:             metav1.ConditionFalse,
+						Reason:             "ScanJobFailed",
+						Message:            "The scan job has failed.",
+						LastTransitionTime: metav1.NewTime(time.Now()),
+					})
+			}
 			return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "scan job completed")
 		}
 	} else if uploadJob != nil {
 		if uploadJob.Status.CompletionTime != nil {
-			pipeline.Status.CompletionTime = uploadJob.Status.CompletionTime
-			pipeline.Status.Failed = ptr.To(uploadJob.Status.Failed > 0 && scanJob.Status.Failed > 0)
-			pipeline.Status.Conditions = append(pipeline.Status.Conditions,
-				metav1.Condition{
-					Type:               "Complete",
-					Status:             metav1.ConditionTrue,
-					Reason:             "ScanAndUploadJobComplete",
-					Message:            "Both the scan and upload jobs have completed.",
-					LastTransitionTime: metav1.NewTime(time.Now()),
-				})
+			t := metav1.NewTime(time.Now())
+			pipeline.Status.CompletionTime = &t
+			if uploadJob.Status.Failed > 0 && scanJob.Status.Failed > 0 {
+				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
+					metav1.Condition{
+						Type:               v1beta1.FailedConditionType,
+						Status:             metav1.ConditionTrue,
+						Reason:             "ScanAndUploadJobComplete",
+						Message:            "The scan upload job have completed.",
+						LastTransitionTime: metav1.NewTime(time.Now()),
+					})
+			} else {
+				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
+					metav1.Condition{
+						Type:               v1beta1.CompleteConditionType,
+						Status:             metav1.ConditionFalse,
+						Reason:             "ScanAndUploadJobFailed",
+						Message:            "The scan and/or upload job have failed.",
+						LastTransitionTime: metav1.NewTime(time.Now()),
+					})
+			}
 			return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "upload and scan job completed")
 		}
 	} else if scanJob.Status.Succeeded > 0 || scanJob.Status.Failed > 0 {
@@ -346,14 +294,13 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 			"name", pipeline.GetName())
 		pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 			metav1.Condition{
-				Type:               "Complete",
-				Status:             metav1.ConditionFalse,
+				Type:               v1beta1.FailedConditionType,
+				Status:             metav1.ConditionTrue,
 				Reason:             "ScansCompletedNoUploader",
 				Message:            "One or more scans have completed, but no upload job exists to capture results.",
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			})
 
-		pipeline.Status.Failed = ptr.To(true)
 		// return r.updateAndReturn(ctx, pipeline, "step", "scan complete without upload job")
 		return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "scan complete without upload job")
 	}
@@ -361,86 +308,24 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 	return ctrl.Result{}, nil
 }
 
-func (r *PipelineReconciler) getProfile(pipeline *v1beta1.Pipeline) (*v1beta1.Profile, bool, error) {
-	if pipeline.Spec.ProfileRef == "" {
-		return nil, false, nil
-	}
-
-	profile := &v1beta1.Profile{}
-	if err := r.Get(context.Background(), client.ObjectKey{
-		Namespace: pipeline.GetNamespace(),
-		Name:      pipeline.Spec.ProfileRef,
-	}, profile); err != nil {
-		if errors.IsNotFound(err) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-
-	return profile, true, nil
-}
-
-func (r *PipelineReconciler) getDownloader(pipeline *v1beta1.Pipeline) (*v1beta1.Downloader, bool, error) {
-	if pipeline.Spec.DownloaderRef == "" {
-		return nil, false, nil
-	}
-
-	downloader := &v1beta1.Downloader{}
-	if err := r.Get(context.Background(), client.ObjectKey{
-		Namespace: pipeline.GetNamespace(),
-		Name:      pipeline.Spec.DownloaderRef,
-	}, downloader); err != nil {
-		if errors.IsNotFound(err) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-
-	return downloader, true, nil
-}
-
-func (r *PipelineReconciler) getUploader(ctx context.Context, pipeline *v1beta1.Pipeline, name string) (*v1beta1.Uploader, bool, error) {
-	if name == "" {
-		return nil, false, nil
-	}
-
-	uploader := &v1beta1.Uploader{}
-	if err := r.Get(ctx, client.ObjectKey{
-		Namespace: pipeline.GetNamespace(),
-		Name:      name,
-	}, uploader); err != nil {
-		if errors.IsNotFound(err) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-
-	return uploader, true, nil
-}
-
-type UploaderInvocation struct {
-	Uploader  *v1beta1.Uploader
-	UploadRef v1beta1.UploaderRunRef
-}
-
-func (r *PipelineReconciler) getUploaderInvocations(ctx context.Context, pipeline *v1beta1.Pipeline, profile *v1beta1.Profile) (map[string]UploaderInvocation, error) {
-	l := logf.FromContext(ctx)
-	uploaderInvocations := make(map[string]UploaderInvocation, len(profile.Spec.UploaderRefs))
+func (r *PipelineReconciler) getUploaders(ctx context.Context, profile *v1beta1.Profile) (map[string]*v1beta1.Uploader, error) {
+	uploaders := make(map[string]*v1beta1.Uploader, len(profile.Spec.UploaderRefs))
 
 	for _, uploaderRef := range profile.Spec.UploaderRefs {
-		uploader, exists, err := r.getUploader(ctx, pipeline, uploaderRef.Name)
-		if err != nil || !exists {
-			// we can just error here since check for existence is done during reconcile of profile
-			l.Error(err, "error fetching uploader for pipeline", "name", pipeline.GetName(), "uploaderRef", uploaderRef)
+		var uploader v1beta1.Uploader
+		err := r.Get(ctx, client.ObjectKey{
+			Namespace: profile.GetNamespace(),
+			Name:      uploaderRef.Name,
+		}, &uploader)
+		if err != nil {
 			return nil, err
 		}
 
-		uploaderInvocations[uploaderRef.Name] = UploaderInvocation{
-			Uploader:  uploader,
-			UploadRef: uploaderRef,
+		if _, exists := uploaders[uploader.Name]; !exists {
+			uploaders[uploader.GetName()] = &uploader
 		}
 	}
-	return uploaderInvocations, nil
+	return uploaders, nil
 }
 
 func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, uploadJob *batchv1.Job) *corev1.Service {
@@ -450,12 +335,12 @@ func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, upload
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      uploadJob.GetName() + "-upload-svc",
+			Name:      pipeline.GetName() + uploadServiceSuffix,
 			Namespace: uploadJob.Namespace,
 			Labels: map[string]string{
 				"ocular.crashoverride.run/pipeline":   pipeline.GetName(),
-				"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef,
-				"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef,
+				"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef.Name,
+				"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef.Name,
 				"ocular.crashoverride.run/job-type":   "uploader",
 			},
 		},
@@ -473,51 +358,60 @@ func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, upload
 	}
 }
 
-func (r *PipelineReconciler) newUploaderJob(pipeline *v1beta1.Pipeline, _ *v1beta1.Profile, uploaderInvocations map[string]UploaderInvocation, containerOpts ...resources.ContainerOption) *batchv1.Job {
+func (r *PipelineReconciler) newUploaderJob(pipeline *v1beta1.Pipeline, profile *v1beta1.Profile, uploaders map[string]*v1beta1.Uploader, containerOpts ...resources.ContainerOption) *batchv1.Job {
 	if pipeline.Status.ScanJobOnly {
 		return nil
 	}
 	var (
-		uploaders = make([]corev1.Container, 0, len(uploaderInvocations))
-		volumes   []corev1.Volume
+		uploaderContainers = make([]corev1.Container, 0, len(profile.Spec.UploaderRefs))
+		volumes            []corev1.Volume
 	)
-	for _, invocation := range uploaderInvocations {
-		baseContainer := invocation.Uploader.Spec.Container
+	for _, uploaderInvocation := range profile.Spec.UploaderRefs {
+		uploader := uploaders[uploaderInvocation.Name] // should always exist since we validated during reconcile
+		baseContainer := uploader.Spec.Container
 		baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
 			Name:  v1beta1.EnvVarUploaderName,
-			Value: invocation.Uploader.GetName(),
+			Value: uploader.GetName(),
 		})
-		for paramName, paramDef := range invocation.Uploader.Spec.Parameters {
-			paramValue, paramSet := invocation.UploadRef.Parameters[paramName]
-			envVarName := v1beta1.ParameterToEnvironmentVariable(paramName)
-			if paramSet {
-				baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
-					Name:  envVarName,
-					Value: paramValue,
-				})
-			} else {
-				// if not set, and default exists, use default
-				if paramDef.Default != "" {
+
+		// this loop does not check for duplicate parameters NOR
+		// required parameters to be set. This is done during
+		// profile admission validation.
+
+		var setParams = map[string]struct{}{}
+		for _, paramDef := range uploaderInvocation.Parameters {
+			setParams[paramDef.Name] = struct{}{}
+			envVarName := ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name)
+			baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
+				Name:  envVarName,
+				Value: paramDef.Value,
+			})
+		}
+
+		for _, paramDef := range uploader.Spec.Parameters {
+			if _, exists := setParams[paramDef.Name]; !exists {
+				if paramDef.Default != nil {
 					baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
-						Name:  envVarName,
-						Value: paramDef.Default,
+						Name:  ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name),
+						Value: *paramDef.Default,
 					})
 				}
 			}
 		}
-		volumes = append(volumes, invocation.Uploader.Spec.Volumes...)
 
-		uploaders = append(uploaders, baseContainer)
+		volumes = append(volumes, uploader.Spec.Volumes...)
+
+		uploaderContainers = append(uploaderContainers, baseContainer)
 	}
 
 	uploadJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pipeline.GetName() + "-upload",
+			Name:      pipeline.GetName() + uploadJobSuffix,
 			Namespace: pipeline.GetNamespace(),
 			Labels: map[string]string{
 				"ocular.crashoverride.run/pipeline":   pipeline.GetName(),
-				"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef,
-				"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef,
+				"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef.Name,
+				"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef.Name,
 				"ocular.crashoverride.run/job-type":   "uploader",
 			},
 		},
@@ -529,14 +423,15 @@ func (r *PipelineReconciler) newUploaderJob(pipeline *v1beta1.Pipeline, _ *v1bet
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
 						"ocular.crashoverride.run/pipeline":   pipeline.GetName(),
-						"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef,
-						"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef,
+						"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef.Name,
+						"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef.Name,
 						"ocular.crashoverride.run/job-type":   "uploader",
 					},
 				},
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers:    resources.ApplyOptionsToContainers(uploaders, containerOpts...),
+					ServiceAccountName: pipeline.Spec.UploadServiceAccountName,
+					RestartPolicy:      corev1.RestartPolicyNever,
+					Containers:         resources.ApplyOptionsToContainers(uploaderContainers, containerOpts...),
 					InitContainers: resources.ApplyOptionsToContainers([]corev1.Container{
 						// Add the extractor as an init container running in receive mode
 						{
@@ -568,10 +463,6 @@ func (r *PipelineReconciler) newUploaderJob(pipeline *v1beta1.Pipeline, _ *v1bet
 		},
 	}
 
-	if pipeline.Spec.UploadServiceAccountName != nil {
-		uploadJob.Spec.Template.Spec.ServiceAccountName = *pipeline.Spec.UploadServiceAccountName
-	}
-
 	return uploadJob
 }
 
@@ -582,12 +473,12 @@ func (r *PipelineReconciler) newScanJob(pipeline *v1beta1.Pipeline, profile *v1b
 
 	scanJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pipeline.GetName() + "-scan",
+			Name:      pipeline.GetName() + scanJobSuffix,
 			Namespace: pipeline.GetNamespace(),
 			Labels: map[string]string{
 				"ocular.crashoverride.run/pipeline":   pipeline.GetName(),
-				"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef,
-				"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef,
+				"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef.Name,
+				"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef.Name,
 				"ocular.crashoverride.run/job-type":   "scanner",
 			},
 		},
@@ -599,14 +490,15 @@ func (r *PipelineReconciler) newScanJob(pipeline *v1beta1.Pipeline, profile *v1b
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
 						"ocular.crashoverride.run/pipeline":   pipeline.GetName(),
-						"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef,
-						"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef,
+						"ocular.crashoverride.run/profile":    pipeline.Spec.ProfileRef.Name,
+						"ocular.crashoverride.run/downloader": pipeline.Spec.DownloaderRef.Name,
 						"ocular.crashoverride.run/job-type":   "scanner",
 					},
 				},
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers:    resources.ApplyOptionsToContainers(profile.Spec.Containers, containerOpts...),
+					ServiceAccountName: pipeline.Spec.ScanServiceAccountName,
+					RestartPolicy:      corev1.RestartPolicyNever,
+					Containers:         resources.ApplyOptionsToContainers(profile.Spec.Containers, containerOpts...),
 					InitContainers: resources.ApplyOptionsToContainers([]corev1.Container{
 						// Add the downloader as an init container
 						downloader.Spec.Container,
@@ -626,10 +518,6 @@ func (r *PipelineReconciler) newScanJob(pipeline *v1beta1.Pipeline, profile *v1b
 				},
 			},
 		},
-	}
-
-	if pipeline.Spec.ScanServiceAccountName != nil {
-		scanJob.Spec.Template.Spec.ServiceAccountName = *pipeline.Spec.ScanServiceAccountName
 	}
 
 	return scanJob

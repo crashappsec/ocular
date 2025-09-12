@@ -14,27 +14,38 @@ resources:
 - api:
     crdVersion: v1beta1
     namespaced: true
-  controller: true
+  controller: false
   domain: ocular.crashoverride.run
   kind: Profile
   path: github.com/crashappsec/ocular/api/v1beta1
   version: v1beta1
+  webhooks:
+    defaulting: false
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1beta1
     namespaced: true
-  controller: true
+  controller: false
   domain: ocular.crashoverride.run
   kind: Downloader
   path: github.com/crashappsec/ocular/api/v1beta1
   version: v1beta1
+  webhooks:
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1beta1
     namespaced: true
-  controller: true
+  controller: false
   domain: ocular.crashoverride.run
   kind: Uploader
   path: github.com/crashappsec/ocular/api/v1beta1
   version: v1beta1
+  webhooks:
+    defaulting: false
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1beta1
     namespaced: true
@@ -43,6 +54,10 @@ resources:
   kind: Pipeline
   path: github.com/crashappsec/ocular/api/v1beta1
   version: v1beta1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1beta1
     namespaced: true
@@ -51,6 +66,10 @@ resources:
   kind: Crawler
   path: github.com/crashappsec/ocular/api/v1beta1
   version: v1beta1
+  webhooks:
+    defaulting: false
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1beta1
     namespaced: true
@@ -59,6 +78,10 @@ resources:
   kind: Search
   path: github.com/crashappsec/ocular/api/v1beta1
   version: v1beta1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1beta1
     namespaced: true
@@ -66,5 +89,9 @@ resources:
   domain: ocular.crashoverride.run
   kind: CronSearch
   path: github.com/crashappsec/ocular/api/v1beta1
-  version: betav1
+  version: v1betav1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 version: "3"

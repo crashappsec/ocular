@@ -9,4 +9,5 @@ docs/
 .git/
 .idea/
 .vscode/
+pkg/generated
 .env*

@@ -18,31 +18,34 @@ type SearchSpec struct {
 	// CrawlerRef is a reference to the crawler that will be run in this search.
 	// It should point to a valid Crawler resource in the same namespace.
 	// +required
-	CrawlerRef string `json:"crawlerRef,omitempty" protobuf:"bytes,1,opt,name=crawlerRef"`
+	CrawlerRef v1.ObjectReference `json:"crawlerRef,omitempty" protobuf:"bytes,1,opt,name=crawlerRef"`
 
-	// Parameters is a map of parameters that will be passed to the crawler.
-	// These parameters should be defined in the referenced Crawler spec.
-	Parameters map[string]string `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	// Parameters is a list of parameters to pass to the crawler as environment variables.
+	// +optional
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
+	Parameters []ParameterSetting `json:"parameters,omitempty" protobuf:"bytes,2,rep,name=parameters"`
 
 	// TTLSecondsAfterFinished is the number of seconds to retain the search after it has finished.
+	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,2,opt,name=ttlSecondsAfterFinished"`
 }
 
 // SearchStatus defines the observed state of Search.
 type SearchStatus struct {
-	// Conditions represent the latest available observations of a Pipeline's current state.
+	// Conditions latest available observations of an object's current state. When a Search
+	// fails, one of the conditions will have type [FailedConditionType] and status true.
+	// A search is considered finished when it is in a terminal condition, either
+	// [CompleteConditionType] or [FailedConditionType]. A Search cannot have both the [CompleteConditionType]  and FailedConditionType] conditions.
+	//
+	// More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Pipeline's current state."`
-
-	// SearchJob is a reference to the job associated with this search.
-	// A nil value indicates that the scan job has not been created yet.
-	// +optional
-	SearchJob *v1.ObjectReference `json:"scanJob,omitempty" description:"A reference to the scan job associated with this pipeline."`
-
-	// Failed indicates if the search has failed, meaning that the crawler exited with a non-zero status code.
-	// A nil value indicates that the search is still in progress or has not started yet.
-	// +optional
-	Failed *bool `json:"failed,omitempty" description:"Indicates if the pipeline has failed."`
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=atomic
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
 	// StartTime is the time when the search started.
 	// +optional
@@ -51,10 +54,15 @@ type SearchStatus struct {
 	// CompletionTime is the time when the search completed.
 	// +optional
 	CompletionTime *metav1.Time `json:"completionTime,omitempty" description:"The time when the search completed, nil represents that the search has not completed yet."`
+
+	// CronSearchControllerName is the name of the controller that created this search.
+	// +optional
+	CronSearchControllerName *string `json:"cronSearchControllerName,omitempty" description:"The name of the controller that created this search."`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:selectablefield:JSONPath=`.status.cronSearchControllerName`
 // +genclient
 
 // Search is the Schema for the searches API

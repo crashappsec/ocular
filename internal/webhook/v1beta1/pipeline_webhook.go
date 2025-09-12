@@ -1,0 +1,164 @@
+// Copyright (C) 2025 Crash Override, Inc.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the FSF, either version 3 of the License, or (at your option) any later version.
+// See the LICENSE file in the root of this repository for full license text or
+// visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
+
+package v1beta1
+
+import (
+	"context"
+	"fmt"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+)
+
+// nolint:unused
+// log is for logging in this package.
+var pipelinelog = logf.Log.WithName("pipeline-resource")
+
+// SetupPipelineWebhookWithManager registers the webhook for Pipeline in the manager.
+func SetupPipelineWebhookWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewWebhookManagedBy(mgr).For(&ocularcrashoverriderunv1beta1.Pipeline{}).
+		WithValidator(&PipelineCustomValidator{
+			c: mgr.GetClient(),
+		}).
+		WithDefaulter(&PipelineCustomDefaulter{}).
+		Complete()
+}
+
+// +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-pipeline,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=pipelines,verbs=create;update,versions=v1beta1,name=mpipeline-v1beta1.kb.io,admissionReviewVersions=v1
+
+// PipelineCustomDefaulter struct is responsible for setting default values on the custom resource of the
+// Kind Pipeline when those are created or updated.
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as it is used only for temporary operations and does not need to be deeply copied.
+type PipelineCustomDefaulter struct {
+	// TODO(user): Add more fields as needed for defaulting
+}
+
+var _ webhook.CustomDefaulter = &PipelineCustomDefaulter{}
+
+// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pipeline.
+func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
+	pipeline, ok := obj.(*ocularcrashoverriderunv1beta1.Pipeline)
+
+	if !ok {
+		return fmt.Errorf("expected an Pipeline object but got %T", obj)
+	}
+
+	pipeline.Spec.UploadServiceAccountName = "default"
+	pipeline.Spec.ScanServiceAccountName = "default"
+
+	return nil
+}
+
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-pipeline,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=pipelines,verbs=create;update,versions=v1beta1,name=vpipeline-v1beta1.kb.io,admissionReviewVersions=v1
+
+// PipelineCustomValidator struct is responsible for validating the Pipeline resource
+// when it is created, updated, or deleted.
+type PipelineCustomValidator struct {
+	c client.Client
+}
+
+var _ webhook.CustomValidator = &PipelineCustomValidator{}
+
+// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
+func (v *PipelineCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	pipeline, ok := obj.(*ocularcrashoverriderunv1beta1.Pipeline)
+	if !ok {
+		return nil, fmt.Errorf("expected a Pipeline object but got %T", obj)
+	}
+
+	return nil, validatePipeline(ctx, v.c, pipeline)
+}
+
+// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
+func (v *PipelineCustomValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
+	pipeline, ok := newObj.(*ocularcrashoverriderunv1beta1.Pipeline)
+	if !ok {
+		return nil, fmt.Errorf("expected a Pipeline object for the newObj but got %T", newObj)
+	}
+
+	return nil, validatePipeline(ctx, v.c, pipeline)
+}
+
+func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcrashoverriderunv1beta1.Pipeline) error {
+	// Validate Profile exists
+	profileNamespace := pipeline.Spec.ProfileRef.Namespace
+	if profileNamespace != "" && pipeline.Spec.ProfileRef.Namespace != pipeline.Namespace {
+		return fmt.Errorf("profileRef namespace must be empty or match the pipeline namespace")
+	}
+	var profile ocularcrashoverriderunv1beta1.Profile
+	err := c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ProfileRef.Name, Namespace: pipeline.Namespace}, &profile)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("profile %s/%s not found", pipeline.Spec.ProfileRef.Namespace, pipeline.Spec.ProfileRef.Name)
+		}
+		return fmt.Errorf("error fetching profile %s/%s: %w", pipeline.Spec.ProfileRef.Namespace, pipeline.Spec.ProfileRef.Name, err)
+	}
+
+	// Validate Downloader exists
+	downloaderNamespace := pipeline.Spec.DownloaderRef.Namespace
+	if downloaderNamespace != "" && pipeline.Spec.DownloaderRef.Namespace != pipeline.Namespace {
+		return fmt.Errorf("downlaoderRef namespace must be empty or match the pipeline namespace")
+	}
+	var downloader ocularcrashoverriderunv1beta1.Downloader
+	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.DownloaderRef.Name, Namespace: pipeline.Namespace}, &downloader)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("downloader %s/%s not found", pipeline.Spec.DownloaderRef.Namespace, pipeline.Spec.DownloaderRef.Name)
+		}
+		return fmt.Errorf("error fetching dwonloader %s/%s: %w", pipeline.Spec.DownloaderRef.Namespace, pipeline.Spec.DownloaderRef.Name, err)
+	}
+
+	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ScanServiceAccountName, Namespace: pipeline.Namespace}, &corev1.ServiceAccount{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("scan service account %s not found", pipeline.Spec.ScanServiceAccountName)
+		}
+		return fmt.Errorf("error fetching scan service account %s: %w", pipeline.Spec.ScanServiceAccountName, err)
+	}
+
+	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.UploadServiceAccountName, Namespace: pipeline.Namespace}, &corev1.ServiceAccount{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("upload service account %s not found", pipeline.Spec.UploadServiceAccountName)
+		}
+		return fmt.Errorf("error fetching uploader service account %s: %w", pipeline.Spec.UploadServiceAccountName, err)
+	}
+
+	volumes := map[string]struct{}{}
+	for _, vol := range append(downloader.Spec.Volumes, profile.Spec.Volumes...) {
+		if _, exists := volumes[vol.Name]; exists {
+			return fmt.Errorf("duplicate name between downloader and profile volumes: %s", vol.Name)
+		}
+		volumes[vol.Name] = struct{}{}
+	}
+
+	return nil
+}
+
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
+func (v *PipelineCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	pipeline, ok := obj.(*ocularcrashoverriderunv1beta1.Pipeline)
+	if !ok {
+		return nil, fmt.Errorf("expected a Pipeline object but got %T", obj)
+	}
+
+	pipelinelog.Info("pipeline delete called but should not be registered, see NOTE", "name", pipeline.GetName())
+
+	return nil, nil
+}

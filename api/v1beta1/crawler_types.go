@@ -9,22 +9,16 @@
 package v1beta1
 
 import (
-	"errors"
-	"fmt"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type CrawlerRunRef = ParameterizedRunRef
+type CrawlerRunRef = ParameterizedObjectReference
 
 type CrawlerStatus struct {
-	// Conditions is a list of conditions that the uploader is in.
+	// Conditions is a list of conditions that the crawler is in.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Uploader's current state."`
-	// Valid indicates whether the uploader is valid.
-	// +optional
-	Valid *bool `json:"valid,omitempty" description:"Whether or not the uploader is valid."`
 }
 
 // CrawlerSpec defines the desired state of Crawler
@@ -34,17 +28,27 @@ type CrawlerSpec struct {
 	// +required
 	Container v1.Container `json:"container" yaml:"container" description:"The container that will be run to enumerate targets and create Pipelines."`
 
-	// Volumes is a list of volumes that will be appended to the [k8s.io/api/core/v1.PodSpec]
+	// List of volumes that can be mounted by containers belonging to the pod.
+	// This list of volumes will be appended to the [k8s.io/api/core/v1.PodSpec] that runs the crawler,
+	// which will also include volumes defined by the other Uploader resources defined in the Profile of the Pipeline.
+	// More info: https://kubernetes.io/docs/concepts/storage/volumes
 	// +optional
-	Volumes []v1.Volume `json:"volumes,omitempty" yaml:"volumes,omitempty" description:"A list of volumes that will be mounted into the downloader container. This is useful for sharing data between downloaders or for providing configuration files."`
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
+	Volumes []v1.Volume `json:"volumes,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,2,rep,name=volumes"`
 
-	// Parameters is a map of parameters that can be used to define additional parameters
-	// that the crawler can use. The keys are the parameter names, and the values
-	// are the definitions of the parameters. The uploader can use these parameters
-	// to customize its behavior. The parameters can be used in the uploader's command line
-	// arguments, environment variables, or any other way that the uploader supports.
+	// Parameters is a list of ParameterDefinition that can be used to define user enter "parameters"
+	// that the crawler can use to configure how to crawl targets. The crawler can use these parameters
+	// to customize its behavior. The parameters can be used in the crawler's command line
+	// arguments, environment variables, or any other way that the crawler supports.
 	// +optional
-	Parameters map[string]ParameterDefinition `json:"parameters,omitempty" yaml:"parameters,omitempty" description:"Parameters used to define additional parameters."`
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
+	Parameters []ParameterDefinition `json:"parameters,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,3,rep,name=parameters"`
 }
 
 // +kubebuilder:object:root=true
@@ -68,6 +72,8 @@ type Crawler struct {
 	Status CrawlerStatus `json:"status,omitempty,omitzero"`
 }
 
+type CrawlerObjectReference = ParameterizedObjectReference
+
 // +kubebuilder:object:root=true
 
 // CrawlerList contains a list of Crawler
@@ -79,22 +85,4 @@ type CrawlerList struct {
 
 func init() {
 	SchemeBuilder.Register(&Crawler{}, &CrawlerList{})
-}
-
-var ErrParameter = errors.New("invalid parameter")
-
-func ValidateCrawlerParameters(crawler Crawler, parameters map[string]string) error {
-	for name, def := range crawler.Spec.Parameters {
-		paramValue, exists := parameters[name]
-		if def.Required && (!exists || paramValue == "") {
-			return fmt.Errorf("%w: param '%s' is required but not provided", ErrParameter, name)
-		}
-	}
-	for name := range parameters {
-		_, exists := crawler.Spec.Parameters[name]
-		if !exists {
-			return fmt.Errorf("%w: param '%s' is not defined in crawler spec", ErrParameter, name)
-		}
-	}
-	return nil
 }

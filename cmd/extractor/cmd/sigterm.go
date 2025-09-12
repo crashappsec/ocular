@@ -14,7 +14,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"go.uber.org/zap"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -25,5 +24,5 @@ func AwaitSigterm(ctx context.Context) {
 	signal.Notify(sigTerm, syscall.SIGTERM, syscall.SIGINT)
 	l.Info("awaiting SIGTERM")
 	sig := <-sigTerm
-	l.Info("Received signal", zap.String("signal", sig.String()))
+	l.Info("Received signal", "signal", sig.String())
 }

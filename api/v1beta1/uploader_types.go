@@ -18,30 +18,38 @@ type UploaderSpec struct {
 	// Container is the container that will be run to download the target.
 	// It must be a valid [v1.Container] that can be run in a Kubernetes pod.
 	// +required
-	Container v1.Container `json:"container" yaml:"container" description:"The container that will be run to download the target."`
+	Container v1.Container `json:"container" protobuf:"bytes,1,opt,name=container"`
 
-	// Volumes is a list of volumes that will be appended to the [k8s.io/api/core/v1.PodSpec]
+	// List of volumes that can be mounted by containers belonging to the pod.
+	// This list of volumes will be appended to the [k8s.io/api/core/v1.PodSpec] that runs the uploader,
+	// which will also include volumes defined by the other Uploader resources defined in the Profile of the Pipeline.
+	// More info: https://kubernetes.io/docs/concepts/storage/volumes
 	// +optional
-	Volumes []v1.Volume `json:"volumes,omitempty" yaml:"volumes,omitempty" description:"A list of volumes that will be mounted into the downloader container. This is useful for sharing data between downloaders or for providing configuration files."`
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
+	Volumes []v1.Volume `json:"volumes,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,2,rep,name=volumes"`
 
-	// Parameters is a map of parameters that can be used to define additional parameters
-	// that the uploader can use. The keys are the parameter names, and the values
+	// Parameters is a list of ParameterDefinition that can be used to define user enter "parameters"
+	// that the uploader can use to configure how to upload results. T
 	// are the definitions of the parameters. The uploader can use these parameters
 	// to customize its behavior. The parameters can be used in the uploader's command line
 	// arguments, environment variables, or any other way that the uploader supports.
 	// +optional
-	Parameters map[string]ParameterDefinition `json:"parameters,omitempty" yaml:"parameters,omitempty" description:"Parameters used to define additional parameters."`
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
+	Parameters []ParameterDefinition `json:"parameters,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,3,rep,name=parameters"`
 }
 
-type UploaderRunRef = ParameterizedRunRef
+type UploaderObjectReference = ParameterizedObjectReference
 
 type UploaderStatus struct {
 	// Conditions is a list of conditions that the uploader is in.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Uploader's current state."`
-	// Valid indicates whether the uploader is valid.
-	// +optional
-	Valid *bool `json:"valid,omitempty" description:"Whether or not the uploader is valid."`
 }
 
 // +kubebuilder:object:root=true

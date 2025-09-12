@@ -17,6 +17,7 @@ import (
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/resources"
+	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -25,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -43,9 +43,13 @@ func (r *SearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Search{}).
 		Named("search").
-		Owns(&batchv1.Job{}, builder.MatchEveryOwner).
+		Owns(&batchv1.Job{}).
 		Complete(r)
 }
+
+const (
+	searchResourceSuffix = "-search"
+)
 
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches/status,verbs=get;update;patch
@@ -68,69 +72,19 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	// Handle finalizers (i.e. remove finalizer from resource if needed)
-	finalized, err := resources.PerformFinalizer(ctx, search, "search.finalizers.ocular.crashoverride.run/cleanup", nil)
-	if err != nil {
-		l.Error(err, "error performing finalizer for pipeline", "name", search.GetName())
-		return ctrl.Result{}, err
-	} else if finalized {
-		l.Info("search has been finalized", "name", search.GetName(), "finalizers", search.GetFinalizers())
-		if updateErr := r.Update(ctx, search); updateErr != nil {
-			l.Error(updateErr, "failed to update after finalization", "name", search.GetName())
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{}, nil
-	}
-
 	// If the pipeline has a completion time, handle post-completion logic
 	if search.Status.CompletionTime != nil {
 		return r.handlePostCompletion(ctx, search)
 	}
 
 	// Check referenced crawler exists and is valid
-	crawler, exists, err := r.getCrawler(ctx, search)
+	crawler := &v1beta1.Crawler{}
+	err = r.Get(ctx, client.ObjectKey{
+		Name:      search.Spec.CrawlerRef.Name,
+		Namespace: search.Namespace,
+	}, crawler)
 	if err != nil {
-		l.Error(err, "error fetching crawler for search", "name", search.GetName(), "crawlerRef", search.Spec.CrawlerRef)
 		return ctrl.Result{}, err
-	} else if !exists {
-		l.Error(err, "crawler not found for search", "name", search.GetName(), "crawlerRef", search.Spec.CrawlerRef)
-		search.Status.Conditions = []metav1.Condition{
-			{
-				Type:               "Ready",
-				Status:             metav1.ConditionFalse,
-				Reason:             "CrawlerNotFound",
-				Message:            "The specified crawler does not exist.",
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			},
-		}
-		return ctrl.Result{}, updateStatus(ctx, r.Client, search, "step", "crawler not found")
-	}
-
-	if crawler.Status.Valid == nil || !*crawler.Status.Valid {
-		l.Error(err, "crawler is not valid for pipeline", "name", search.GetName(), "crawlerRef", search.Spec.CrawlerRef)
-		search.Status.Conditions = []metav1.Condition{
-			{
-				Type:               "Ready",
-				Status:             metav1.ConditionFalse,
-				Reason:             "CrawlerNotValid",
-				Message:            "The specified crawler is not valid.",
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			},
-		}
-		return ctrl.Result{}, updateStatus(ctx, r.Client, search, "step", "crawler is invalid")
-	}
-
-	if err = v1beta1.ValidateCrawlerParameters(*crawler, search.Spec.Parameters); err != nil {
-		search.Status.Conditions = []metav1.Condition{
-			{
-				Type:               "Ready",
-				Status:             metav1.ConditionFalse,
-				Reason:             "InvalidParameters",
-				Message:            fmt.Sprintf("The specified parameters are invalid: %v", err),
-				LastTransitionTime: metav1.NewTime(time.Now()),
-			},
-		}
-		return ctrl.Result{}, updateStatus(ctx, r.Client, search, "step", "invalid crawler parameters")
 	}
 
 	envVars := generateBaseSearchEnvironment(search, crawler)
@@ -145,7 +99,6 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// generate desired upload job, service, and scan job
 	searchServiceAccount := r.newSearchServiceAccount(search)
 
-	// here
 	if err = resources.ReconcileChildResource[*corev1.ServiceAccount](ctx, r.Client, searchServiceAccount, nil, r.Scheme, copyOwnership); err != nil {
 		l.Error(err, "error reconciling service account for search", "name", search.GetName())
 		return ctrl.Result{}, err
@@ -171,17 +124,13 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		l.Error(err, "error reconciling upload job for pipeline", "name", search.GetName())
 		return ctrl.Result{}, err
 	}
-	search.Status.SearchJob = &corev1.ObjectReference{
-		Name:      searchJob.Name,
-		Namespace: searchJob.Namespace,
-	}
 
 	// Update status to reflect jobs have been created
 	if search.Status.StartTime == nil {
 		startTime := metav1.NewTime(time.Now())
 		search.Status.Conditions = []metav1.Condition{
 			{
-				Type:               "Ready",
+				Type:               v1beta1.StartedConditionType,
 				Status:             metav1.ConditionTrue,
 				Reason:             "SearchJobCreated",
 				Message:            fmt.Sprintf("The scan job %s has been created.", searchJob.Name),
@@ -203,25 +152,10 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return r.handleCompletion(ctx, search, searchJob)
 }
 
-func (r *SearchReconciler) getCrawler(ctx context.Context, search *v1beta1.Search) (*v1beta1.Crawler, bool, error) {
-	crawler := &v1beta1.Crawler{}
-	err := r.Get(ctx, client.ObjectKey{
-		Name:      search.Spec.CrawlerRef,
-		Namespace: search.Namespace,
-	}, crawler)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-	return crawler, true, nil
-}
-
 func (r *SearchReconciler) newSearchServiceAccount(search *v1beta1.Search) *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("search-%s-sa", search.GetName()),
+			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
 			Labels: map[string]string{
 				"app":        "ocular",
@@ -235,7 +169,7 @@ func (r *SearchReconciler) newSearchServiceAccount(search *v1beta1.Search) *core
 func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *corev1.ServiceAccount) *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("search-%s-rb", search.GetName()),
+			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
 			Labels: map[string]string{
 				"app":        "ocular",
@@ -265,21 +199,27 @@ func (r *SearchReconciler) newSearchJob(search *v1beta1.Search, crawler *v1beta1
 		"searchName": search.GetName(),
 	}
 
-	var envVars []corev1.EnvVar
-	for paramName, paramDef := range crawler.Spec.Parameters {
-		paramValue, paramSet := search.Spec.Parameters[paramName]
-		envVarName := v1beta1.ParameterToEnvironmentVariable(paramName)
-		if paramSet {
-			envVars = append(envVars, corev1.EnvVar{
-				Name:  envVarName,
-				Value: paramValue,
-			})
-		} else {
-			// if not set, and default exists, use default
-			if paramDef.Default != "" {
+	envVars := make([]corev1.EnvVar, 0, len(crawler.Spec.Parameters))
+	// this loop does not check for duplicate parameters NOR
+	// required parameters to be set. This is done during
+	// profile admission validation.
+
+	var setParams = map[string]struct{}{}
+	for _, paramDef := range search.Spec.Parameters {
+		setParams[paramDef.Name] = struct{}{}
+		envVarName := ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name)
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  envVarName,
+			Value: paramDef.Value,
+		})
+	}
+
+	for _, paramDef := range crawler.Spec.Parameters {
+		if _, exists := setParams[paramDef.Name]; !exists {
+			if paramDef.Default != nil {
 				envVars = append(envVars, corev1.EnvVar{
-					Name:  envVarName,
-					Value: paramDef.Default,
+					Name:  ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name),
+					Value: *paramDef.Default,
 				})
 			}
 		}
@@ -287,7 +227,7 @@ func (r *SearchReconciler) newSearchJob(search *v1beta1.Search, crawler *v1beta1
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("search-%s-job", search.GetName()),
+			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
 			Labels:    labels,
 		},
@@ -331,28 +271,21 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 	// job has completed but we haven't recorded it yet
 	if search.Status.CompletionTime == nil && job.Status.CompletionTime != nil {
 		l.Info("search job completed, recording completion in status", "name", search.GetName(), "job", job.GetName())
-		failed := job.Status.Failed > 0
-		var (
-			status  = metav1.ConditionTrue
-			reason  = "SearchJobCompleted"
-			message = "Search has completed successfully."
-		)
-		search.Status.Failed = ptr.To(failed)
-		if failed {
-			status = metav1.ConditionFalse
-			reason = "SearchJobFailed"
-			message = "Search reported a container failure."
-		}
-		completionTime := metav1.NewTime(time.Now())
-		search.Status.CompletionTime = &completionTime
-		search.Status.Conditions = []metav1.Condition{
-			{
-				Type:               "Completed",
-				Status:             status,
-				Reason:             reason,
-				Message:            message,
-				LastTransitionTime: completionTime,
-			},
+		search.Status.CompletionTime = &metav1.Time{Time: job.Status.CompletionTime.Time}
+		if job.Status.Failed > 0 {
+			search.Status.Conditions = append(search.Status.Conditions, metav1.Condition{
+				Type:    v1beta1.FailedConditionType,
+				Status:  metav1.ConditionTrue,
+				Reason:  "SearchJobFailed",
+				Message: "Search reported a container failure.",
+			})
+		} else {
+			search.Status.Conditions = append(search.Status.Conditions, metav1.Condition{
+				Type:    v1beta1.CompleteConditionType,
+				Status:  metav1.ConditionTrue,
+				Reason:  "SearchJobCompleted",
+				Message: "Search has completed successfully.",
+			})
 		}
 		if err := updateStatus(ctx, r.Client, search, "step", "search job completion"); err != nil {
 			return ctrl.Result{}, err

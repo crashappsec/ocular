@@ -1576,22 +1576,72 @@ spec:
                 description: |-
                   UploaderRefs is a list of [UploaderRunSpec] that will be used to upload
                   the results of the scanners. An uploader will be passed each of the artifacts
-                  as command line arguments, prefixed by the argument '--' . Each [UploaderRunRef] must specify the
+                  as command line arguments, prefixed by the argument '--' . Each [UploaderObjectReference] must specify the
                   name of the uploader and any parameters that are required.
                 items:
+                  description: ParameterizedObjectReference is a reference to a resource
+                    that will be run with parameters.
                   properties:
+                    apiVersion:
+                      description: API version of the referent.
+                      type: string
+                    fieldPath:
+                      description: |-
+                        If referring to a piece of an object instead of an entire object, this string
+                        should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                        For example, if the object reference is to a container within a pod, this would take on a value like:
+                        "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                        the event) or if no container name is specified "spec.containers[2]" (container with
+                        index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                        referencing a part of an object.
+                      type: string
+                    kind:
+                      description: |-
+                        Kind of the referent.
+                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                      type: string
                     name:
-                      description: Name is the name of the resource that will be run.
+                      description: |-
+                        Name of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      type: string
+                    namespace:
+                      description: |-
+                        Namespace of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
                       type: string
                     parameters:
-                      additionalProperties:
-                        type: string
-                      description: Parameters is a map of parameters that will be
-                        passed to the resource.
-                      type: object
-                  required:
-                  - name
+                      description: |-
+                        Parameters is a list of parameters to pass to the referenced resource.
+                        as environment variables.
+                      items:
+                        properties:
+                          name:
+                            description: Name is the name of the parameter to set.
+                            type: string
+                          value:
+                            description: Value is the value to set the parameter to.
+                            type: string
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - name
+                      x-kubernetes-list-type: map
+                    resourceVersion:
+                      description: |-
+                        Specific resourceVersion to which this reference is made, if any.
+                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                      type: string
+                    uid:
+                      description: |-
+                        UID of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                      type: string
                   type: object
+                  x-kubernetes-map-type: atomic
                 type: array
               volumes:
                 description: |-
@@ -3544,9 +3594,6 @@ spec:
                   - type
                   type: object
                 type: array
-              valid:
-                description: Valid indicates whether the profile is valid.
-                type: boolean
             type: object
         required:
         - spec

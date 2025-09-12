@@ -43,14 +43,66 @@ spec:
                 description: |-
                   CrawlerRef is a reference to the crawler that will be run in this search.
                   It should point to a valid Crawler resource in the same namespace.
-                type: string
-              parameters:
-                additionalProperties:
-                  type: string
-                description: |-
-                  Parameters is a map of parameters that will be passed to the crawler.
-                  These parameters should be defined in the referenced Crawler spec.
+                properties:
+                  apiVersion:
+                    description: API version of the referent.
+                    type: string
+                  fieldPath:
+                    description: |-
+                      If referring to a piece of an object instead of an entire object, this string
+                      should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                      For example, if the object reference is to a container within a pod, this would take on a value like:
+                      "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                      the event) or if no container name is specified "spec.containers[2]" (container with
+                      index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                      referencing a part of an object.
+                    type: string
+                  kind:
+                    description: |-
+                      Kind of the referent.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                    type: string
+                  name:
+                    description: |-
+                      Name of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                    type: string
+                  resourceVersion:
+                    description: |-
+                      Specific resourceVersion to which this reference is made, if any.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                    type: string
+                  uid:
+                    description: |-
+                      UID of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                    type: string
                 type: object
+                x-kubernetes-map-type: atomic
+              parameters:
+                description: Parameters is a list of parameters to pass to the crawler
+                  as environment variables.
+                items:
+                  properties:
+                    name:
+                      description: Name is the name of the parameter to set.
+                      type: string
+                    value:
+                      description: Value is the value to set the parameter to.
+                      type: string
+                  required:
+                  - name
+                  - value
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               ttlSecondsAfterFinished:
                 description: TTLSecondsAfterFinished is the number of seconds to retain
                   the search after it has finished.
@@ -67,8 +119,13 @@ spec:
                 format: date-time
                 type: string
               conditions:
-                description: Conditions represent the latest available observations
-                  of a Pipeline's current state.
+                description: |-
+                  Conditions latest available observations of an object's current state. When a Search
+                  fails, one of the conditions will have type [FailedConditionType] and status true.
+                  A search is considered finished when it is in a terminal condition, either
+                  [CompleteConditionType] or [FailedConditionType]. A Search cannot have both the [CompleteConditionType]  and FailedConditionType] conditions.
+
+                  More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -124,56 +181,11 @@ spec:
                   - type
                   type: object
                 type: array
-              failed:
-                description: |-
-                  Failed indicates if the search has failed, meaning that the crawler exited with a non-zero status code.
-                  A nil value indicates that the search is still in progress or has not started yet.
-                type: boolean
-              scanJob:
-                description: |-
-                  SearchJob is a reference to the job associated with this search.
-                  A nil value indicates that the scan job has not been created yet.
-                properties:
-                  apiVersion:
-                    description: API version of the referent.
-                    type: string
-                  fieldPath:
-                    description: |-
-                      If referring to a piece of an object instead of an entire object, this string
-                      should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
-                      For example, if the object reference is to a container within a pod, this would take on a value like:
-                      "spec.containers{name}" (where "name" refers to the name of the container that triggered
-                      the event) or if no container name is specified "spec.containers[2]" (container with
-                      index 2 in this pod). This syntax is chosen only to have some well-defined way of
-                      referencing a part of an object.
-                    type: string
-                  kind:
-                    description: |-
-                      Kind of the referent.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-                    type: string
-                  name:
-                    description: |-
-                      Name of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                  namespace:
-                    description: |-
-                      Namespace of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
-                    type: string
-                  resourceVersion:
-                    description: |-
-                      Specific resourceVersion to which this reference is made, if any.
-                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
-                    type: string
-                  uid:
-                    description: |-
-                      UID of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
+                x-kubernetes-list-type: atomic
+              cronSearchControllerName:
+                description: CronSearchControllerName is the name of the controller
+                  that created this search.
+                type: string
               startTime:
                 description: StartTime is the time when the search started.
                 format: date-time
@@ -182,6 +194,8 @@ spec:
         required:
         - spec
         type: object
+    selectableFields:
+    - jsonPath: .status.cronSearchControllerName
     served: true
     storage: true
     subresources:

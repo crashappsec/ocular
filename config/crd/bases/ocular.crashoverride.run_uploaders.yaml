@@ -1553,7 +1553,13 @@ spec:
                 - name
                 type: object
               parameters:
-                additionalProperties:
+                description: |-
+                  Parameters is a list of ParameterDefinition that can be used to define user enter "parameters"
+                  that the uploader can use to configure how to upload results. T
+                  are the definitions of the parameters. The uploader can use these parameters
+                  to customize its behavior. The parameters can be used in the uploader's command line
+                  arguments, environment variables, or any other way that the uploader supports.
+                items:
                   description: |-
                     ParameterDefinition is a definition of a parameter that can be passed to a container.
                     It defines the name of the parameter, a description of the parameter,
@@ -1563,26 +1569,36 @@ spec:
                       description: |-
                         Default is the default value for the parameter.
                         It is only valid if Required is false.
+                        A null value indicates that if there is no value provided, the environment variable will be unset.
                       type: string
                     description:
                       description: Description is the description of the parameter.
                       type: string
+                    name:
+                      description: Name is the name of the parameter.
+                      maxLength: 64
+                      minLength: 1
+                      pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
+                      type: string
                     required:
-                      description: Required is true if the parameter is required.
+                      description: |-
+                        Required is true if the parameter is required.
+                        If true, the execution will fail to start if the parameter is not provided.
                       type: boolean
                   required:
+                  - name
                   - required
                   type: object
-                description: |-
-                  Parameters is a map of parameters that can be used to define additional parameters
-                  that the uploader can use. The keys are the parameter names, and the values
-                  are the definitions of the parameters. The uploader can use these parameters
-                  to customize its behavior. The parameters can be used in the uploader's command line
-                  arguments, environment variables, or any other way that the uploader supports.
-                type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               volumes:
-                description: Volumes is a list of volumes that will be appended to
-                  the [k8s.io/api/core/v1.PodSpec]
+                description: |-
+                  List of volumes that can be mounted by containers belonging to the pod.
+                  This list of volumes will be appended to the [k8s.io/api/core/v1.PodSpec] that runs the uploader,
+                  which will also include volumes defined by the other Uploader resources defined in the Profile of the Pipeline.
+                  More info: https://kubernetes.io/docs/concepts/storage/volumes
                 items:
                   description: Volume represents a named volume in a pod that may
                     be accessed by any container in the pod.
@@ -3465,6 +3481,9 @@ spec:
                   - name
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
             required:
             - container
             type: object
@@ -3529,9 +3548,6 @@ spec:
                   - type
                   type: object
                 type: array
-              valid:
-                description: Valid indicates whether the uploader is valid.
-                type: boolean
             type: object
         required:
         - spec

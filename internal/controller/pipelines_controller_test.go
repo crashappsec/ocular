@@ -17,7 +17,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -74,13 +73,8 @@ var _ = Describe("Pipeline Controller", func() {
 							Args:    []string{"echo Downloading...; echo $OCULAR_TARGET_IDENTIFIER > ./target.txt"},
 						},
 					},
-					Status: ocularcrashoverriderunv1beta1.DownloaderStatus{
-						Valid: ptr.To(true),
-					},
 				}
 				Expect(k8sClient.Create(ctx, downloaderResource)).To(Succeed())
-				downloaderResource.Status.Valid = ptr.To(true)
-				Expect(k8sClient.Status().Update(ctx, downloaderResource)).To(Succeed())
 			}
 
 			err = k8sClient.Get(ctx, profileTypeNamespacedName, profile)
@@ -104,13 +98,8 @@ var _ = Describe("Pipeline Controller", func() {
 						},
 						Artifacts: []string{"results.txt"},
 					},
-					Status: ocularcrashoverriderunv1beta1.ProfileStatus{
-						Valid: ptr.To(true),
-					},
 				}
 				Expect(k8sClient.Create(ctx, profileResource)).To(Succeed())
-				profileResource.Status.Valid = ptr.To(true)
-				Expect(k8sClient.Status().Update(ctx, profileResource)).To(Succeed())
 			}
 
 			err = k8sClient.Get(ctx, typeNamespacedName, pipeline)
@@ -124,8 +113,12 @@ var _ = Describe("Pipeline Controller", func() {
 						Namespace: "default",
 					},
 					Spec: ocularcrashoverriderunv1beta1.PipelineSpec{
-						DownloaderRef: downloaderName,
-						ProfileRef:    profileName,
+						DownloaderRef: corev1.ObjectReference{
+							Name: downloaderName,
+						},
+						ProfileRef: corev1.ObjectReference{
+							Name: profileName,
+						},
 						Target: ocularcrashoverriderunv1beta1.Target{
 							Identifier: "https://example.com/samplefile.txt",
 						},
@@ -173,12 +166,10 @@ var _ = Describe("Pipeline Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.ScanJobOnly).To(BeTrue())
 
-			Expect(resource.Status.ScanJob).ToNot(BeNil())
-			Expect(resource.Status.ScanJob.Namespace).To(Equal(resource.Namespace))
 			scanJob := &batchv1.Job{}
 			scanJobName := types.NamespacedName{
-				Name:      resource.Status.ScanJob.Name,
-				Namespace: resource.Status.ScanJob.Namespace,
+				Name:      resource.Name + scanJobSuffix,
+				Namespace: resource.GetNamespace(),
 			}
 			err = k8sClient.Get(ctx, scanJobName, scanJob)
 			Expect(err).NotTo(HaveOccurred())
