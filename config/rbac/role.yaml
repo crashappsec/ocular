@@ -33,9 +33,13 @@ rules:
   - ocular.crashoverride.run
   resources:
   - crawlers
+  - downloaders
+  - profiles
+  - uploaders
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - ocular.crashoverride.run
   resources:
@@ -68,16 +72,6 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - ocular.crashoverride.run
-  resources:
-  - downloaders
-  - profiles
-  - uploaders
-  verbs:
-  - get
-  - list
-  - watch
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:

@@ -54,7 +54,7 @@ const (
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches/finalizers,verbs=update
-// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=crawlers,verbs=get;list
+// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=crawlers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=watch;create;get;list;update;patch;delete
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=watch;create;get;list;update;patch;delete

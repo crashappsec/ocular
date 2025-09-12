@@ -115,7 +115,7 @@ func (v *SearchCustomValidator) ValidateDelete(ctx context.Context, obj runtime.
 }
 
 func validateSearch(ctx context.Context, c client.Client, search *ocularcrashoverriderunv1beta1.Search) error {
-	if search.Spec.CrawlerRef.Namespace != "" || search.Spec.CrawlerRef.Namespace != search.Namespace {
+	if search.Spec.CrawlerRef.Namespace != "" && search.Spec.CrawlerRef.Namespace != search.Namespace {
 		return fmt.Errorf("crawlerRef.namespace must be empty or match the namespace of the Search")
 	}
 
