@@ -58,8 +58,8 @@ func Receive(ctx context.Context, files []string) error {
 		}
 
 		mutex.Lock()
-		defer mutex.Unlock()
 		written, exists := downloadedFiles[file]
+		defer mutex.Unlock()
 		if !exists {
 			logger.Info("file is not in the list of files to download", "path", file)
 			w.WriteHeader(http.StatusNotFound)
@@ -71,7 +71,6 @@ func Receive(ctx context.Context, files []string) error {
 			return
 		}
 
-		defer wg.Done()
 		defer utils.CloseAndLog(ctx, r.Body, "closing upload request body")
 		dst, err := os.Create(filepath.Clean(file))
 		if err != nil {
@@ -80,14 +79,16 @@ func Receive(ctx context.Context, files []string) error {
 			return
 		}
 		defer utils.CloseAndLog(ctx, dst, "closing uploaded file writer")
-		if _, err = io.Copy(dst, r.Body); err != nil && !errors.Is(err, io.EOF) {
+		_, err = io.Copy(dst, r.Body)
+		if err != nil && !errors.Is(err, io.EOF) {
 			logger.Error(err, "failed to write file", "path", file)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		wg.Done()
 		logger.Info("file downloaded", "path", file)
-		w.WriteHeader(http.StatusOK)
 		downloadedFiles[file] = true
+		w.WriteHeader(http.StatusOK)
 	})
 
 	// start server
@@ -105,15 +106,18 @@ func Receive(ctx context.Context, files []string) error {
 		}
 	})
 	go func() {
-		wg.Wait()
-		err := srv.Shutdown(ctx)
-		if err != nil {
-			logger.Error(err, "Error shutting down server from completion")
+		logger.Info("starting server", "address", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error(err, "server error")
+			os.Exit(1)
 		}
 	}()
-	logger.Info("starting server", "address", srv.Addr)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	logger.Info("awaiting file downloads", "count", len(files))
+	wg.Wait()
+	logger.Info("all files downloaded, shutting down server")
+	err := srv.Shutdown(ctx)
+	if err != nil {
+		logger.Error(err, "Error shutting down server from completion")
 	}
 	return nil
 }
