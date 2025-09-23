@@ -8,6 +8,8 @@
 
 package runtime
 
+import "os"
+
 // ParameterToEnvironmentVariable converts a parameter name to an environment variable name.
 // It converts the name to uppercase, replaces invalid characters with underscores,
 // and prefixes it with "OCULAR_PARAM_".
@@ -22,4 +24,16 @@ func ParameterToEnvironmentVariable(name string) string {
 		result = append(result, nextChar)
 	}
 	return "OCULAR_PARAM_" + string(result)
+}
+
+// GetParameterFromEnvironment retrieves the value of a parameter from the environment variables.
+// It returns the value and a boolean indicating whether the parameter was set.
+func GetParameterFromEnvironment(name string) (string, bool) {
+	paramName := ParameterToEnvironmentVariable(name)
+	value, exists := os.LookupEnv(paramName)
+	if !exists {
+		return "", false
+	}
+
+	return value, true
 }

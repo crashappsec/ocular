@@ -12,8 +12,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hashicorp/go-multierror"
+	"github.com/crashappsec/ocular/internal/validators"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -36,13 +39,19 @@ func SetupUploaderWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-uploader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=uploaders,verbs=delete;update,versions=v1beta1,name=vuploader-v1beta1.kb.io,admissionReviewVersions=v1
+// NOTE: currently the uploader is only configured to run as a validating webhook
+// during the update and/or deletion of a Uploader resource to validate that
+// 1) no new required parameters have been added that are not defined in
+//    existing Pipelines resources that reference it (on update), and
+// 2) no Pipeline resources referring to it exist (on delete).
+// Creation is currently not needed since most of the work is handled by the
+// k8s OpenAPI schema validation. If in the future there is a need to validate
+// Uploader resources on creation, the ValidateCreate method below can be implemented and 'create'
+// can be added to the verbs in the kubebuilder marker below.
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-uploader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=uploaders,verbs=delete;update,versions=v1beta1,name=vuploader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // UploaderCustomValidator struct is responsible for validating the Uploader resource
 // when it is created, updated, or deleted.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as this struct is used only for temporary operations and does not need to be deeply copied.
 type UploaderCustomValidator struct {
 	c client.Client
 }
@@ -56,9 +65,42 @@ func (v *UploaderCustomValidator) ValidateCreate(_ context.Context, obj runtime.
 		return nil, fmt.Errorf("expected a Uploader object but got %T", obj)
 	}
 
-	uploaderlog.Info("Validation for Uploader upon creation", "name", uploader.GetName())
+	uploaderlog.Info("uploader validate update should not be registered, see NOTE in webhook/v1beta1/uploader_webhook.go", "name", uploader.GetName())
 
 	return nil, nil
+}
+
+func (v *UploaderCustomValidator) validateNewRequiredParameters(ctx context.Context, oldUploader, newUploader *ocularcrashoverriderunv1beta1.Uploader) error {
+	newRequiredParameters := validators.GetNewRequiredParameters(oldUploader.Spec.Parameters, newUploader.Spec.Parameters)
+
+	var paramErrors field.ErrorList
+	var profiles ocularcrashoverriderunv1beta1.ProfileList
+	if err := v.c.List(ctx, &profiles); err != nil {
+		return fmt.Errorf("failed to list searches: %w", err)
+	}
+
+	for _, profile := range profiles.Items {
+
+		for _, uploaderRef := range profile.Spec.UploaderRefs {
+			var namespace = uploaderRef.Namespace
+			if namespace == "" {
+				namespace = profile.Namespace
+			}
+			if uploaderRef.Name == newUploader.Name && namespace == newUploader.Namespace {
+				if !validators.AllParametersDefined(newRequiredParameters, uploaderRef.Parameters) {
+					paramErrors = append(paramErrors, field.Required(field.NewPath("spec").Child("parameters"), fmt.Sprintf("uplodaer %s is still referenced by profile %s and not all new required parameters are defined", newUploader.Name, profile.Name)))
+				}
+			}
+		}
+	}
+
+	if len(paramErrors) == 0 {
+		return nil
+	}
+
+	return apierrors.NewInvalid(
+		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Uploader"},
+		newUploader.Name, paramErrors)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
@@ -73,13 +115,18 @@ func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldObj, ne
 		return nil, fmt.Errorf("expected a Uploader object for the oldObj but got %T", oldObj)
 	}
 
-	newRequiredParameters := getNewRequiredParameters(oldUploader.Spec.Parameters, uploader.Spec.Parameters)
+	uploaderlog.Info("validating new parameters for uploader", "name", uploader.GetName())
 
+	return nil, v.validateNewRequiredParameters(ctx, oldUploader, uploader)
+}
+
+func (v *UploaderCustomValidator) validateNoUploaderReferences(ctx context.Context, uploader *ocularcrashoverriderunv1beta1.Uploader) error {
 	var profiles ocularcrashoverriderunv1beta1.ProfileList
 	if err := v.c.List(ctx, &profiles); err != nil {
-		return nil, fmt.Errorf("failed to list profiles: %w", err)
+		return fmt.Errorf("failed to list profiles: %w", err)
 	}
-	var merr *multierror.Error
+
+	var allErrs field.ErrorList
 	for _, profile := range profiles.Items {
 		for _, uploaderRef := range profile.Spec.UploaderRefs {
 			var namespace = uploaderRef.Namespace
@@ -87,49 +134,19 @@ func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldObj, ne
 				namespace = profile.Namespace
 			}
 			if uploaderRef.Name == uploader.Name && namespace == uploader.Namespace {
-				if !allParametersDefined(newRequiredParameters, uploaderRef.Parameters) {
-					err := fmt.Errorf("uploader %s is still referenced by profile %s and not all new required parameters are defined", uploader.Name, profile.Name)
-					merr = multierror.Append(merr, err)
-				}
+				uploaderlog.Info("found profile reference to uploader", "profile", profile.GetName(), "name", uploader.GetName())
+				allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), uploader.Name, "cannot be deleted because it is still referenced by a Profile resource"))
 			}
 		}
 	}
 
-	return nil, nil
-}
-
-func allParametersDefined(paramNames []string, paramValues []ocularcrashoverriderunv1beta1.ParameterSetting) bool {
-	var definedParams = make(map[string]struct{}, len(paramNames))
-	for _, paramValue := range paramValues {
-		definedParams[paramValue.Name] = struct{}{}
-	}
-	for _, paramName := range paramNames {
-		if _, exists := definedParams[paramName]; !exists {
-			return false
-		}
-	}
-	return true
-}
-
-func getNewRequiredParameters(oldParams, newParams []ocularcrashoverriderunv1beta1.ParameterDefinition) []string {
-	result := make([]string, 0, len(oldParams)+len(newParams))
-	var newRequiredParameters = make(map[string]ocularcrashoverriderunv1beta1.ParameterDefinition, len(newParams))
-	for _, paramDef := range newParams {
-		if paramDef.Required {
-			newRequiredParameters[paramDef.Name] = paramDef
-		}
+	if len(allErrs) == 0 {
+		return nil
 	}
 
-	for _, oldParamDef := range oldParams {
-		if oldParamDef.Required {
-			delete(newRequiredParameters, oldParamDef.Name)
-		}
-	}
-
-	for paramName := range newRequiredParameters {
-		result = append(result, paramName)
-	}
-	return result
+	return apierrors.NewInvalid(
+		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Uploader"},
+		uploader.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
@@ -139,23 +156,7 @@ func (v *UploaderCustomValidator) ValidateDelete(ctx context.Context, obj runtim
 		return nil, fmt.Errorf("expected a Uploader object but got %T", obj)
 	}
 
-	var profiles ocularcrashoverriderunv1beta1.ProfileList
-	if err := v.c.List(ctx, &profiles); err != nil {
-		return nil, fmt.Errorf("failed to list profiles: %w", err)
-	}
-	var merr *multierror.Error
-	for _, profile := range profiles.Items {
-		for _, uploaderRef := range profile.Spec.UploaderRefs {
-			var namespace = uploaderRef.Namespace
-			if namespace == "" {
-				namespace = profile.Namespace
-			}
-			if uploaderRef.Name == uploader.Name && namespace == uploader.Namespace {
-				profilelog.Info("found profile reference to uploader", "profile", profile.GetName(), "name", uploader.GetName())
-				merr = multierror.Append(merr, fmt.Errorf("uploader %s is still referenced by profile %s", uploader.Name, profile.Name))
-			}
-		}
-	}
+	uploaderlog.Info("validating no profile references deleted uploader", "name", uploader.GetName())
 
-	return nil, merr.ErrorOrNil()
+	return nil, v.validateNoUploaderReferences(ctx, uploader)
 }

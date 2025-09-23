@@ -143,7 +143,7 @@ func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if cronSearch.Spec.Suspend != nil && *cronSearch.Spec.Suspend {
-		log.V(1).Info("cronjob suspended, skipping")
+		log.V(1).Info("cronsearch suspended, skipping")
 		return ctrl.Result{}, nil
 	}
 
@@ -186,18 +186,18 @@ func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
-	job, err := constructSearchForCronSearch(&cronSearch, missedRun, r.Scheme)
+	search, err := constructSearchForCronSearch(&cronSearch, missedRun, r.Scheme)
 	if err != nil {
-		log.Error(err, "unable to construct job from template")
+		log.Error(err, "unable to construct search from template")
 		return scheduledResult, nil
 	}
 
-	if err := r.Create(ctx, job); err != nil {
-		log.Error(err, "unable to create Job for CronJob", "job", job)
+	if err := r.Create(ctx, search); err != nil {
+		log.Error(err, "unable to Search Job for CronSearch", "search", search)
 		return ctrl.Result{}, err
 	}
 
-	log.V(1).Info("created Job for CronJob run", "job", job)
+	log.V(1).Info("created Search for CronSearch run", "search", search)
 
 	return scheduledResult, nil
 }
@@ -259,7 +259,7 @@ func getNextSchedule(cronSearch *v1beta1.CronSearch, now time.Time) (lastMissed 
 		// controller gets wedged on Friday at 5:01pm when everyone has
 		// gone home, and someone comes in on Tuesday AM and discovers
 		// the problem and restarts the controller, then all the hourly
-		// jobs, more than 80 of them for one hourly scheduledJob, should
+		// searches, more than 80 of them for one hourly scheduledJob, should
 		// all start running with no further intervention (if the scheduledJob
 		// allows concurrency and late starts).
 		//
@@ -279,30 +279,34 @@ func getNextSchedule(cronSearch *v1beta1.CronSearch, now time.Time) (lastMissed 
 }
 
 func constructSearchForCronSearch(cronSearch *v1beta1.CronSearch, scheduledTime time.Time, scheme *runtime.Scheme) (*v1beta1.Search, error) {
-	// We want job names for a given nominal start time to have a deterministic name to avoid the same search being created twice
+	// We want search names for a given nominal start time to have a deterministic name to avoid the same search being created twice
 	name := fmt.Sprintf("%s-%d", cronSearch.Name, scheduledTime.Unix())
 
-	job := &v1beta1.Search{
+	searchSpec := *cronSearch.Spec.SearchTemplate.Spec.DeepCopy()
+	// this is a bug, using TTL seconds after finished here would cause the search to be deleted too early
+	// we need to use our own cleanup logic based on the history limits
+	searchSpec.TTLSecondsAfterFinished = nil
+	search := &v1beta1.Search{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:      make(map[string]string),
 			Annotations: make(map[string]string),
 			Name:        name,
 			Namespace:   cronSearch.Namespace,
 		},
-		Spec: *cronSearch.Spec.SearchTemplate.Spec.DeepCopy(),
+		Spec: searchSpec,
 	}
 	for k, v := range cronSearch.Spec.SearchTemplate.Annotations {
-		job.Annotations[k] = v
+		search.Annotations[k] = v
 	}
-	job.Annotations[scheduledTimeAnnotation] = scheduledTime.Format(time.RFC3339)
+	search.Annotations[scheduledTimeAnnotation] = scheduledTime.Format(time.RFC3339)
 	for k, v := range cronSearch.Spec.SearchTemplate.Labels {
-		job.Labels[k] = v
+		search.Labels[k] = v
 	}
-	if err := ctrl.SetControllerReference(cronSearch, job, scheme); err != nil {
+	if err := ctrl.SetControllerReference(cronSearch, search, scheme); err != nil {
 		return nil, err
 	}
 
-	return job, nil
+	return search, nil
 }
 
 type categorizedSearches struct {
@@ -361,8 +365,8 @@ func (r *CronSearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1beta1.Search{}, searchOwnerKey, func(rawObj client.Object) []string {
-		job := rawObj.(*v1beta1.Search)
-		owner := metav1.GetControllerOf(job)
+		search := rawObj.(*v1beta1.Search)
+		owner := metav1.GetControllerOf(search)
 		if owner == nil {
 			return nil
 		}

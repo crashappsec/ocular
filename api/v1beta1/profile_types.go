@@ -20,12 +20,25 @@ type ProfileSpec struct {
 	// the directory where the target has been downloaded to.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=10
+	// +patchMergeKey=name
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=name
 	Containers []v1.Container `json:"containers" yaml:"containers" description:"A list of containers that will be run over the target. The containers will be run in parallel, with their current working directory set to the directory where the target has been downloaded to."`
 	// Artifacts is a list of paths to the artifacts that will be produced
 	// by the scanners. These paths are relative to the results directory
+	// +optional
+	// +kubebuilder:validation:MinItems=0
+	// +kubebuilder:validation:MaxItems=20
+	// +listType=set
 	Artifacts []string `json:"artifacts" yaml:"artifacts" description:"A list of paths to the artifacts that will be produced by the scanners. These paths are relative to the results directory."`
 	// Volumes is a list of [v1.Volume] that will be defined in the pod spec
 	// for the scanners. This is useful for sharing data between scanners
+	// +optional
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
 	Volumes []v1.Volume `json:"volumes,omitempty" yaml:"volumes,omitempty" description:"A list of volumes that will be mounted into the scanner containers. This is useful for sharing data between scanners or for providing configuration files."`
 
 	// UploaderRefs is a list of [UploaderRunSpec] that will be used to upload

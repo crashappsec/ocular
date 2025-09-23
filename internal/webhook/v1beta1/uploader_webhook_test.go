@@ -11,66 +11,138 @@ package v1beta1
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
-	// TODO (user): Add any additional imports if needed
 )
 
 var _ = Describe("Uploader Webhook", func() {
 	var (
 		obj       *ocularcrashoverriderunv1beta1.Uploader
 		oldObj    *ocularcrashoverriderunv1beta1.Uploader
+		profile   *ocularcrashoverriderunv1beta1.Profile
 		validator UploaderCustomValidator
+		namespace = "default"
 	)
 
 	BeforeEach(func() {
-		obj = &ocularcrashoverriderunv1beta1.Uploader{}
-		oldObj = &ocularcrashoverriderunv1beta1.Uploader{}
-		validator = UploaderCustomValidator{}
+		obj = &ocularcrashoverriderunv1beta1.Uploader{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "uploader-webhook-test",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.UploaderSpec{
+				Container: v1.Container{
+					Name:  "dummy-uploader-container",
+					Image: "dummy-uploader-image",
+				},
+			},
+		}
+		oldObj = &ocularcrashoverriderunv1beta1.Uploader{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "uploader-webhook-test",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.UploaderSpec{
+				Container: v1.Container{
+					Name:  "dummy-uploader-container",
+					Image: "dummy-uploader-image",
+				},
+			},
+		}
+		profile = &ocularcrashoverriderunv1beta1.Profile{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "uploader-webhook-test-profile",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.ProfileSpec{
+				UploaderRefs: []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+					{ObjectReference: v1.ObjectReference{
+						Name:      obj.Name,
+						Namespace: obj.Namespace,
+					}},
+				},
+				Containers: []v1.Container{
+					{
+						Name:  "dummy-scan-container",
+						Image: "dummy-scan-image",
+					},
+				},
+			},
+		}
+		validator = UploaderCustomValidator{
+			c: k8sClient,
+		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
+		Expect(profile).NotTo(BeNil(), "Expected profileRef to be initialized")
+		// common setup logic if needed
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
-	})
-
-	Context("When creating Uploader under Defaulting Webhook", func() {
-		// TODO (user): Add logic for defaulting webhooks
-		// Example:
-		// It("Should apply defaults when a required field is empty", func() {
-		//     By("simulating a scenario where defaults should be applied")
-		//     obj.SomeFieldWithDefault = ""
-		//     By("calling the Default method to apply defaults")
-		//     defaulter.Default(ctx, obj)
-		//     By("checking that the default values are set")
-		//     Expect(obj.SomeFieldWithDefault).To(Equal("default_value"))
-		// })
+		_ = k8sClient.Delete(ctx, profile)
+		_ = k8sClient.Delete(ctx, obj)
+		// common cleanup logic if needed
 	})
 
 	Context("When creating or updating Uploader under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+		// Create tests
+		// NOTE: create is currently not registered
+
+		// Update tests
+		It("Should validate newly required params validated for references", func() {
+			By("creating a Profile that references the Uploader, then updating Uploader to add a new required param")
+			oldObj.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{
+				{Name: "param1", Required: true},
+				{Name: "param2", Required: false, Default: ptr.To("default_value")},
+			}
+			Expect(k8sClient.Create(ctx, oldObj)).To(Succeed())
+
+			profile.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{ObjectReference: v1.ObjectReference{
+					Name: oldObj.Name,
+				},
+					Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+						{Name: "param1", Value: "value1"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+
+			obj.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{
+				{Name: "param1", Required: true},
+				{Name: "param2", Required: false, Default: ptr.To("default_value")},
+				{Name: "param3", Required: true},
+			}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to new required parameter not being set in Profile reference")
+
+			By("updating the Profile to include the new required param")
+			profile.Spec.UploaderRefs[0].Parameters = append(profile.Spec.UploaderRefs[0].Parameters, ocularcrashoverriderunv1beta1.ParameterSetting{
+				Name:  "param3",
+				Value: "value3",
+			})
+			Expect(k8sClient.Update(ctx, profile)).To(Succeed())
+
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil(), "Expected validation to pass after Profile reference updated with new required parameter")
+		})
+
+		// Delete tests
+		It("Should not allow deletion of Uploader if referenced by Profile", func() {
+			Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+
+			By("creating a Profile that references the Uploader, then attempting to delete the Uploader")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+
+			Expect(validator.ValidateDelete(ctx, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to existing Profile referencing Uploader")
+
+			By("deleting the Profile, then attempting to delete the Uploader again")
+			Expect(k8sClient.Delete(ctx, profile)).To(Succeed())
+			Expect(validator.ValidateDelete(ctx, obj)).To(BeNil(), "Expected validation to pass after Profile referencing Uploader is deleted")
+			Expect(k8sClient.Delete(ctx, obj)).To(Succeed(), "Expected Uploader deletion to succeed after Profile is deleted")
+		})
 	})
 
 })

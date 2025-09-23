@@ -106,7 +106,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	searchRoleBinding := r.newSearchRoleBinding(search, searchServiceAccount)
 
-	if err = resources.ReconcileChildResource[*corev1.ServiceAccount](ctx, r.Client, searchRoleBinding, searchServiceAccount, r.Scheme, nil); err != nil {
+	if err = resources.ReconcileChildResource[*rbacv1.RoleBinding](ctx, r.Client, searchRoleBinding, searchServiceAccount, r.Scheme, nil); err != nil {
 		l.Error(err, "error reconciling upload job for pipeline", "name", search.GetName())
 		return ctrl.Result{}, err
 	}
@@ -271,20 +271,23 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 	// job has completed but we haven't recorded it yet
 	if search.Status.CompletionTime == nil && job.Status.CompletionTime != nil {
 		l.Info("search job completed, recording completion in status", "name", search.GetName(), "job", job.GetName())
-		search.Status.CompletionTime = &metav1.Time{Time: job.Status.CompletionTime.Time}
+		t := metav1.NewTime(time.Now())
+		search.Status.CompletionTime = ptr.To(metav1.NewTime(job.Status.CompletionTime.Time))
 		if job.Status.Failed > 0 {
 			search.Status.Conditions = append(search.Status.Conditions, metav1.Condition{
-				Type:    v1beta1.FailedConditionType,
-				Status:  metav1.ConditionTrue,
-				Reason:  "SearchJobFailed",
-				Message: "Search reported a container failure.",
+				Type:               v1beta1.FailedConditionType,
+				Status:             metav1.ConditionTrue,
+				Reason:             "SearchJobFailed",
+				Message:            "Search reported a container failure.",
+				LastTransitionTime: t,
 			})
 		} else {
 			search.Status.Conditions = append(search.Status.Conditions, metav1.Condition{
-				Type:    v1beta1.CompleteConditionType,
-				Status:  metav1.ConditionTrue,
-				Reason:  "SearchJobCompleted",
-				Message: "Search has completed successfully.",
+				Type:               v1beta1.CompleteConditionType,
+				Status:             metav1.ConditionTrue,
+				Reason:             "SearchJobCompleted",
+				Message:            "Search has completed successfully.",
+				LastTransitionTime: t,
 			})
 		}
 		if err := updateStatus(ctx, r.Client, search, "step", "search job completion"); err != nil {

@@ -45,7 +45,10 @@ spec:
                   by the scanners. These paths are relative to the results directory
                 items:
                   type: string
+                maxItems: 20
+                minItems: 0
                 type: array
+                x-kubernetes-list-type: set
               containers:
                 description: |-
                   Containers is a list of [v1.Container] that will be run
@@ -1572,6 +1575,9 @@ spec:
                 maxItems: 10
                 minItems: 1
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               uploaderRefs:
                 description: |-
                   UploaderRefs is a list of [UploaderRunSpec] that will be used to upload
@@ -3529,8 +3535,10 @@ spec:
                   - name
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
             required:
-            - artifacts
             - containers
             type: object
           status:

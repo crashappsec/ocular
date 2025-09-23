@@ -12,7 +12,10 @@ import (
 	"context"
 	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -36,9 +39,7 @@ func SetupSearchWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// TODO(user): EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
-// +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-search,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=searches,verbs=create;update,versions=v1beta1,name=msearch-v1beta1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-search,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=searches,verbs=create;update,versions=v1beta1,name=msearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // SearchCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind Search when those are created or updated.
@@ -60,21 +61,21 @@ func (d *SearchCustomDefaulter) Default(_ context.Context, obj runtime.Object) e
 	}
 	searchlog.Info("Defaulting for Search", "name", search.GetName())
 
-	// TODO(user): fill in your defaulting logic.
-
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-// NOTE: The 'path' attribute must follow a specific pattern and should not be modified directly here.
-// Modifying the path for an invalid path can cause API server errors; failing to locate the webhook.
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-search,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=searches,verbs=create;update,versions=v1beta1,name=vsearch-v1beta1.kb.io,admissionReviewVersions=v1
+// NOTE: currently the search is only configured to run as a validating webhook
+// during the update and/or creation of a Search resource to validate that
+// 1) the referenced Crawler exists and is in the same namespace as the Search, and
+// 2) all required parameters defined in the referenced Crawler are provided in the Search.
+// Deletion validation is not currently needed because there are no resources that
+// reference a Search. If in the future there is a need to validate Search resources
+// on deletion, the ValidateDelete method below can be implemented and 'delete
+// can be added to the verbs in the kubebuilder marker below.
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-search,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=searches,verbs=create;update,versions=v1beta1,name=vsearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // SearchCustomValidator struct is responsible for validating the Search resource
 // when it is created, updated, or deleted.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as this struct is used only for temporary operations and does not need to be deeply copied.
 type SearchCustomValidator struct {
 	c client.Client
 }
@@ -87,7 +88,7 @@ func (v *SearchCustomValidator) ValidateCreate(ctx context.Context, obj runtime.
 	if !ok {
 		return nil, fmt.Errorf("expected a Search object but got %T", obj)
 	}
-	searchlog.Info("Validation for Search upon creation", "name", search.GetName())
+	searchlog.Info("validating Search resource creation", "name", search.GetName())
 
 	return nil, validateSearch(ctx, v.c, search)
 }
@@ -98,7 +99,7 @@ func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newO
 	if !ok {
 		return nil, fmt.Errorf("expected a Search object for the newObj but got %T", newObj)
 	}
-	searchlog.Info("Validation for Search upon update", "name", search.GetName())
+	searchlog.Info("validating Search resource update", "name", search.GetName())
 
 	return nil, validateSearch(ctx, v.c, search)
 }
@@ -109,14 +110,15 @@ func (v *SearchCustomValidator) ValidateDelete(ctx context.Context, obj runtime.
 	if !ok {
 		return nil, fmt.Errorf("expected a Search object but got %T", obj)
 	}
-	searchlog.Info("Validation for Search upon deletion", "name", search.GetName())
+	searchlog.Info("crawler validate delete should not be registered, see NOTE in webhook/v1beta1/search_webhook.go", "name", search.GetName())
 
 	return nil, nil
 }
 
 func validateSearch(ctx context.Context, c client.Client, search *ocularcrashoverriderunv1beta1.Search) error {
+	var allErrs field.ErrorList
 	if search.Spec.CrawlerRef.Namespace != "" && search.Spec.CrawlerRef.Namespace != search.Namespace {
-		return fmt.Errorf("crawlerRef.namespace must be empty or match the namespace of the Search")
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef").Child("namespace"), search.Spec.CrawlerRef.Namespace, "crawlerRef namespace must be empty or match the Search namespace"))
 	}
 
 	var crawler ocularcrashoverriderunv1beta1.Crawler
@@ -126,10 +128,17 @@ func validateSearch(ctx context.Context, c client.Client, search *ocularcrashove
 	}, &crawler); err != nil {
 		return fmt.Errorf("failed to get referenced crawler %s: %w", search.Spec.CrawlerRef.Name, err)
 	}
+	paramErrs := validateSetParameters(crawler.Name, field.NewPath("spec").Child("crawlerRef").Child("parameters"), crawler.Spec.Parameters, search.Spec.Parameters)
 
-	if err := validateSetParameters(crawler.Name, crawler.Spec.Parameters, search.Spec.Parameters); err != nil {
-		return err
+	if len(paramErrs) > 0 {
+		allErrs = append(allErrs, paramErrs...)
 	}
 
-	return nil
+	if len(allErrs) == 0 {
+		return nil
+	}
+
+	return apierrors.NewInvalid(
+		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
+		search.Name, allErrs)
 }

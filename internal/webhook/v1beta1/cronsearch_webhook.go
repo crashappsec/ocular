@@ -48,7 +48,7 @@ func SetupCronSearchWebhookWithManager(mgr ctrl.Manager) error {
    https://github.com/kubernetes-sigs/kubebuilder/blob/master/docs/book/src/cronjob-tutorial/testdata/project/internal/webhook/v1/cronjob_webhook.go
 */
 
-// +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-cronsearch,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=cronsearches,verbs=create;update,versions=v1beta1,name=mcronsearch-v1beta1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-cronsearch,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=cronsearches,verbs=create;update,versions=v1beta1,name=mcronsearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // CronSearchCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind CronSearch when those are created or updated.
@@ -93,9 +93,15 @@ func (d *CronSearchCustomDefaulter) applyDefaults(cronJob *v1beta1.CronSearch) {
 	}
 }
 
-// NOTE: This is only set to 'verbs=create;update' because we *currently* only want to validate on update and creation of the resource.
-// If you want to enable validation on deletion, change it to "verbs=create;update;delete".
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-cronsearch,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=cronsearches,verbs=create;update,versions=v1beta1,name=vcronsearch-v1beta1.kb.io,admissionReviewVersions=v1
+// NOTE: currently the cronsearch is only configured to run as a validating webhook
+// during the update and/or creation of a CronSearch resource to validate that
+// 1) the schedule is a valid cron format, and
+// 2) the name is not too long (so that the jobs it creates do not exceed k8s name limits).
+// Deletion is currently not needed since there are no special validations needed
+// when a CronSearch is deleted. If in the future there is a need to validate
+// CronSearch resources on deletion, the ValidateDelete method below can be implemented and 'delete'
+// can be added to the verbs in the kubebuilder marker below.
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-cronsearch,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=cronsearches,verbs=create;update,versions=v1beta1,name=vcronsearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // CronSearchCustomValidator struct is responsible for validating the CronSearch resource
 // when it is created, updated, or deleted.
@@ -132,7 +138,7 @@ func (v *CronSearchCustomValidator) ValidateDelete(ctx context.Context, obj runt
 		return nil, fmt.Errorf("expected a CronSearch object but got %T", obj)
 	}
 
-	cronsearchlog.Info("CronSearch deletion validation called but should not be registered, see NOTE", "name", cronSearch.GetName())
+	cronsearchlog.Info("cronsearch validate update should not be registered, see NOTE in webhook/v1beta1/cronsearch_webhook.go", "name", cronSearch.GetName())
 
 	return nil, nil
 }
@@ -140,7 +146,7 @@ func (v *CronSearchCustomValidator) ValidateDelete(ctx context.Context, obj runt
 // validateCronSearch validates the fields of a v1beta1.CronSearch object.
 func validateCronSearch(cronSearch *v1beta1.CronSearch) error {
 	var allErrs field.ErrorList
-	if err := validateCronJobName(cronSearch); err != nil {
+	if err := validateCronSearchName(cronSearch); err != nil {
 		allErrs = append(allErrs, err)
 	}
 	if err := validateCronSearchSpec(cronSearch); err != nil {
@@ -170,7 +176,7 @@ func validateScheduleFormat(schedule string, fldPath *field.Path) *field.Error {
 	return nil
 }
 
-func validateCronJobName(cronSearch *v1beta1.CronSearch) *field.Error {
+func validateCronSearchName(cronSearch *v1beta1.CronSearch) *field.Error {
 	if len(cronSearch.Name) > validationutils.DNS1035LabelMaxLength-11 {
 		// The job name length is 63 characters like all Kubernetes objects
 		// (which must fit in a DNS subdomain). The cronSearch controller appends

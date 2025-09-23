@@ -6,12 +6,12 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: cronsearch-sample
 spec:
-  schedule: "0 0 * * *"
+  schedule: "0 0 * * *" # every day at midnight
   searchTemplate:
     spec:
       crawlerRef:
-        name: github
-      ttlSecondsAfterFinished: 180
+        name: crawler-sample
+      ttlSecondsAfterFinished: 30
       parameters:
-        - name: PROFILE
-          value:
+        - name: LOG_MSG
+          value: "Hello from CronSearch!"

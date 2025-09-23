@@ -12,7 +12,7 @@ webhooks:
       namespace: system
       path: /mutate-ocular-crashoverride-run-v1beta1-cronsearch
   failurePolicy: Fail
-  name: mcronsearch-v1beta1.kb.io
+  name: mcronsearch-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run
@@ -32,7 +32,7 @@ webhooks:
       namespace: system
       path: /mutate-ocular-crashoverride-run-v1beta1-pipeline
   failurePolicy: Fail
-  name: mpipeline-v1beta1.kb.io
+  name: mpipeline-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run
@@ -52,7 +52,7 @@ webhooks:
       namespace: system
       path: /mutate-ocular-crashoverride-run-v1beta1-search
   failurePolicy: Fail
-  name: msearch-v1beta1.kb.io
+  name: msearch-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run
@@ -78,7 +78,7 @@ webhooks:
       namespace: system
       path: /validate-ocular-crashoverride-run-v1beta1-crawler
   failurePolicy: Fail
-  name: vcrawler-v1beta1.kb.io
+  name: vcrawler-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run
@@ -98,7 +98,7 @@ webhooks:
       namespace: system
       path: /validate-ocular-crashoverride-run-v1beta1-cronsearch
   failurePolicy: Fail
-  name: vcronsearch-v1beta1.kb.io
+  name: vcronsearch-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run
@@ -118,7 +118,7 @@ webhooks:
       namespace: system
       path: /validate-ocular-crashoverride-run-v1beta1-downloader
   failurePolicy: Fail
-  name: vdownloader-v1beta1.kb.io
+  name: vdownloader-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run
@@ -137,7 +137,7 @@ webhooks:
       namespace: system
       path: /validate-ocular-crashoverride-run-v1beta1-pipeline
   failurePolicy: Fail
-  name: vpipeline-v1beta1.kb.io
+  name: vpipeline-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run
@@ -157,7 +157,7 @@ webhooks:
       namespace: system
       path: /validate-ocular-crashoverride-run-v1beta1-profile
   failurePolicy: Fail
-  name: vprofile-v1beta1.kb.io
+  name: vprofile-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run
@@ -178,7 +178,7 @@ webhooks:
       namespace: system
       path: /validate-ocular-crashoverride-run-v1beta1-search
   failurePolicy: Fail
-  name: vsearch-v1beta1.kb.io
+  name: vsearch-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run
@@ -198,7 +198,7 @@ webhooks:
       namespace: system
       path: /validate-ocular-crashoverride-run-v1beta1-uploader
   failurePolicy: Fail
-  name: vuploader-v1beta1.kb.io
+  name: vuploader-v1beta1.ocular.crashoverride.run
   rules:
   - apiGroups:
     - ocular.crashoverride.run

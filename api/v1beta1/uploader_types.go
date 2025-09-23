@@ -17,7 +17,6 @@ import (
 type UploaderSpec struct {
 	// Container is the container that will be run to download the target.
 	// It must be a valid [v1.Container] that can be run in a Kubernetes pod.
-	// +required
 	Container v1.Container `json:"container" protobuf:"bytes,1,opt,name=container"`
 
 	// List of volumes that can be mounted by containers belonging to the pod.

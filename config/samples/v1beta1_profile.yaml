@@ -21,7 +21,7 @@ spec:
     - thog.trufflehogjson
     - output.semgrepjson
   uploaderRefs:
-    - name: example-uploader
+    - name: uploader-sample
       parameters:
         - name: EXAMPLE
           value: example value

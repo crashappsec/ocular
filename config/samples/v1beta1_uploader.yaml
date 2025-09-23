@@ -4,7 +4,7 @@ metadata:
   labels:
     app.kubernetes.io/name: ocular
     app.kubernetes.io/managed-by: kustomize
-  name: example-uploader
+  name: uploader-sample
 spec:
   container:
     name: example-uploader

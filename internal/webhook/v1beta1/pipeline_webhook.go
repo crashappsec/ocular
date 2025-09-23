@@ -15,6 +15,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	validationutils "k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -38,7 +41,7 @@ func SetupPipelineWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-pipeline,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=pipelines,verbs=create;update,versions=v1beta1,name=mpipeline-v1beta1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-pipeline,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=pipelines,verbs=create;update,versions=v1beta1,name=mpipeline-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // PipelineCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind Pipeline when those are created or updated.
@@ -65,7 +68,7 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object)
 	return nil
 }
 
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-pipeline,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=pipelines,verbs=create;update,versions=v1beta1,name=vpipeline-v1beta1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-pipeline,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=pipelines,verbs=create;update,versions=v1beta1,name=vpipeline-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // PipelineCustomValidator struct is responsible for validating the Pipeline resource
 // when it is created, updated, or deleted.
@@ -96,48 +99,55 @@ func (v *PipelineCustomValidator) ValidateUpdate(ctx context.Context, _, newObj 
 }
 
 func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcrashoverriderunv1beta1.Pipeline) error {
+	var allErrs field.ErrorList
+	if err := validatePipelineName(pipeline); err != nil {
+		allErrs = append(allErrs, err)
+	}
+
 	// Validate Profile exists
 	profileNamespace := pipeline.Spec.ProfileRef.Namespace
 	if profileNamespace != "" && pipeline.Spec.ProfileRef.Namespace != pipeline.Namespace {
-		return fmt.Errorf("profileRef namespace must be empty or match the pipeline namespace")
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("profileRef").Child("namespace"), pipeline.Spec.ProfileRef.Namespace, "profileRef namespace must be empty or match the pipeline namespace"))
 	}
 	var profile ocularcrashoverriderunv1beta1.Profile
 	err := c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ProfileRef.Name, Namespace: pipeline.Namespace}, &profile)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("profile %s/%s not found", pipeline.Spec.ProfileRef.Namespace, pipeline.Spec.ProfileRef.Name)
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("error fetching profile %s/%s: %w", pipeline.Spec.ProfileRef.Namespace, pipeline.Spec.ProfileRef.Name, err)
 		}
-		return fmt.Errorf("error fetching profile %s/%s: %w", pipeline.Spec.ProfileRef.Namespace, pipeline.Spec.ProfileRef.Name, err)
+		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("profileRef").Child("name"), fmt.Sprintf("%s/%s", pipeline.Spec.ProfileRef.Namespace, pipeline.Spec.ProfileRef.Name)))
 	}
 
 	// Validate Downloader exists
 	downloaderNamespace := pipeline.Spec.DownloaderRef.Namespace
 	if downloaderNamespace != "" && pipeline.Spec.DownloaderRef.Namespace != pipeline.Namespace {
-		return fmt.Errorf("downlaoderRef namespace must be empty or match the pipeline namespace")
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("downloaderRef").Child("namespace"), pipeline.Spec.DownloaderRef.Namespace, "downloaderRef namespace must be empty or match the pipeline namespace"))
 	}
 	var downloader ocularcrashoverriderunv1beta1.Downloader
 	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.DownloaderRef.Name, Namespace: pipeline.Namespace}, &downloader)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("downloader %s/%s not found", pipeline.Spec.DownloaderRef.Namespace, pipeline.Spec.DownloaderRef.Name)
+			return fmt.Errorf("error fetching dwonloader %s/%s: %w", pipeline.Spec.DownloaderRef.Namespace, pipeline.Spec.DownloaderRef.Name, err)
 		}
-		return fmt.Errorf("error fetching dwonloader %s/%s: %w", pipeline.Spec.DownloaderRef.Namespace, pipeline.Spec.DownloaderRef.Name, err)
+		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("downloaderRef").Child("name"), fmt.Sprintf("%s/%s", pipeline.Spec.DownloaderRef.Namespace, pipeline.Spec.DownloaderRef.Name)))
 	}
 
-	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ScanServiceAccountName, Namespace: pipeline.Namespace}, &corev1.ServiceAccount{})
+	var serviceAccount corev1.ServiceAccount
+	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ScanServiceAccountName, Namespace: pipeline.Namespace}, &serviceAccount)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("scan service account %s not found", pipeline.Spec.ScanServiceAccountName)
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("error fetching scan service account %s: %w", pipeline.Spec.ScanServiceAccountName, err)
 		}
-		return fmt.Errorf("error fetching scan service account %s: %w", pipeline.Spec.ScanServiceAccountName, err)
+		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("scanServiceAccountName"), pipeline.Spec.ScanServiceAccountName))
 	}
 
-	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.UploadServiceAccountName, Namespace: pipeline.Namespace}, &corev1.ServiceAccount{})
+	var uploaderServiceAccount corev1.ServiceAccount
+	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.UploadServiceAccountName, Namespace: pipeline.Namespace}, &uploaderServiceAccount)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("upload service account %s not found", pipeline.Spec.UploadServiceAccountName)
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("error fetching uploader service account %s: %w", pipeline.Spec.UploadServiceAccountName, err)
 		}
-		return fmt.Errorf("error fetching uploader service account %s: %w", pipeline.Spec.UploadServiceAccountName, err)
+		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("uploadServiceAccountName"), pipeline.Spec.UploadServiceAccountName))
 	}
 
 	volumes := map[string]struct{}{}
@@ -148,7 +158,13 @@ func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcras
 		volumes[vol.Name] = struct{}{}
 	}
 
-	return nil
+	if len(allErrs) == 0 {
+		return nil
+	}
+
+	return apierrors.NewInvalid(
+		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Pipeline"},
+		pipeline.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
@@ -161,4 +177,17 @@ func (v *PipelineCustomValidator) ValidateDelete(ctx context.Context, obj runtim
 	pipelinelog.Info("pipeline delete called but should not be registered, see NOTE", "name", pipeline.GetName())
 
 	return nil, nil
+}
+
+func validatePipelineName(pipeline *ocularcrashoverriderunv1beta1.Pipeline) *field.Error {
+	if len(pipeline.Name) > validationutils.DNS1035LabelMaxLength-11 {
+		// The service name length is 63 characters like all Kubernetes objects
+		// (which must fit in a DNS subdomain). The pipeline controller appends
+		// a 11-character suffix to the pipeline name (`-upload-svc`) when creating
+		// a service for the uplodaers. The uplaoder service name length limit is 63 characters.
+		// Therefore Pipeline names must have length <= 63-11=52. If we don't validate this here,
+		// then service creation will fail later.
+		return field.Invalid(field.NewPath("metadata").Child("name"), pipeline.Name, "must be no more than 52 characters")
+	}
+	return nil
 }

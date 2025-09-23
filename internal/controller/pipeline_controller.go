@@ -239,66 +239,67 @@ func (r *PipelineReconciler) createScanExtractorContainer(pipeline *v1beta1.Pipe
 func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1beta1.Pipeline, scanJob, uploadJob *batchv1.Job) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
 	l.Info("checking for scan & upload job completion")
+	t := metav1.NewTime(time.Now())
 	if pipeline.Status.ScanJobOnly {
 		if scanJob.Status.CompletionTime != nil {
-			pipeline.Status.CompletionTime = scanJob.Status.CompletionTime
+			pipeline.Status.CompletionTime = ptr.To(metav1.NewTime(scanJob.Status.CompletionTime.Time))
 			if scanJob.Status.Failed > 0 {
 				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 					metav1.Condition{
 						Type:               v1beta1.FailedConditionType,
 						Status:             metav1.ConditionTrue,
-						Reason:             "ScanJobComplete",
-						Message:            "The scan job has completed.",
-						LastTransitionTime: metav1.NewTime(time.Now()),
+						Reason:             "ScanJobFailed",
+						Message:            "The scan job has failed.",
+						LastTransitionTime: t,
 					})
 			} else {
 				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 					metav1.Condition{
 						Type:               v1beta1.CompleteConditionType,
-						Status:             metav1.ConditionFalse,
-						Reason:             "ScanJobFailed",
-						Message:            "The scan job has failed.",
-						LastTransitionTime: metav1.NewTime(time.Now()),
+						Status:             metav1.ConditionTrue,
+						Reason:             "ScanJobCompleted",
+						Message:            "The scan job has completed.",
+						LastTransitionTime: t,
 					})
 			}
 			return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "scan job completed")
 		}
 	} else if uploadJob != nil {
 		if uploadJob.Status.CompletionTime != nil {
-			t := metav1.NewTime(time.Now())
-			pipeline.Status.CompletionTime = &t
-			if uploadJob.Status.Failed > 0 && scanJob.Status.Failed > 0 {
+			pipeline.Status.CompletionTime = ptr.To(metav1.NewTime(uploadJob.Status.CompletionTime.Time))
+			if uploadJob.Status.Failed > 0 || scanJob.Status.Failed > 0 {
 				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 					metav1.Condition{
 						Type:               v1beta1.FailedConditionType,
 						Status:             metav1.ConditionTrue,
-						Reason:             "ScanAndUploadJobComplete",
-						Message:            "The scan upload job have completed.",
-						LastTransitionTime: metav1.NewTime(time.Now()),
+						Reason:             "ScanOrUploadJobFailed",
+						Message:            "The scan and/or upload job have failed.",
+						LastTransitionTime: t,
 					})
 			} else {
 				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 					metav1.Condition{
 						Type:               v1beta1.CompleteConditionType,
-						Status:             metav1.ConditionFalse,
-						Reason:             "ScanAndUploadJobFailed",
-						Message:            "The scan and/or upload job have failed.",
-						LastTransitionTime: metav1.NewTime(time.Now()),
+						Status:             metav1.ConditionTrue,
+						Reason:             "ScanAndUploadJobComplete",
+						Message:            "The scan upload job have completed.",
+						LastTransitionTime: t,
 					})
 			}
 			return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "upload and scan job completed")
 		}
-	} else if scanJob.Status.Succeeded > 0 || scanJob.Status.Failed > 0 {
+	} else if scanJob.Status.CompletionTime != nil {
 		l.Error(fmt.Errorf("scan job completed without upload job"),
 			"1 or more scans have completed, but no upload job exists to capture results",
 			"name", pipeline.GetName())
+		pipeline.Status.CompletionTime = ptr.To(metav1.NewTime(scanJob.Status.CompletionTime.Time))
 		pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 			metav1.Condition{
 				Type:               v1beta1.FailedConditionType,
 				Status:             metav1.ConditionTrue,
 				Reason:             "ScansCompletedNoUploader",
 				Message:            "One or more scans have completed, but no upload job exists to capture results.",
-				LastTransitionTime: metav1.NewTime(time.Now()),
+				LastTransitionTime: t,
 			})
 
 		// return r.updateAndReturn(ctx, pipeline, "step", "scan complete without upload job")
