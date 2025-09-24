@@ -48,8 +48,10 @@ var _ = Describe("CronSearch Controller", func() {
 						Schedule: "*/1 * * * *",
 						SearchTemplate: ocularcrashoverriderunv1beta1.SearchTemplateSpec{
 							Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-								CrawlerRef: v1.ObjectReference{
-									Name: "example-crawler",
+								CrawlerRef: ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+									ObjectReference: v1.ObjectReference{
+										Name: "example-crawler",
+									},
 								},
 							},
 						},

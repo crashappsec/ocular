@@ -10,4 +10,5 @@ docs/
 .idea/
 .vscode/
 pkg/generated
+dist/
 .env*

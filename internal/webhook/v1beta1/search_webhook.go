@@ -35,33 +35,7 @@ func SetupSearchWebhookWithManager(mgr ctrl.Manager) error {
 		WithValidator(&SearchCustomValidator{
 			c: mgr.GetClient(),
 		}).
-		WithDefaulter(&SearchCustomDefaulter{}).
 		Complete()
-}
-
-// +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-search,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=searches,verbs=create;update,versions=v1beta1,name=msearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
-
-// SearchCustomDefaulter struct is responsible for setting default values on the custom resource of the
-// Kind Search when those are created or updated.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as it is used only for temporary operations and does not need to be deeply copied.
-type SearchCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
-}
-
-var _ webhook.CustomDefaulter = &SearchCustomDefaulter{}
-
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Search.
-func (d *SearchCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	search, ok := obj.(*ocularcrashoverriderunv1beta1.Search)
-
-	if !ok {
-		return fmt.Errorf("expected an Search object but got %T", obj)
-	}
-	searchlog.Info("Defaulting for Search", "name", search.GetName())
-
-	return nil
 }
 
 // NOTE: currently the search is only configured to run as a validating webhook
@@ -117,18 +91,29 @@ func (v *SearchCustomValidator) ValidateDelete(ctx context.Context, obj runtime.
 
 func validateSearch(ctx context.Context, c client.Client, search *ocularcrashoverriderunv1beta1.Search) error {
 	var allErrs field.ErrorList
-	if search.Spec.CrawlerRef.Namespace != "" && search.Spec.CrawlerRef.Namespace != search.Namespace {
+	var namespace = search.Spec.CrawlerRef.Namespace
+	if namespace == "" {
+		namespace = search.Namespace
+	}
+	if namespace != search.Namespace {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef").Child("namespace"), search.Spec.CrawlerRef.Namespace, "crawlerRef namespace must be empty or match the Search namespace"))
 	}
 
 	var crawler ocularcrashoverriderunv1beta1.Crawler
-	if err := c.Get(ctx, client.ObjectKey{
+	err := c.Get(ctx, client.ObjectKey{
 		Name:      search.Spec.CrawlerRef.Name,
 		Namespace: search.Namespace,
-	}, &crawler); err != nil {
-		return fmt.Errorf("failed to get referenced crawler %s: %w", search.Spec.CrawlerRef.Name, err)
+	}, &crawler)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("error fetching crawler %s/%s: %w", namespace, search.Namespace, err)
+		}
+		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("crawlerRef").Child("name"), fmt.Sprintf("%s/%s", search.Spec.CrawlerRef.Namespace, search.Spec.CrawlerRef.Name)))
 	}
-	paramErrs := validateSetParameters(crawler.Name, field.NewPath("spec").Child("crawlerRef").Child("parameters"), crawler.Spec.Parameters, search.Spec.Parameters)
+
+	paramErrs := validateSetParameters(crawler.Name,
+		field.NewPath("spec").Child("crawlerRef").Child("parameters"),
+		crawler.Spec.Parameters, search.Spec.CrawlerRef.Parameters)
 
 	if len(paramErrs) > 0 {
 		allErrs = append(allErrs, paramErrs...)

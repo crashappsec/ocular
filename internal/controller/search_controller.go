@@ -21,7 +21,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
@@ -66,10 +65,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	search := &v1beta1.Search{}
 	err := r.Get(ctx, req.NamespacedName, search)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			return ctrl.Result{}, nil // could have been deleted after reconcile request.
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	// If the pipeline has a completion time, handle post-completion logic
@@ -205,7 +201,7 @@ func (r *SearchReconciler) newSearchJob(search *v1beta1.Search, crawler *v1beta1
 	// profile admission validation.
 
 	var setParams = map[string]struct{}{}
-	for _, paramDef := range search.Spec.Parameters {
+	for _, paramDef := range search.Spec.CrawlerRef.Parameters {
 		setParams[paramDef.Name] = struct{}{}
 		envVarName := ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name)
 		envVars = append(envVars, corev1.EnvVar{

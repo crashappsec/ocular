@@ -45,9 +45,6 @@ func SetupPipelineWebhookWithManager(mgr ctrl.Manager) error {
 
 // PipelineCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind Pipeline when those are created or updated.
-//
-// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
-// as it is used only for temporary operations and does not need to be deeply copied.
 type PipelineCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
@@ -62,8 +59,12 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object)
 		return fmt.Errorf("expected an Pipeline object but got %T", obj)
 	}
 
-	pipeline.Spec.UploadServiceAccountName = "default"
-	pipeline.Spec.ScanServiceAccountName = "default"
+	if pipeline.Spec.UploadServiceAccountName == "" {
+		pipeline.Spec.UploadServiceAccountName = "default"
+	}
+	if pipeline.Spec.ScanServiceAccountName == "" {
+		pipeline.Spec.ScanServiceAccountName = "default"
+	}
 
 	return nil
 }
@@ -141,19 +142,21 @@ func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcras
 		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("scanServiceAccountName"), pipeline.Spec.ScanServiceAccountName))
 	}
 
-	var uploaderServiceAccount corev1.ServiceAccount
-	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.UploadServiceAccountName, Namespace: pipeline.Namespace}, &uploaderServiceAccount)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return fmt.Errorf("error fetching uploader service account %s: %w", pipeline.Spec.UploadServiceAccountName, err)
+	if len(profile.Spec.UploaderRefs) > 0 {
+		var uploaderServiceAccount corev1.ServiceAccount
+		err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.UploadServiceAccountName, Namespace: pipeline.Namespace}, &uploaderServiceAccount)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return fmt.Errorf("error fetching uploader service account %s: %w", pipeline.Spec.UploadServiceAccountName, err)
+			}
+			allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("uploadServiceAccountName"), pipeline.Spec.UploadServiceAccountName))
 		}
-		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("uploadServiceAccountName"), pipeline.Spec.UploadServiceAccountName))
 	}
 
 	volumes := map[string]struct{}{}
 	for _, vol := range append(downloader.Spec.Volumes, profile.Spec.Volumes...) {
 		if _, exists := volumes[vol.Name]; exists {
-			return fmt.Errorf("duplicate name between downloader and profile volumes: %s", vol.Name)
+			allErrs = append(allErrs, field.Duplicate(field.NewPath("spec").Child("volumes").Child("name"), vol.Name))
 		}
 		volumes[vol.Name] = struct{}{}
 	}

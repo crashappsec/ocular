@@ -79,13 +79,11 @@ var _ = Describe("Uploader Webhook", func() {
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
 		Expect(profile).NotTo(BeNil(), "Expected profileRef to be initialized")
-		// common setup logic if needed
 	})
 
 	AfterEach(func() {
 		_ = k8sClient.Delete(ctx, profile)
 		_ = k8sClient.Delete(ctx, obj)
-		// common cleanup logic if needed
 	})
 
 	Context("When creating or updating Uploader under Validating Webhook", func() {

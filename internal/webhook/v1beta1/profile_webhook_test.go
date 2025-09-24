@@ -9,68 +9,393 @@
 package v1beta1
 
 import (
+	"math/rand"
+
+	testutils "github.com/crashappsec/ocular/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
-	// TODO (user): Add any additional imports if needed
 )
 
 var _ = Describe("Profile Webhook", func() {
+	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
-		obj       *ocularcrashoverriderunv1beta1.Profile
-		oldObj    *ocularcrashoverriderunv1beta1.Profile
-		validator ProfileCustomValidator
+		namespace         = "default"
+		obj               *ocularcrashoverriderunv1beta1.Profile
+		oldObj            *ocularcrashoverriderunv1beta1.Profile
+		validator         ProfileCustomValidator
+		uploader1         *ocularcrashoverriderunv1beta1.Uploader
+		uploader2         *ocularcrashoverriderunv1beta1.Uploader
+		pipeline          *ocularcrashoverriderunv1beta1.Pipeline
+		downloader        *ocularcrashoverriderunv1beta1.Downloader
+		defaultSVCAccount *v1.ServiceAccount
 	)
 
 	BeforeEach(func() {
-		obj = &ocularcrashoverriderunv1beta1.Profile{}
-		oldObj = &ocularcrashoverriderunv1beta1.Profile{}
-		validator = ProfileCustomValidator{}
+		obj = &ocularcrashoverriderunv1beta1.Profile{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "profile-webhook-test",
+				Namespace: namespace,
+			},
+		}
+		oldObj = &ocularcrashoverriderunv1beta1.Profile{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "profile-webhook-test",
+				Namespace: namespace,
+			},
+		}
+		uploader1 = &ocularcrashoverriderunv1beta1.Uploader{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "uploader1",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.UploaderSpec{
+				Container: testutils.GenerateRandomContainer(rnd),
+				Parameters: []ocularcrashoverriderunv1beta1.ParameterDefinition{
+					{
+						Name:     "UPLOADER_1_PARAM_1",
+						Required: true,
+					},
+					{
+						Name:     "UPLOADER_1_PARAM_2",
+						Default:  ptr.To("uploader 1 param 2"),
+						Required: false,
+					},
+				},
+			},
+		}
+		uploader2 = &ocularcrashoverriderunv1beta1.Uploader{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "uploader2",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.UploaderSpec{
+				Container: testutils.GenerateRandomContainer(rnd),
+				Parameters: []ocularcrashoverriderunv1beta1.ParameterDefinition{
+					{
+						Name:     "UPLOADER_2_PARAM_1",
+						Required: false,
+					},
+					{
+						Name:     "UPLOADER_2_PARAM_2",
+						Required: true,
+					},
+				},
+			},
+		}
+		downloader = &ocularcrashoverriderunv1beta1.Downloader{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "some-downloader",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.DownloaderSpec{
+				Container: testutils.GenerateRandomContainer(rnd),
+			},
+		}
+		defaultSVCAccount = &v1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "default",
+				Namespace: namespace,
+			},
+		}
+		pipeline = &ocularcrashoverriderunv1beta1.Pipeline{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipeline-webhook-test",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.PipelineSpec{
+				ProfileRef: v1.ObjectReference{
+					Name:      obj.Name,
+					Namespace: obj.Namespace,
+				},
+				DownloaderRef: v1.ObjectReference{
+					Name:      downloader.Name,
+					Namespace: namespace,
+				},
+				Target: ocularcrashoverriderunv1beta1.Target{
+					Identifier: "some-target",
+					Version:    "v1.2.3",
+				},
+			},
+		}
+		validator = ProfileCustomValidator{
+			c: k8sClient,
+		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
+		Expect(uploader1).NotTo(BeNil(), "Expected uploader1 to be initialized")
+		Expect(uploader2).NotTo(BeNil(), "Expected uploader2 to be initialized")
+		Expect(downloader).NotTo(BeNil(), "Expected downloader to be initialized")
+		Expect(defaultSVCAccount).NotTo(BeNil(), "Expected defaultSVCAccount to be initialized")
+		Expect(pipeline).NotTo(BeNil(), "Expected pipeline to be initialized")
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
+		// don't care if this fails, just a failsafe cleanup
+		_ = k8sClient.Delete(ctx, uploader1)
+		_ = k8sClient.Delete(ctx, uploader2)
+		_ = k8sClient.Delete(ctx, downloader)
+		_ = k8sClient.Delete(ctx, pipeline)
+		_ = k8sClient.Delete(ctx, defaultSVCAccount)
+		_ = k8sClient.Delete(ctx, obj)
 	})
 
-	Context("When creating Profile under Defaulting Webhook", func() {
-		// TODO (user): Add logic for defaulting webhooks
-		// Example:
-		// It("Should apply defaults when a required field is empty", func() {
-		//     By("simulating a scenario where defaults should be applied")
-		//     obj.SomeFieldWithDefault = ""
-		//     By("calling the Default method to apply defaults")
-		//     defaulter.Default(ctx, obj)
-		//     By("checking that the default values are set")
-		//     Expect(obj.SomeFieldWithDefault).To(Equal("default_value"))
-		// })
+	Context("When creating a new profile under validating webhook", func() {
+		It("should succeed if no uploaders are referenced", func() {
+			By("not referencing any uploaders")
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{}
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(Succeed())
+		})
+
+		It("should fail if referenced uploaders do not exist", func() {
+			By("setting uploader references to non-existent uploaders")
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      "non-existent-uploader-1",
+						Namespace: namespace,
+					},
+				}}
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
+
+		It("should fail if uploader reference is invalid", func() {
+			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
+			By("not defining a required parameter for a referenced uploader")
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader1.Name,
+						Namespace: namespace,
+					},
+					Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+						{
+							Name:  "UPLOADER_1_PARAM_2",
+							Value: "optional parameter set",
+						},
+					},
+				}}
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
+
+		It("should succeed if all referenced uploaders are valid", func() {
+			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
+			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())
+			By("defining all required parameters for referenced uploaders")
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader1.Name,
+						Namespace: namespace,
+					},
+					Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+						{
+							Name:  "UPLOADER_1_PARAM_1",
+							Value: "required parameter set",
+						},
+					},
+				},
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader2.Name,
+						Namespace: namespace,
+					},
+					Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+						{
+							Name:  "UPLOADER_2_PARAM_2",
+							Value: "required parameter set",
+						},
+					},
+				},
+			}
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(Succeed())
+		})
+
+		It("should fail if a referenced uploader is in a different namespace", func() {
+			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
+			By("setting the namespace of a referenced uploader to a different namespace than the profile")
+			obj.Namespace = "different-namespace-1"
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader1.Name,
+						Namespace: namespace,
+					},
+				},
+			}
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
+
+		It("should fail if two referenced uploaders define the same volume name", func() {
+			By("defining the same volume name in two referenced uploaders")
+			uploader1.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{}
+			uploader1.Spec.Volumes = []v1.Volume{
+				{Name: "shared-volume", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
+			}
+			uploader2.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{}
+			uploader2.Spec.Volumes = []v1.Volume{
+				{Name: "shared-volume", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
+			}
+			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
+			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader1.Name,
+						Namespace: namespace,
+					},
+				},
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader2.Name,
+						Namespace: namespace,
+					},
+				},
+			}
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to duplicate volume names across referenced uploaders")
+		})
 	})
 
-	Context("When creating or updating Profile under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+	Context("When updating a Profile under Validating Webhook", func() {
+		It("should succeed if no uploaders are referenced", func() {
+			By("not referencing any uploaders")
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(Succeed())
+		})
+
+		It("should fail if referenced uploaders do not exist", func() {
+			By("setting uploader references to non-existent uploaders")
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      "non-existent-uploader-1",
+						Namespace: namespace,
+					},
+				}}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+		})
+
+		It("should fail if uploader reference is invalid", func() {
+			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
+			By("not defining a required parameter for a referenced uploader")
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader1.Name,
+						Namespace: namespace,
+					},
+					Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+						{
+							Name:  "UPLOADER_1_PARAM_2",
+							Value: "optional parameter set",
+						},
+					},
+				}}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+		})
+
+		It("should succeed if all referenced uploaders are valid", func() {
+			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
+			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())
+			By("defining all required parameters for referenced uploaders")
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader1.Name,
+						Namespace: namespace,
+					},
+					Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+						{
+							Name:  "UPLOADER_1_PARAM_1",
+							Value: "required parameter set",
+						},
+					},
+				},
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader2.Name,
+						Namespace: namespace,
+					},
+					Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+						{
+							Name:  "UPLOADER_2_PARAM_2",
+							Value: "required parameter set",
+						},
+					},
+				},
+			}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(Succeed())
+		})
+
+		It("should fail if a referenced uploader is in a different namespace", func() {
+			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
+			By("setting the namespace of a referenced uploader to a different namespace than the profile")
+			obj.Namespace = "different-namespace"
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader1.Name,
+						Namespace: namespace,
+					},
+				},
+			}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+		})
+
+		It("should fail if two referenced uploaders define the same volume name", func() {
+			By("defining the same volume name in two referenced uploaders")
+			uploader1.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{}
+			uploader1.Spec.Volumes = []v1.Volume{
+				{Name: "shared-volume", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
+			}
+			uploader2.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{}
+			uploader2.Spec.Volumes = []v1.Volume{
+				{Name: "shared-volume", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
+			}
+			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
+			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())
+			obj.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader1.Name,
+						Namespace: namespace,
+					},
+				},
+				{
+					ObjectReference: v1.ObjectReference{
+						Name:      uploader2.Name,
+						Namespace: namespace,
+					},
+				},
+			}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to duplicate volume names across referenced uploaders")
+		})
+	})
+
+	Context("When deleting a Profile under Validating Webhook", func() {
+		It("should succeed if no pipelines reference the profile", func() {
+			By("not having any pipelines reference the profile")
+			Expect(validator.ValidateDelete(ctx, obj)).Error().To(Succeed())
+		})
+
+		It("should fail if a pipeline references the profile", func() {
+			By("creating a profile")
+			obj.Spec.Containers = []v1.Container{testutils.GenerateRandomContainer(rnd)} // profiles must have at least one container
+			Expect(k8sClient.Create(ctx, obj)).To(Succeed())
+			By("creating a downloader the pipeline can reference")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account the pipeline will use")
+			Expect(k8sClient.Create(ctx, defaultSVCAccount)).To(Succeed())
+			By("creating a pipeline that references the profile, then attempting to delete the profile")
+			Expect(k8sClient.Create(ctx, pipeline)).To(Succeed())
+
+			Expect(validator.ValidateDelete(ctx, obj)).Error().To(HaveOccurred())
+		})
 	})
 
 })

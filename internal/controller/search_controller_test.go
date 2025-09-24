@@ -83,13 +83,15 @@ var _ = Describe("Search Controller", func() {
 						Namespace: "default",
 					},
 					Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-						CrawlerRef: corev1.ObjectReference{
-							Name: crawlerName,
-						},
-						Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
-							{
-								Name:  "CRAWL_TARGET",
-								Value: "example search query",
+						CrawlerRef: ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+							ObjectReference: corev1.ObjectReference{
+								Name: crawlerName,
+							},
+							Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+								{
+									Name:  "CRAWL_TARGET",
+									Value: "example search query",
+								},
 							},
 						},
 					},

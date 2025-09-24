@@ -9,71 +9,235 @@
 package v1beta1
 
 import (
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"math/rand"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
-	// TODO (user): Add any additional imports if needed
+	testutils "github.com/crashappsec/ocular/test/utils"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Pipeline Webhook", func() {
+	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
-		obj       *ocularcrashoverriderunv1beta1.Pipeline
-		oldObj    *ocularcrashoverriderunv1beta1.Pipeline
-		validator PipelineCustomValidator
-		defaulter PipelineCustomDefaulter
+		namespace  = "default"
+		obj        *ocularcrashoverriderunv1beta1.Pipeline
+		oldObj     *ocularcrashoverriderunv1beta1.Pipeline
+		profile    *ocularcrashoverriderunv1beta1.Profile
+		downloader *ocularcrashoverriderunv1beta1.Downloader
+		svcAccount *corev1.ServiceAccount
+		validator  PipelineCustomValidator
+		defaulter  PipelineCustomDefaulter
 	)
 
 	BeforeEach(func() {
-		obj = &ocularcrashoverriderunv1beta1.Pipeline{}
+		profile = &ocularcrashoverriderunv1beta1.Profile{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipeline-webhook-test-profile",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.ProfileSpec{
+				Containers: []corev1.Container{
+					testutils.GenerateRandomContainer(rnd),
+					testutils.GenerateRandomContainer(rnd),
+				},
+			},
+		}
+		svcAccount = &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "default",
+				Namespace: namespace,
+			},
+		}
+		downloader = &ocularcrashoverriderunv1beta1.Downloader{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipeline-webhook-test-downloader",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.DownloaderSpec{
+				Container: testutils.GenerateRandomContainer(rnd),
+			},
+		}
+		obj = &ocularcrashoverriderunv1beta1.Pipeline{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pipeline-webhook-test",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.PipelineSpec{
+				ProfileRef: corev1.ObjectReference{
+					Name:      profile.Name,
+					Namespace: profile.Namespace,
+				},
+				DownloaderRef: corev1.ObjectReference{
+					Name:      downloader.Name,
+					Namespace: downloader.Namespace,
+				},
+				ScanServiceAccountName:   svcAccount.Name,
+				UploadServiceAccountName: svcAccount.Name,
+			},
+		}
 		oldObj = &ocularcrashoverriderunv1beta1.Pipeline{}
-		validator = PipelineCustomValidator{}
+		validator = PipelineCustomValidator{
+			c: k8sClient,
+		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		defaulter = PipelineCustomDefaulter{}
 		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
+		Expect(profile).NotTo(BeNil(), "Expected profile to be initialized")
+		Expect(downloader).NotTo(BeNil(), "Expected downloader to be initialized")
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
+		_ = k8sClient.Delete(ctx, profile)
+		_ = k8sClient.Delete(ctx, downloader)
+		_ = k8sClient.Delete(ctx, svcAccount)
 	})
 
 	Context("When creating Pipeline under Defaulting Webhook", func() {
-		// TODO (user): Add logic for defaulting webhooks
-		// Example:
-		// It("Should apply defaults when a required field is empty", func() {
-		//     By("simulating a scenario where defaults should be applied")
-		//     obj.SomeFieldWithDefault = ""
-		//     By("calling the Default method to apply defaults")
-		//     defaulter.Default(ctx, obj)
-		//     By("checking that the default values are set")
-		//     Expect(obj.SomeFieldWithDefault).To(Equal("default_value"))
-		// })
+		It("Should set the service account fields to default", func() {
+			By("simulating a scenario where defaults should be applied")
+			obj.Spec.ScanServiceAccountName = "some-account"
+			obj.Spec.UploadServiceAccountName = ""
+			By("calling the Default method to apply defaults")
+			Expect(defaulter.Default(ctx, obj)).To(Succeed())
+			By("checking that the default values are set")
+			Expect(obj.Spec.ScanServiceAccountName).To(Equal("some-account"))
+			Expect(obj.Spec.UploadServiceAccountName).To(Equal("default"))
+		})
 	})
 
-	Context("When creating or updating Pipeline under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+	Context("when creating a pipeline with a validating webhook", func() {
+		It("Should deny creation if downloader is not found", func() {
+			By("only creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should deny creation if profile is not found", func() {
+			By("only creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should deny creation if service account is not found", func() {
+			By("creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should deny creation if the name is too long", func() {
+			By("creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			obj.Name = "this-name-is-way-too-long-and-should-fail-validation-because-it-is-way-too-long-2"
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(
+				MatchError(ContainSubstring("must be no more than 52 characters")),
+				"Expected name validation to fail for a too-long name")
+		})
+
+		It("Should deny creation if downloader and profile volumes container duplicate names", func() {
+			By("creating the profile")
+			profile.Spec.Volumes = []corev1.Volume{
+				{Name: "duplicate-volume-name"},
+			}
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			downloader.Spec.Volumes = []corev1.Volume{
+				{Name: "duplicate-volume-name"},
+			}
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should admit creation if downloader, profile and service account exist", func() {
+			By("creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
+		})
+	})
+
+	Context("when updating a pipeline with a validating webhook", func() {
+		It("Should deny creation if downloader is not found", func() {
+			By("only creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should deny creation if profile is not found", func() {
+			By("only creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should deny creation if service account is not found", func() {
+			By("creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should deny creation if the name is too long", func() {
+			By("creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			obj.Name = "this-name-is-way-too-long-and-should-fail-validation-because-it-is-way-too-long"
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(
+				MatchError(ContainSubstring("must be no more than 52 characters")),
+				"Expected name validation to fail for a too-long name")
+		})
+
+		It("Should deny creation if downloader and profile volumes container duplicate names", func() {
+			By("creating the profile")
+			profile.Spec.Volumes = []corev1.Volume{
+				{Name: "duplicate-volume-name"},
+			}
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			downloader.Spec.Volumes = []corev1.Volume{
+				{Name: "duplicate-volume-name"},
+			}
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
+		})
+
+		It("Should admit creation if downloader, profile and service account exist", func() {
+			By("creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
+		})
 	})
 
 })

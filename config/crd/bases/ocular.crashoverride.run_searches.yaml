@@ -72,6 +72,26 @@ spec:
                       Namespace of the referent.
                       More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
                     type: string
+                  parameters:
+                    description: |-
+                      Parameters is a list of parameters to pass to the referenced resource.
+                      as environment variables.
+                    items:
+                      properties:
+                        name:
+                          description: Name is the name of the parameter to set.
+                          type: string
+                        value:
+                          description: Value is the value to set the parameter to.
+                          type: string
+                      required:
+                      - name
+                      - value
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
                   resourceVersion:
                     description: |-
                       Specific resourceVersion to which this reference is made, if any.
@@ -84,25 +104,6 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
-              parameters:
-                description: Parameters is a list of parameters to pass to the crawler
-                  as environment variables.
-                items:
-                  properties:
-                    name:
-                      description: Name is the name of the parameter to set.
-                      type: string
-                    value:
-                      description: Value is the value to set the parameter to.
-                      type: string
-                  required:
-                  - name
-                  - value
-                  type: object
-                type: array
-                x-kubernetes-list-map-keys:
-                - name
-                x-kubernetes-list-type: map
               ttlSecondsAfterFinished:
                 description: TTLSecondsAfterFinished is the number of seconds to retain
                   the search after it has finished.

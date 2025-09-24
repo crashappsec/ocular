@@ -64,7 +64,7 @@ func (v *CrawlerCustomValidator) ValidateCreate(_ context.Context, obj runtime.O
 	if !ok {
 		return nil, fmt.Errorf("expected a Crawler object but got %T", obj)
 	}
-	crawlerlog.Info("crawler validate update should not be registered, see NOTE in webhook/v1beta1/crawler_webhook.go", "name", crawler.GetName())
+	crawlerlog.Info("crawler validate create should not be registered, see NOTE in webhook/v1beta1/crawler_webhook.go", "name", crawler.GetName())
 
 	return nil, nil
 }
@@ -84,7 +84,7 @@ func (v *CrawlerCustomValidator) validateNewRequiredParameters(ctx context.Conte
 			namespace = search.Namespace
 		}
 		if search.Spec.CrawlerRef.Name == newCrawler.Name && namespace == newCrawler.Namespace {
-			if !validators.AllParametersDefined(newRequiredParameters, search.Spec.Parameters) {
+			if !validators.AllParametersDefined(newRequiredParameters, search.Spec.CrawlerRef.Parameters) {
 				paramErrors = append(paramErrors, field.Required(field.NewPath("spec").Child("parameters"), fmt.Sprintf("crawler %s is still referenced by search %s and not all new required parameters are defined", newCrawler.Name, search.Name)))
 			}
 		}
@@ -101,7 +101,7 @@ func (v *CrawlerCustomValidator) validateNewRequiredParameters(ctx context.Conte
 			namespace = cSearch.Namespace
 		}
 		if cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Name == newCrawler.Name && namespace == newCrawler.Namespace {
-			if !validators.AllParametersDefined(newRequiredParameters, cSearch.Spec.SearchTemplate.Spec.Parameters) {
+			if !validators.AllParametersDefined(newRequiredParameters, cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Parameters) {
 				paramErrors = append(paramErrors, field.Required(field.NewPath("spec").Child("parameters"), fmt.Sprintf("crawler %s is still referenced by cron search %s and not all new required parameters are defined", newCrawler.Name, cSearch.Name)))
 			}
 		}

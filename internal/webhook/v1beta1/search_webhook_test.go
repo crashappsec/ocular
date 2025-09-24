@@ -9,71 +9,142 @@
 package v1beta1
 
 import (
+	"math/rand"
+
+	testutils "github.com/crashappsec/ocular/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
-	// TODO (user): Add any additional imports if needed
 )
 
 var _ = Describe("Search Webhook", func() {
+	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
+		suffix    = testutils.GenerateRandomString(rnd, 5, testutils.LowercaseAlphabeticLetterSet)
 		obj       *ocularcrashoverriderunv1beta1.Search
 		oldObj    *ocularcrashoverriderunv1beta1.Search
+		crawler   *ocularcrashoverriderunv1beta1.Crawler
 		validator SearchCustomValidator
-		defaulter SearchCustomDefaulter
 	)
 
 	BeforeEach(func() {
-		obj = &ocularcrashoverriderunv1beta1.Search{}
-		oldObj = &ocularcrashoverriderunv1beta1.Search{}
-		validator = SearchCustomValidator{}
+		crawler = &ocularcrashoverriderunv1beta1.Crawler{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "crawler",
+				Namespace: metav1.NamespaceDefault,
+			},
+			Spec: ocularcrashoverriderunv1beta1.CrawlerSpec{
+				Parameters: []ocularcrashoverriderunv1beta1.ParameterDefinition{
+					{
+						Name:     "PARAM_1",
+						Required: true,
+					},
+					{
+						Name:     "PARAM_2",
+						Required: false,
+						Default:  ptr.To("parameter 2"),
+					},
+					{
+						Name:     "PARAM_3",
+						Required: false,
+						Default:  ptr.To("parameter 3"),
+					},
+				},
+			},
+		}
+		obj = &ocularcrashoverriderunv1beta1.Search{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "search-" + suffix,
+				Namespace: metav1.NamespaceDefault,
+			},
+			Spec: ocularcrashoverriderunv1beta1.SearchSpec{
+				CrawlerRef: ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+					ObjectReference: v1.ObjectReference{
+						Name:      crawler.Name,
+						Namespace: crawler.Namespace,
+					},
+					Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+						{
+							Name:  "PARAM_1",
+							Value: "value 1",
+						},
+						{
+							Name:  "PARAM_3",
+							Value: "override value 3",
+						},
+					}},
+			},
+		}
+		oldObj = &ocularcrashoverriderunv1beta1.Search{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "search-" + suffix,
+				Namespace: metav1.NamespaceDefault,
+			},
+		}
+		validator = SearchCustomValidator{
+			c: k8sClient,
+		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
-		defaulter = SearchCustomDefaulter{}
-		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
+		Expect(crawler).NotTo(BeNil(), "Expected validator to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
+		_ = k8sClient.Delete(ctx, crawler)
 	})
 
-	Context("When creating Search under Defaulting Webhook", func() {
-		// TODO (user): Add logic for defaulting webhooks
-		// Example:
-		// It("Should apply defaults when a required field is empty", func() {
-		//     By("simulating a scenario where defaults should be applied")
-		//     obj.SomeFieldWithDefault = ""
-		//     By("calling the Default method to apply defaults")
-		//     defaulter.Default(ctx, obj)
-		//     By("checking that the default values are set")
-		//     Expect(obj.SomeFieldWithDefault).To(Equal("default_value"))
-		// })
+	Context("When creating a search", func() {
+		It("Should return an error, if the crawler doesn't exist", func() {
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("Should succeed if the crawler exists", func() {
+			Expect(k8sClient.Create(ctx, crawler)).To(Succeed())
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(Succeed())
+		})
+
+		It("Should return an error if the CrawlerRef.Namespace is set to a different namespace", func() {
+			obj.Spec.CrawlerRef.Namespace = "different-namespace"
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("Should validate the parameters if the crawler exists and parameters are defined", func() {
+			obj.Spec.CrawlerRef.Parameters = []ocularcrashoverriderunv1beta1.ParameterSetting{
+				{
+					Name:  "PARAM_2",
+					Value: "value 2",
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
 	})
 
-	Context("When creating or updating Search under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+	Context("When updating Search under Validating Webhook", func() {
+		It("Should return an error, if the new crawler doesn't exist", func() {
+			obj.Spec.CrawlerRef.Name = "non-existent-crawler"
+			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("Should validate the parameters if the crawler exists and parameters are defined", func() {
+			obj.Spec.CrawlerRef.Parameters = []ocularcrashoverriderunv1beta1.ParameterSetting{
+				{
+					Name:  "PARAM_3",
+					Value: "value 3",
+				},
+			}
+			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
 	})
 
 })

@@ -124,7 +124,7 @@ var _ = Describe("CronSearch Webhook", func() {
 
 	Context("When creating or updating CronSearch under Validating Webhook", func() {
 		It("Should deny creation if the name is too long", func() {
-			obj.Name = "this-name-is-way-too-long-and-should-fail-validation-because-it-is-way-too-long"
+			obj.Name = "this-name-is-way-too-long-and-should-fail-validation-because-it-is-way-too-long-1"
 			Expect(validator.ValidateCreate(ctx, obj)).Error().To(
 				MatchError(ContainSubstring("must be no more than 52 characters")),
 				"Expected name validation to fail for a too-long name")

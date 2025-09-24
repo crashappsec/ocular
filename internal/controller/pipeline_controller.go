@@ -18,7 +18,6 @@ import (
 	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -90,10 +89,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	pipeline := &v1beta1.Pipeline{}
 	err := r.Get(ctx, req.NamespacedName, pipeline)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			return ctrl.Result{}, nil // could have been deleted after reconcile request.
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	// If the pipeline has a completion time, handle post-completion logic

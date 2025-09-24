@@ -174,6 +174,10 @@ license-fix: ## Fix license headers
 	@echo "Formatting license headers ..."
 	@$(LICENSE_EYE) header fix
 
+update-github-actions: frizbee ## Update GitHub action versions in workflows
+	@echo "Updating GitHub workflows ..."
+	@$(FRIZBEEE) actions .github/workflows
+
 
 ##@ Build
 
@@ -236,6 +240,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 YQ ?= $(LOCALBIN)/yq
 CLIENT_GEN ?= $(LOCALBIN)/client-gen
 LICENSE_EYE ?= $(LOCALBIN)/license-eye
+FRIZBEEE ?= $(LOCALBIN)/frizbee
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.6.0
@@ -248,6 +253,7 @@ GOLANGCI_LINT_VERSION ?= v2.1.6
 YQ_VERSION ?= v4.47.1
 CODE_GENERATOR_VERSION ?= v0.34.0
 LICENSE_EYE_VERSION ?= v0.7.0
+FRIZBEEE_VERSION ?=  0.1.7
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -288,6 +294,10 @@ $(CLIENT_GEN): $(LOCALBIN)
 license-eye: $(LICENSE_EYE) ## Download skywalking-eyes locally if necessary.
 $(LICENSE_EYE): $(LOCALBIN)
 	$(call go-install-tool,$(LICENSE_EYE),github.com/apache/skywalking-eyes/cmd/license-eye,$(LICENSE_EYE_VERSION))
+
+license-eye: $(FRIZBEEE) ## Download skywalking-eyes locally if necessary.
+$(FRIZBEEE): $(LOCALBIN)
+	$(call go-install-tool,$(FRIZBEEE),github.com/stacklok/frizbee,$(FRIZBEEE_VERSION))
 
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist

@@ -9,68 +9,119 @@
 package v1beta1
 
 import (
+	"math/rand"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
-	// TODO (user): Add any additional imports if needed
+
+	testutils "github.com/crashappsec/ocular/test/utils"
 )
 
 var _ = Describe("Crawler Webhook", func() {
+	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
+		namespace = "default"
+		search    *ocularcrashoverriderunv1beta1.Search
 		obj       *ocularcrashoverriderunv1beta1.Crawler
 		oldObj    *ocularcrashoverriderunv1beta1.Crawler
 		validator CrawlerCustomValidator
 	)
 
 	BeforeEach(func() {
-		obj = &ocularcrashoverriderunv1beta1.Crawler{}
-		oldObj = &ocularcrashoverriderunv1beta1.Crawler{}
-		validator = CrawlerCustomValidator{}
+		obj = &ocularcrashoverriderunv1beta1.Crawler{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "crawler",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.CrawlerSpec{
+				Container: testutils.GenerateRandomContainer(rnd),
+			},
+		}
+		oldObj = &ocularcrashoverriderunv1beta1.Crawler{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "crawler",
+				Namespace: namespace,
+			},
+		}
+		search = &ocularcrashoverriderunv1beta1.Search{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "crawler-webhook-test-search",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.SearchSpec{
+				CrawlerRef: ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+					ObjectReference: v1.ObjectReference{
+						Name: obj.Name,
+					},
+				},
+			},
+		}
+		validator = CrawlerCustomValidator{
+			c: k8sClient,
+		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
+		Expect(search).NotTo(BeNil(), "Expected search to be initialized")
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
+		_ = k8sClient.Delete(ctx, search)
+		_ = k8sClient.Delete(ctx, obj)
 	})
 
-	Context("When creating Crawler under Defaulting Webhook", func() {
-		// TODO (user): Add logic for defaulting webhooks
-		// Example:
-		// It("Should apply defaults when a required field is empty", func() {
-		//     By("simulating a scenario where defaults should be applied")
-		//     obj.SomeFieldWithDefault = ""
-		//     By("calling the Default method to apply defaults")
-		//     defaulter.Default(ctx, obj)
-		//     By("checking that the default values are set")
-		//     Expect(obj.SomeFieldWithDefault).To(Equal("default_value"))
-		// })
+	Context("When updating Crawler under Validating Webhook", func() {
+		It("Should validate newly required params validated for references", func() {
+			By("creating a Search that references the Crawler, then updating Crawler to add a new required param")
+			oldObj.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{
+				{Name: "param1", Required: true},
+				{Name: "param2", Required: false, Default: ptr.To("default_value")},
+			}
+			Expect(k8sClient.Create(ctx, oldObj)).To(Succeed())
+
+			search.Spec.CrawlerRef = ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+				ObjectReference: v1.ObjectReference{
+					Name: oldObj.Name,
+				},
+				Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+					{Name: "param1", Value: "value1"},
+				},
+			}
+			Expect(k8sClient.Create(ctx, search)).To(Succeed())
+
+			obj.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{
+				{Name: "param1", Required: true},
+				{Name: "param2", Required: false, Default: ptr.To("default_value")},
+				{Name: "param3", Required: true},
+			}
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to new required parameter not being set in Search reference")
+
+			By("updating the Search to include the new required param")
+			search.Spec.CrawlerRef.Parameters = append(search.Spec.CrawlerRef.Parameters, ocularcrashoverriderunv1beta1.ParameterSetting{
+				Name:  "param3",
+				Value: "value3",
+			})
+			Expect(k8sClient.Update(ctx, search)).To(Succeed())
+
+			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil(), "Expected validation to pass after Search reference updated with new required parameter")
+		})
 	})
 
-	Context("When creating or updating Crawler under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+	Context("When deleting a Crawler under Validating Webhook", func() {
+		It("Should deny deletion if referenced by a Search", func() {
+			By("Creating a Search that references the Crawler")
+			Expect(k8sClient.Create(ctx, obj)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, search)).Should(Succeed())
+			By("simulating a deletion scenario")
+			_, err := validator.ValidateDelete(ctx, obj)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
 	})
 
 })

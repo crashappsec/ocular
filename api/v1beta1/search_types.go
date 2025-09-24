@@ -9,7 +9,6 @@
 package v1beta1
 
 import (
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -18,15 +17,7 @@ type SearchSpec struct {
 	// CrawlerRef is a reference to the crawler that will be run in this search.
 	// It should point to a valid Crawler resource in the same namespace.
 	// +required
-	CrawlerRef v1.ObjectReference `json:"crawlerRef,omitempty" protobuf:"bytes,1,opt,name=crawlerRef"`
-
-	// Parameters is a list of parameters to pass to the crawler as environment variables.
-	// +optional
-	// +patchMergeKey=name
-	// +patchStrategy=merge,retainKeys
-	// +listType=map
-	// +listMapKey=name
-	Parameters []ParameterSetting `json:"parameters,omitempty" protobuf:"bytes,2,rep,name=parameters"`
+	CrawlerRef CrawlerObjectReference `json:"crawlerRef,omitempty" protobuf:"bytes,1,opt,name=crawlerRef"`
 
 	// TTLSecondsAfterFinished is the number of seconds to retain the search after it has finished.
 	// +optional

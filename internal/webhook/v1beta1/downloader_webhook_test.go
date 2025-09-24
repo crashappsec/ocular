@@ -9,68 +9,114 @@
 package v1beta1
 
 import (
+	"math/rand"
+
+	testutils "github.com/crashappsec/ocular/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
-	// TODO (user): Add any additional imports if needed
 )
 
 var _ = Describe("Downloader Webhook", func() {
+	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
-		obj       *ocularcrashoverriderunv1beta1.Downloader
-		oldObj    *ocularcrashoverriderunv1beta1.Downloader
-		validator DownloaderCustomValidator
+		namespace  = "default"
+		obj        *ocularcrashoverriderunv1beta1.Downloader
+		oldObj     *ocularcrashoverriderunv1beta1.Downloader
+		pipeline   *ocularcrashoverriderunv1beta1.Pipeline
+		profile    *ocularcrashoverriderunv1beta1.Profile
+		svcAccount *corev1.ServiceAccount
+		validator  DownloaderCustomValidator
 	)
 
 	BeforeEach(func() {
-		obj = &ocularcrashoverriderunv1beta1.Downloader{}
+		profile = &ocularcrashoverriderunv1beta1.Profile{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "downloader-webhook-test-profile",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.ProfileSpec{
+				Containers: []corev1.Container{
+					testutils.GenerateRandomContainer(rnd),
+				},
+			},
+		}
+		obj = &ocularcrashoverriderunv1beta1.Downloader{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "downloader-webhook-test",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.DownloaderSpec{
+				Container: testutils.GenerateRandomContainer(rnd),
+			},
+		}
+		svcAccount = &corev1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "default",
+				Namespace: namespace,
+			},
+		}
 		oldObj = &ocularcrashoverriderunv1beta1.Downloader{}
-		validator = DownloaderCustomValidator{}
+		pipeline = &ocularcrashoverriderunv1beta1.Pipeline{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "downloader-webhook-test-pipeline",
+				Namespace: namespace,
+			},
+			Spec: ocularcrashoverriderunv1beta1.PipelineSpec{
+				ProfileRef: corev1.ObjectReference{
+					Name: profile.Name,
+				},
+				DownloaderRef: corev1.ObjectReference{
+					Name: obj.Name,
+				},
+				Target: ocularcrashoverriderunv1beta1.Target{
+					Identifier: "some-identifier",
+					Version:    "some-version",
+				},
+				ScanServiceAccountName:   svcAccount.Name,
+				UploadServiceAccountName: svcAccount.Name,
+			},
+		}
+		validator = DownloaderCustomValidator{
+			c: k8sClient,
+		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		// TODO (user): Add any setup logic common to all tests
+		Expect(profile).NotTo(BeNil(), "Expected profile to be initialized")
+		Expect(pipeline).NotTo(BeNil(), "Expected pipeline to be initialized")
 	})
 
 	AfterEach(func() {
-		// TODO (user): Add any teardown logic common to all tests
+		_ = k8sClient.Delete(ctx, pipeline)
+		_ = k8sClient.Delete(ctx, profile)
+		_ = k8sClient.Delete(ctx, obj)
 	})
 
-	Context("When creating Downloader under Defaulting Webhook", func() {
-		// TODO (user): Add logic for defaulting webhooks
-		// Example:
-		// It("Should apply defaults when a required field is empty", func() {
-		//     By("simulating a scenario where defaults should be applied")
-		//     obj.SomeFieldWithDefault = ""
-		//     By("calling the Default method to apply defaults")
-		//     defaulter.Default(ctx, obj)
-		//     By("checking that the default values are set")
-		//     Expect(obj.SomeFieldWithDefault).To(Equal("default_value"))
-		// })
-	})
+	Context("When deleting a Downloader under Validating Webhook", func() {
 
-	Context("When creating or updating Downloader under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+		It("Should deny deletion if referenced by a Pipeline", func() {
+			By("Creating a profile for the pipeline")
+			Expect(k8sClient.Create(ctx, profile)).Should(Succeed())
+			By("creating a service account for the pipeline")
+			Expect(k8sClient.Create(ctx, svcAccount)).Should(Succeed())
+			By("Creating the downloader for the pipeline")
+			Expect(k8sClient.Create(ctx, obj)).Should(Succeed())
+			By("Creating a pipeline that references the downloader")
+			Expect(k8sClient.Create(ctx, pipeline)).Should(Succeed())
+			By("simulating a deletion scenario")
+			_, err := validator.ValidateDelete(ctx, obj)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("Should allow deletion if not referenced by any Pipeline", func() {
+			By("simulating a deletion scenario")
+			Expect(validator.ValidateDelete(ctx, obj)).Error().ToNot(HaveOccurred())
+		})
 	})
 
 })
