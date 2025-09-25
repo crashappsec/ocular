@@ -199,7 +199,7 @@ func main() {
 	if err := (&controller.PipelineReconciler{
 		Client:         mgr.GetClient(),
 		Scheme:         mgr.GetScheme(),
-		ExtractorImage: os.Getenv("OCULAR_MANAGER_IMAGE"),
+		ExtractorImage: os.Getenv("OCULAR_CONTROLLER_IMG"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Pipeline")
 		os.Exit(1)

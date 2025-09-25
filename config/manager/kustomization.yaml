@@ -11,7 +11,7 @@ patches:
     - op: replace
       path: /spec/template/spec/containers/0/env/0
       value:
-        name: OCULAR_MANAGER_IMAGE
+        name: OCULAR_CONTROLLER_IMG
         value: ghcr.io/crashappsec/ocular-controller:latest
   target:
     kind: Deployment

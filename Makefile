@@ -14,8 +14,17 @@ ifneq (,$(wildcard ${OCULAR_ENV_FILE}))
 endif
 
 
+OCULAR_VERSION ?= $(shell git describe --tags --dirty=-dev)
+export OCULAR_VERSION
 # Image URL to use all building/pushing image targets
-OCULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/ocular-controller:latest
+OCULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/ocular-controller:$(OCULAR_VERSION)
+export OCULAR_CONTROLLER_IMG
+
+
+# This is the default image for the ocular controller. Updating the image
+# via kustomize writes to disk, so we store this value to revert after any
+# build/deploy commands are used. This is used in the 'revert-image' target.
+DEFAULT_OCULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/ocular-controller:latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -43,10 +52,22 @@ define KUSTOMIZE_PATCH
 - op: replace
   path: /spec/template/spec/containers/0/env/0
   value:
-    name: OCULAR_MANAGER_IMAGE
+    name: OCULAR_CONTROLLER_IMG
     value: $(OCULAR_CONTROLLER_IMG)
 endef
 export KUSTOMIZE_PATCH
+
+# This variable is the patch to be applied to the kustomization.yaml to revert the controller image
+# to the default image. This is done because the image tag to the 'extractor' image needs to be dynamically set based on the
+# OCULAR_CONTROLLER_IMG variable. The patch is applied in the 'revert-image' target.
+define DEFAULT_KUSTOMIZE_PATCH
+- op: replace
+  path: /spec/template/spec/containers/0/env/0
+  value:
+    name: OCULAR_CONTROLLER_IMG
+    value: $(DEFAULT_OCULAR_CONTROLLER_IMG)
+endef
+export DEFAULT_KUSTOMIZE_PATCH
 
 .PHONY: all
 all: build
@@ -87,6 +108,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && yq -ie '.patches[0].patch = strenv(KUSTOMIZE_PATCH)' kustomization.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+	$(MAKE) revert-image
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
@@ -125,7 +147,6 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
@@ -218,10 +239,29 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate kustomize yq ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	cd config/manager && yq -ie '.patches[0].patch = strenv(KUSTOMIZE_PATCH)' kustomization.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
+	$(MAKE) revert-image
+
+.PHONY: build-helm
+build-helm: manifests generate kustomize yq ## Generate a helm-chart using kubebuilder
+	@mkdir -p dist
+	@cd config/manager && yq -ie '.patches[0].patch = strenv(KUSTOMIZE_PATCH)' kustomization.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
+	@$(KUBEBUILDER) edit --plugins=helm/v2-alpha
+	# Bit of a hack to set the image to the versioned one instead of latest
+	@yq -ie '.controllerManager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
+	@yq -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
+	$(MAKE) revert-image
+
+.PHONY: clean-helm
+clean-helm: ## Clean up the helm chart generated files
+	@rm -rf dist/chart
+
+.PHONY: revert-image
+revert-image: kustomize ## Revert the image in the kustomization to the default image.
+	@cd config/manager && yq -ie '.patches[0].patch = strenv(DEFAULT_KUSTOMIZE_PATCH)' kustomization.yaml && $(KUSTOMIZE) edit set image controller=${DEFAULT_OCULAR_CONTROLLER_IMG}
 
 ##@ Dependencies
 
@@ -241,6 +281,7 @@ YQ ?= $(LOCALBIN)/yq
 CLIENT_GEN ?= $(LOCALBIN)/client-gen
 LICENSE_EYE ?= $(LOCALBIN)/license-eye
 FRIZBEEE ?= $(LOCALBIN)/frizbee
+KUBEBUILDER ?= $(LOCALBIN)/kubebuilder
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.6.0
@@ -249,11 +290,12 @@ CONTROLLER_TOOLS_VERSION ?= v0.18.0
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-GOLANGCI_LINT_VERSION ?= v2.1.6
+GOLANGCI_LINT_VERSION ?= v2.5.0
 YQ_VERSION ?= v4.47.1
 CODE_GENERATOR_VERSION ?= v0.34.0
 LICENSE_EYE_VERSION ?= v0.7.0
 FRIZBEEE_VERSION ?=  0.1.7
+KUBEBUILDER_VERSION ?= master # support for helm-v2 isn't available in a release yet
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -299,6 +341,9 @@ license-eye: $(FRIZBEEE) ## Download skywalking-eyes locally if necessary.
 $(FRIZBEEE): $(LOCALBIN)
 	$(call go-install-tool,$(FRIZBEEE),github.com/stacklok/frizbee,$(FRIZBEEE_VERSION))
 
+kubebuilder: $(KUBEBUILDER) ## Download kubebuilder locally if necessary.
+$(KUBEBUILDER): $(LOCALBIN)
+	$(call go-install-tool,$(KUBEBUILDER),sigs.k8s.io/kubebuilder/v4,$(KUBEBUILDER_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
