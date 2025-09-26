@@ -277,7 +277,7 @@ GOLANGCI_LINT_VERSION ?= v2.5.0
 YQ_VERSION ?= v4.47.1
 CODE_GENERATOR_VERSION ?= v0.34.0
 LICENSE_EYE_VERSION ?= v0.7.0
-FRIZBEEE_VERSION ?=  0.1.7
+FRIZBEEE_VERSION ?=  v0.1.7
 KUBEBUILDER_VERSION ?= master # support for helm-v2 isn't available in a release yet
 
 .PHONY: kustomize
@@ -320,7 +320,7 @@ license-eye: $(LICENSE_EYE) ## Download skywalking-eyes locally if necessary.
 $(LICENSE_EYE): $(LOCALBIN)
 	$(call go-install-tool,$(LICENSE_EYE),github.com/apache/skywalking-eyes/cmd/license-eye,$(LICENSE_EYE_VERSION))
 
-license-eye: $(FRIZBEEE) ## Download skywalking-eyes locally if necessary.
+frizbee: $(FRIZBEEE) ## Download frizbee locally if necessary.
 $(FRIZBEEE): $(LOCALBIN)
 	$(call go-install-tool,$(FRIZBEEE),github.com/stacklok/frizbee,$(FRIZBEEE_VERSION))
 
