@@ -19,6 +19,8 @@ export OCULAR_VERSION
 # Image URL to use all building/pushing image targets
 OCULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/ocular-controller:$(OCULAR_VERSION)
 export OCULAR_CONTROLLER_IMG
+OCULAR_EXTRACTOR_IMAGE ?= $(OCULAR_CONTROLLER_IMG)
+export OCULAR_EXTRACTOR_IMAGE
 
 
 # This is the default image for the ocular controller. Updating the image
@@ -45,29 +47,6 @@ SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 
-# This variable is the patch to be applied to the kustomization.yaml to set the controller image.
-# This is done because the image tag to the 'extractor' image needs to be dynamically set based on the
-# OCULAR_CONTROLLER_IMG variable. The patch is applied in the 'build-installer' target and 'deploy' target.
-define KUSTOMIZE_PATCH
-- op: replace
-  path: /spec/template/spec/containers/0/env/0
-  value:
-    name: OCULAR_CONTROLLER_IMG
-    value: $(OCULAR_CONTROLLER_IMG)
-endef
-export KUSTOMIZE_PATCH
-
-# This variable is the patch to be applied to the kustomization.yaml to revert the controller image
-# to the default image. This is done because the image tag to the 'extractor' image needs to be dynamically set based on the
-# OCULAR_CONTROLLER_IMG variable. The patch is applied in the 'revert-image' target.
-define DEFAULT_KUSTOMIZE_PATCH
-- op: replace
-  path: /spec/template/spec/containers/0/env/0
-  value:
-    name: OCULAR_CONTROLLER_IMG
-    value: $(DEFAULT_OCULAR_CONTROLLER_IMG)
-endef
-export DEFAULT_KUSTOMIZE_PATCH
 
 .PHONY: all
 all: build
@@ -106,7 +85,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && yq -ie '.patches[0].patch = strenv(KUSTOMIZE_PATCH)' kustomization.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
+	cd config/manager && yq -ie '.[0].value.value = strenv(OCULAR_EXTRACTOR_IMAGE)' extractor-patch.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 	$(MAKE) revert-image
 
@@ -230,6 +209,8 @@ docker-push: ## Push docker image with the manager.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
+	@echo -e "This will build and \e[31m$$(tput bold)push$$(tput sgr0)\e[0m the image ${OCULAR_CONTROLLER_IMG} for platforms: ${PLATFORMS}."
+	@read -p "press enter to continue, or ctrl-c to abort: "
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name ocular-builder
@@ -241,18 +222,20 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 .PHONY: build-installer
 build-installer: manifests generate kustomize yq ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
-	cd config/manager && yq -ie '.patches[0].patch = strenv(KUSTOMIZE_PATCH)' kustomization.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
+	cd config/manager && yq -ie '.[0].value.value = strenv(OCULAR_EXTRACTOR_IMAGE)' extractor-patch.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
-	$(MAKE) revert-image
+	@$(MAKE) revert-image
 
 .PHONY: build-helm
 build-helm: manifests generate kustomize yq ## Generate a helm-chart using kubebuilder
 	@mkdir -p dist
-	@cd config/manager && yq -ie '.patches[0].patch = strenv(KUSTOMIZE_PATCH)' kustomization.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
-	@$(KUBEBUILDER) edit --plugins=helm/v2-alpha
-	# Bit of a hack to set the image to the versioned one instead of latest
+	@# hack to get the env var to be templated in the chart, since currrently helm/v2-alpha doesn't support it
+	@# first we set the image to a replaceme value, then we replace it in the generated chart
+	@OCULAR_EXTRACTOR_IMAGE=extractor-image-replaceme $(KUBEBUILDER) edit --plugins=helm/v2-alpha
 	@yq -ie '.controllerManager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
 	@yq -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
+	@# replace the image with the helm template values
+	@sed -i.bak 's|extractor-image-replaceme|{{ .Values.controllerManager.image.repository }}:{{ .Values.controllerManager.image.tag }}|g' dist/chart/templates/manager/manager.yaml && rm dist/chart/templates/manager/manager.yaml.bak
 	$(MAKE) revert-image
 
 .PHONY: clean-helm
@@ -261,7 +244,7 @@ clean-helm: ## Clean up the helm chart generated files
 
 .PHONY: revert-image
 revert-image: kustomize ## Revert the image in the kustomization to the default image.
-	@cd config/manager && yq -ie '.patches[0].patch = strenv(DEFAULT_KUSTOMIZE_PATCH)' kustomization.yaml && $(KUSTOMIZE) edit set image controller=${DEFAULT_OCULAR_CONTROLLER_IMG}
+	@cd config/manager && yq -ie '.[0].value.value = strenv(DEFAULT_OCULAR_CONTROLLER_IMG)' extractor-patch.yaml && $(KUSTOMIZE) edit set image controller=${DEFAULT_OCULAR_CONTROLLER_IMG}
 
 ##@ Dependencies
 

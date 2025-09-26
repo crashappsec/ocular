@@ -13,11 +13,13 @@ spec:
     command: [ /bin/sh, -c ]
     args:
       - |
+        if [ -f /etc/ocular/gitconfig ]; then
+          git config --global include.path /etc/ocular/gitconfig
+        fi
         git clone $OCULAR_TARGET_IDENTIFIER $OCULAR_TARGET_DIR
     volumeMounts:
       - name:  downloader-secrets
-        mountPath: /etc/gitconfig
-        subPath: gitconfig
+        mountPath: /etc/ocular/
         readOnly: true
   volumes:
     - name: downloader-secrets

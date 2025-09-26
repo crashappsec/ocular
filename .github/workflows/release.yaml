@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: 1.24
+  GO_VERSION: 1.25
 
 jobs:
   publish-docker:
@@ -43,7 +43,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Chalk
-        uses: crashappsec/setup-chalk-action@7aff0aac991c201af079efc3c724aca6b3a73c25 # main
+        uses: crashappsec/setup-chalk-action@3456778b9c36430c155ede525be4b17c28a1ce2d # main
       - name: setup qemu
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
       - name: setup buildx
@@ -58,6 +58,6 @@ jobs:
             LDFLAGS=-s -w -X main.version=${{ github.event.release.tag_name }} -X main.buildTime=${{steps.date.outputs.date}} -X main.gitCommit=${{ github.sha }}
           tags: |
             ${{ env.TAG }}
-            ${{ (github.event.release.prerelease && '') || env.LATEST }}
+            ${{ !github.event.release.prerelease && env.LATEST || env.LATEST_PRERELEASE}}
           cache-from: type=gha
           cache-to: type=gha,mode=max

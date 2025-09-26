@@ -7,12 +7,7 @@ images:
   newName: ghcr.io/crashappsec/ocular-controller
   newTag: latest
 patches:
-- patch: |-
-    - op: replace
-      path: /spec/template/spec/containers/0/env/0
-      value:
-        name: OCULAR_CONTROLLER_IMG
-        value: ghcr.io/crashappsec/ocular-controller:latest
+- path: extractor-patch.yaml
   target:
     kind: Deployment
     name: controller-manager
