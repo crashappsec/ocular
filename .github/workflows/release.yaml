@@ -69,6 +69,8 @@ jobs:
       - name: Set up Chalk
         uses: crashappsec/setup-chalk-action@3456778b9c36430c155ede525be4b17c28a1ce2d # main
         continue-on-error: true
+        with:
+          version: d80154e2f0a1fcfefddf23db0fe1884938a6ae41
       - name: setup qemu
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
       - name: setup buildx
