@@ -16,8 +16,35 @@ permissions:
 
 env:
   GO_VERSION: 1.25
+  IMAGE_REPOSITORY: "ghcr.io/${{ github.repository_owner }}/ocular-controller"
+  SUFFIX: ${{ github.event.release.prerelease && '-prerelease' || '' }}
+  RELEASE_NAME: ${{ github.event.release.name }}
 
 jobs:
+  publish-manifest:
+    name: publish manfiest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - name: setup go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version-file: 'go.mod'
+          cache-dependency-path: 'go.sum'
+      - name: generate manfiest
+        run: |
+          make build-installer
+          mv dist/install.yaml $MANIFEST_FILE
+        env:
+          OCULAR_VERSION: "${{ env.RELEASE_NAME }}${{ env.SUFFIX }}"
+          MANIFEST_FILE: "ocular${{ env.SUFFIX }}.yaml"
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2
+        with:
+          files: ${{ env.MANIFEST_FILE }}
   publish-docker:
     name: publish docker image
     runs-on: ubuntu-latest
@@ -25,9 +52,6 @@ jobs:
       packages: write
       contents: read
 #      id-token: write
-    env:
-      TAG: "ghcr.io/${{ github.repository_owner }}/ocular-controller:${{ github.ref_name }}"
-      LATEST: "ghcr.io/${{ github.repository_owner }}/ocular-controller:latest"
     steps:
       - name: Get current date
         id: date
@@ -43,7 +67,8 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Chalk
-        uses: crashappsec/setup-chalk-action@3456778b9c36430c155ede525be4b17c28a1ce2d # main
+        uses: crashappsec/setup-chalk-action@3456778b9c36430c155ede525be4b17c28a1ce2d # main]
+        continue-on-error: true
       - name: setup qemu
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
       - name: setup buildx
@@ -57,7 +82,7 @@ jobs:
           build-args: |
             LDFLAGS=-s -w -X main.version=${{ github.event.release.tag_name }} -X main.buildTime=${{steps.date.outputs.date}} -X main.gitCommit=${{ github.sha }}
           tags: |
-            ${{ env.TAG }}
-            ${{ !github.event.release.prerelease && env.LATEST || env.LATEST_PRERELEASE}}
+            ${{ env.IMAGE_REPOSITORY }}:${{ env.RELEASE_NAME }}${{ env.SUFFIX }}
+            ${{ env.IMAGE_REPOSITORY }}:latest${{ env.SUFFIX }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
