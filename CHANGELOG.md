@@ -1,7 +1,7 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
 
-# [v0.2.0](https://github.com/crashappsec/ocular/releases/tag/v0.2.0) - **October 1, 2025**
+# [v0.2.0](https://github.com/crashappsec/ocular/releases/tag/v0.2.0) - **September 29, 2025**
 
 ### Added
 

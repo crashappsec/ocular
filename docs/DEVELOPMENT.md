@@ -12,10 +12,10 @@ For a more in-depth guide on how to get started with the project and what the di
 are, please refer to the [documentation site](https://ocularproject.io/docs/)
 
 ### Prerequisites
-- go version v1.24.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+- go
+- docker
+- kubectl
+- Access to a Kubernetes v1.28.0+ cluster.
 
 *NOTE*: Any environment variable mentioned in the following commands can be set in the
 `.env` file (or whatever file you set `OCULAR_ENV_FILE` to), which is loaded automatically by the `make` command.
@@ -98,15 +98,17 @@ Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
 the project, i.e.:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/crashappsec/ocular/main/dist/install.yaml
+kubectl apply -f ./dist/install.yaml
 ```
 
 ### By providing a Helm Chart
 
 1. Build the chart using the optional helm plugin
 
+**NOTE**: This should only be used if you know what you are doing. Users should prefer installation from the [helm charts repository](https://github.com/crashappsec/helm-charts).
+
 ```sh
-kubebuilder edit --plugins=helm/v1-alpha
+make build-helm OCULAR_CONTROLLER_IMG=<some-registry>/ocular:tag
 ```
 
 2. See that a chart was generated under 'dist/chart', and users
