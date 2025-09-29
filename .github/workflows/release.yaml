@@ -9,7 +9,7 @@
 name: release
 on:
   release:
-    types: [prereleased, released]
+    types: [created, edited]
 
 permissions:
   contents: read
@@ -34,17 +34,14 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache-dependency-path: 'go.sum'
-      - name: generate manfiest
+      - name: generate manifest
         run: |
-          make build-installer
-          mv dist/install.yaml $MANIFEST_FILE
-        env:
-          OCULAR_VERSION: "${{ env.RELEASE_NAME }}${{ env.SUFFIX }}"
-          MANIFEST_FILE: "ocular${{ env.SUFFIX }}.yaml"
+          make build-installer OCULAR_VERSION="$RELEASE_NAME$SUFFIX"
+          mv dist/install.yaml ocular${SUFFIX}.yaml
       - name: Upload Release Asset
         uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2
         with:
-          files: ${{ env.MANIFEST_FILE }}
+          files: ocular${{ env.SUFFIX }}.yaml
   publish-docker:
     name: publish docker image
     runs-on: ubuntu-latest
