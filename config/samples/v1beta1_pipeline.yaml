@@ -1,0 +1,15 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Pipeline
+metadata:
+  name: pipeline-sample
+  labels:
+    app.kubernetes.io/name: ocular
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  downloaderRef:
+    name: downloader-sample
+  profileRef:
+    name: profile-sample
+  target:
+    identifier: "https://github.com/crashappsec/chalk"
+  ttlSecondsAfterFinished: 180 # 3 minutes

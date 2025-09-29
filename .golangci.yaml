@@ -7,22 +7,54 @@
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
 version: "2"
+run:
+  allow-parallel-runners: true
 linters:
-  settings:
-    gosec:
-      excludes:
-        - G107 # Url provided to HTTP request as taint input
-        - G115 # Potential integer overflow when converting between integer types
+  default: none
   enable:
-    - errname
-    - exhaustive
+    - copyloopvar
+    - dupl
+    - errcheck
+    - ginkgolinter
     - goconst
-    - gocritic
-    - gosec
+    - gocyclo
+    - govet
+    - ineffassign
+    - lll
     - misspell
+    - nakedret
+    - prealloc
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+  settings:
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - lll
+        path: api/*
+      - linters:
+          - dupl
+          - lll
+        path: internal/*
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 formatters:
   enable:
-    - gci
     - gofmt
-    - gofumpt
-    - golines
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

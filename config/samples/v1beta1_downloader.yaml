@@ -1,0 +1,31 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Downloader
+metadata:
+  labels:
+    app.kubernetes.io/name: ocular
+    app.kubernetes.io/managed-by: kustomize
+  name: downloader-sample
+spec:
+  container:
+    name: git
+    image: alpine/git:latest
+    imagePullPolicy: IfNotPresent
+    command: [ /bin/sh, -c ]
+    args:
+      - |
+        if [ -f /etc/ocular/gitconfig ]; then
+          git config --global include.path /etc/ocular/gitconfig
+        fi
+        git clone $OCULAR_TARGET_IDENTIFIER $OCULAR_TARGET_DIR
+    volumeMounts:
+      - name:  downloader-secrets
+        mountPath: /etc/ocular/
+        readOnly: true
+  volumes:
+    - name: downloader-secrets
+      secret:
+        optional: true
+        secretName: git-downloader-secret
+        items:
+          - key: gitconfig
+            path: gitconfig

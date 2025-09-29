@@ -11,18 +11,3 @@
 // It is designed to have easily swappable components depending on: what you want to scan with,
 // how you want to enumerate targets, and where you want to upload results to.
 package ocular
-
-/***************
- * Go Generate *
- ***************/
-
-// The following go generate comments
-// are used to enforce files that are automatically generated.
-// This file should be the single source for go generate commands:
-
-// generate the openAPI spec in YAML format (for better human readability)
-//go:generate go run ./hack/generator/ -type open-api -output ./docs/swagger/openapi.yaml
-
-// generate the openAPI spec in JSON format to be embedded in the application
-// (JSON is more compact and easier for machines to parse)
-//go:generate go run ./hack/generator/ -type open-api -format json -output ./pkg/api/static/openapi.json

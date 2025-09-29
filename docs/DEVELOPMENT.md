@@ -4,226 +4,122 @@ This document describes the development process for the project.
 
 ## Getting Started
 
-This guide is a basic overview of how to get started with the project
-when developing locally. We recommend you first read the [documentation site](https://ocularproject.io/docs/)
-to understand the project and how to use the API.
+*NOTE*: This project is built using [Kubebuilder](https://kubebuilder.io/).
+The following documenation is taken and adapted from the default README generated
+by Kubebuilder. For more information, please refer to the [Kubebuilder documentation](https://kubebuilder.io/).
+
+For a more in-depth guide on how to get started with the project and what the different components
+are, please refer to the [documentation site](https://ocularproject.io/docs/)
 
 ### Prerequisites
+- go
+- docker
+- kubectl
+- Access to a Kubernetes v1.28.0+ cluster.
 
-- [Go](https://golang.org/doc/install/source) 1.24 or later
-- [Docker](https://docs.docker.com/get-docker/)
-- [Kubernetes](https://kubernetes.io/docs/home/) 1.30 or later
-    - Additionally, you should have a working `kubectl` installation and a configured kubeconfig file.
-    - You should have a service account ~~or user~~ with the following permissions:
-        - To Install: `create` on `namespaces`, `role`, `role-binding`, `serviceaccounts`, `deployments`, `pods`,
-          `configmaps` and `secrets`
-        - To Run: `get`, `list`, `watch`, `create` on `jobs.batch`, `configmaps`, `secrets` on a service account
-- Reasonable standard CLI development tools:
-    - `make`
-    - `curl` or `httpie` (or any other HTTP client)
-    - `jq`
-    - `git` (for downloading git repositories)
-    - `kubectl` (for interacting with kubernetes)
+*NOTE*: Any environment variable mentioned in the following commands can be set in the
+`.env` file (or whatever file you set `OCULAR_ENV_FILE` to), which is loaded automatically by the `make` command.
+An example `.env` file is provided in the repository as [`example.env`](/example.env).
 
-### Configuration
+### To Deploy on the cluster
+**Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG`:**
 
-When running the application in production, it is recommended to use the use configuration
-provided by the chart in the [`helm-charts`](https://github.com/crashappsec/helm-chart) repository.
-The chart can also be viewed on [Artifact Hub](https://artifacthub.io/packages/helm/crashoverride-helm-charts/ocular).
-
-Developers are encouraged to use `make` commands to run the application and manage the development environment.
-Many of the scripts used during development will rely on environment variables to configure settings, which 
-are loaded from a `.env` automatically by the `make` command. An example `.env` file is provided in the repository
-as [`example.env`](/example.env). This file contains documentation for the available environment variables. 
-To get started, copy the `example.env` file to `.env` and then edit it to configure the application.
-
-**NOTE**: Make can also be configured to use a different environment file by setting the `OCULAR_ENV_FILE` variable in the Makefile.
-
-```bash
-cp example.env .env
-# edit the .env file to configure the application
-
-# OR #
-cp example.env .env.staging # a specific environment file
-export OCULAR_ENV_FILE=.env.staging # set the environment file for make to use
+```sh
+make docker-build docker-push OCULAR_CONTROLLER_IMG=<some-registry>/ocular:tag
 ```
 
-### Running the Application
+**NOTE:** This image ought to be published in the personal registry you specified.
+And it is required to have access to pull the image from the working environment.
+Make sure you have the proper permission to the registry if the above commands don’t work.
 
-the API requires a few resources in the kubernetes cluster to run. A development
-version of the resources can be created in your cluster by running the following command:
+**Install the CRDs into the cluster:**
 
-```bash
-# Create local dev resources in local kubernetes cluster.
-# NOTE: this will use the current context in your kubeconfig
-# the kubeconfig path will be read from the env variable KUBECONFIG
-# or ~/.kube/config if not set
-make apply-devenv
-# you can undo this with make remove-devenv
+```sh
+make install
 ```
 
-#### Installing default integrations
+**Deploy the Manager to the cluster with the image specified by `OCULAR_CONTROLLER_IMG`:**
 
-When installing via Helm, the [default integrations](https://github.com/crashappsec/ocular-default-integrations)
-(downloaders, scanners, uploaders) are installed automatically.
-
-When running the application locally, you can install the default integrations by running the following command:
-
-```bash
-# Install the default integrations to the development environment.
-# You can set the OCULAR_DEFAULTS_VERSION environment variable to
-# specify a specific version of the defaults to install.
-# defaults to the latest version if not set.
-make apply-devenv-default
-# or: OCULAR_DEFAULTS_VERSION=0.1.0 make apply-devenv-defaults
+```sh
+make deploy OCULAR_CONTROLLER_IMG=<some-registry>/ocular:tag
 ```
 
+> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
+privileges or be logged in as admin.
 
-The API can then either be run via docker or locally as a go application:
+**Create instances of your solution**
+You can apply the samples (examples) from the config/sample:
 
-```bash
-# Run the application via docker
-# The API will read your kubeconfig in order to get access the cluster.
-# the kubeconfig path will be read from the env variable KUBECONFIG
-# or ~/.kube/config if not set
-
-make run-docker-local
-# or 
-# make run-local # to run the application locally as a binary
-
-# Once running you can access the application at http://localhost:3001
-# NOTE: docker will need to use --network=host to access the kubernetes cluster
-# so host networking is required
+```sh
+kubectl apply -k config/samples/
 ```
 
-### Accessing the API
+>**NOTE**: Ensure that the samples has default values to test it out.
 
-The API uses Bearer tokens for authentication. `kubectl` can be used to
-create a token for the service account that is used to run the API. The service account
-should be created by the `devenv-up` command.
+### To Uninstall
+**Delete the instances (CRs) from the cluster:**
 
-```bash
-# Runs 'kubectl create-token' for the service account
-make generate-devenv-token
+```sh
+kubectl delete -k config/samples/
 ```
 
-### Creating a profile
+**Delete the APIs(CRDs) from the cluster:**
 
-The API uses profiles to define the configuration for both the scanning tools AND
-the uploading of any artifacts or results from the scans.
-A profile is a set of configuration options that are used to run a scan.
-A profile can be created by sending a POST request to the `/profiles` endpoint
-
-```bash
-# This creates a profile named 'gitleaks' which runs the gitleaks
-# scanner and prints results to the STDOUT of the container
-# see the other example profiles in the hack/profiles directory
-curl -L -X POST -H "Authorization: Bearer $(make generate-devenv-token)" \
-  -H "Content-Type: application/x-yaml" \
-  --data-binary '@hack/profiles/gitleaks-example.yaml' \
-  http://localhost:3001/api/v1/profiles
-````
-
-### Configuring Secrets
-
-Secrets can be set via the API by sending a POST request to the `/secrets` endpoint.
-NOTE: secrets cannot be retrieved via the API, they can only be created and deleted.
-
-```bash
-# This creates a secret named 'downloader-gitconfig' from the file
-# my/example/gitconfig
-curl -L -X POST -H "Authorization: Bearer $(make generate-devenv-token)" \
-  --data-binary '@my/example/gitconfig' \
-  http://localhost:3001/api/v1/secrets/downloader-gitconfig
+```sh
+make uninstall
 ```
 
-Secrets can be referenced in the profile configuration by using the `secrets` field in
-a scanner definition. An example is shown below
+**UnDeploy the controller from the cluster:**
 
-```yaml
-# Example profile
-name: my-example-profile
-
-# This section defines the scanners that will be used to scan the target
-# once the target is downloaded (via the downloader set when creating the pipeline)
-scanners:
-  - image: "my-scanner-image"
-    command: [ "/my-scanner" ]
-    args: [ "--fast", "--json", "--output", "$RESULTS_DIR/output.json" ]
-    secrets:
-      - id: file-mounted-secret # this is the name of the secret created via the API
-        mountType: "file" # this specifies how to mount the secret (file or envVar)
-        mountTarget: "test.txt" # this is the path to mount the secret to (for file mounts)
-        required: true # this specifies if the secret is required or not (default: false)
-      - id: envvar-mounted-secret # this is the name of the secret created via the API
-        mountType: "envVar" # This specifies an environment variable mount
-        mountTarget: "MY_SECRET" # this is the name of the environment variable
-  - image: "my-other-scanner"
-    command: [ '/another-scanner' ]
-    args: [ "--results", "$RESULTS_DIR/other-output.json" ]
-# This section defines the artifacts (output files) that will be created by the scanners
-# They should all be located within the $RESULTS_DIR directory (i.e. /mnt/results).
-# any non-absolute paths will be relative to this directory
-artifacts:
-  - output.json # configure the results from "my-scanner-image"
-  - other-output.json # configure the results from "my-other-scanner"
-# This section defines the uploaders that will be used to upload the results
-# These are docker images that will be run in the 'results'. The uploaders
-# are configured via the API endpoint /api/v1/uploaders (see below)
-uploaders:
-  # This will map to the name of a configured uploader
-  - name: "webhook"
-    # "webhook" is a pre-configured uploader that will send the results via an HTTP
-    # webhook as the body
-    parameters:
-      METHOD: PUT
-      URL: https://my.webhook.url/path
+```sh
+make undeploy
 ```
 
-### Configuring Downloaders
+## Project Distribution
 
-A "downloader" is a tool that is used to download a static assest to be scanned.
-Users will be able to configured custom downloaders via the API, but the API also
-contains a set of pre-configured downloaders that can be used to download static assets
+Following the options to release and provide this solution to the users.
 
-- See the [downloaders documentation](/docs/definitions/DOWNLOADERS.md) for more information on how to define a downloader.
-- See the [default downloaders documentation](/docs/definitions/DEFAULTS.md#downloaders) for a list of pre-configured downloaders.
+### By providing a bundle with all YAML files
 
+1. Build the installer for the image built and published in the registry:
 
-### Running a scan
-
-The API can be used to run a scan by sending a POST request to the `/pipeline` endpoint.
-The request should contain the profile name and the target to scan.
-A target contains the name of the downloader to use, the identifier for the target and an optional version.
-In this example we are using the `gitleaks` profile (created in the example above) to scan a GitHub repository.
-We tell the API to use the `git` downloader to download the repository, one of the pre-configured downloaders in the API.
-
-```bash
-# This runs a scan using the gitleaks profile.
-# since we are using the 'git' downloader, we set the identifier to the clone URL
-# and omit the version, which will default to the default branch.
-curl -L -X POST -H "Authorization: Bearer $(make generate-devenv-token)" \
-  -H "Content-Type: application/json" \
-  -d '{"profileName": "gitleaks", "target": {"downloader": "git", "identifier": "https://github.com/crashappsec/chalk"}}' \
-  http://localhost:3001/api/v1/pipelines
+```sh
+make build-installer OCULAR_CONTROLLER_IMG=<some-registry>/ocular:tag
 ```
 
-### Stopping a scan
+**NOTE:** The makefile target mentioned above generates an 'install.yaml'
+file in the dist directory. This file contains all the resources built
+with Kustomize, which are necessary to install this project without its
+dependencies.
 
-The API can be used to stop a scan by sending a DELETE request to the `/pipeline/:id` endpoint
-where `:id` is the id of the pipeline to stop.
+2. Using the installer
 
-```bash
-# This stops the pipeline with id '1234'
-curl -L -X Delete -H "Authorization: Bearer $(make generate-devenv-token)" \
-  http://localhost:3001/api/v1/pipelines/1234
+Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
+the project, i.e.:
+
+```sh
+kubectl apply -f ./dist/install.yaml
 ```
 
-for more information on how to configure Ocular and API usage, please refer to the [Ocular manual](https://ocularproject.io/docs/manual).
+### By providing a Helm Chart
 
-### OpenAPI & Swagger UI
+1. Build the chart using the optional helm plugin
 
-When running the application in development mode, the OpenAPI specification is available at `/api/swagger/openapi.json`.
-This can be set by setting the `OCULAR_ENV` environment variable to `development` in the `.env` file.
-The Swagger UI is available at `/api/swagger/`.
+**NOTE**: This should only be used if you know what you are doing. Users should prefer installation from the [helm charts repository](https://github.com/crashappsec/helm-charts).
+
+```sh
+make build-helm OCULAR_CONTROLLER_IMG=<some-registry>/ocular:tag
+```
+
+2. See that a chart was generated under 'dist/chart', and users
+   can obtain this solution from there.
+
+**NOTE:** If you change the project, you need to update the Helm Chart
+using the same command above to sync the latest changes. Furthermore,
+if you create webhooks, you need to use the above command with
+the '--force' flag and manually ensure that any custom configuration
+previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
+is manually re-applied afterwards.
+
+
 

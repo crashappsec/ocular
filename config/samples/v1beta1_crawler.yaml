@@ -1,0 +1,16 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Crawler
+metadata:
+  labels:
+    app.kubernetes.io/name: ocular
+    app.kubernetes.io/managed-by: kustomize
+  name: crawler-sample
+spec:
+  container:
+    name: example-uploader
+    image: bitnami/kubectl:latest
+    command: [ "/bin/bash", "-c", "echo running search $OCULAR_SEARCH_NAME; echo message: $OCULAR_PARAM_LOG_MSG ; kubectl auth whoami; echo ---; kubectl auth can-i create pipelines; echo ---; kubectl auth can-i create searches" ]
+  parameters:
+    - name: "LOG_MSG"
+      description: "Log message to print."
+      required: true
