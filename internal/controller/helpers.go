@@ -14,6 +14,9 @@ import (
 
 	"github.com/crashappsec/ocular/internal/resources"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -34,4 +37,54 @@ func generateBaseContainerOptions(envVars []corev1.EnvVar) []resources.Container
 		resources.ContainerWithAdditionalEnvVars(envVars...),
 		resources.ContainerWithPodSecurityStandardRestricted(),
 	}
+}
+
+func reconcilePodFromLabel[T client.Object](
+	ctx context.Context,
+	k8sclient client.Client,
+	scheme *runtime.Scheme,
+	owner T,
+	pod *corev1.Pod,
+	selectorLabels map[string]string,
+) (*corev1.Pod, error) {
+	if pod == nil {
+		return nil, nil
+	}
+
+	l := logf.FromContext(ctx)
+	l.Info("reconciling pod", "name", pod.GetName(), "labels", selectorLabels)
+
+	var podList corev1.PodList
+	listOpts := &client.ListOptions{
+		Namespace:     owner.GetNamespace(),
+		LabelSelector: labels.SelectorFromSet(selectorLabels),
+	}
+
+	if err := k8sclient.List(ctx, &podList, listOpts); err != nil {
+		l.Error(err, "error listing pods", "labels", selectorLabels)
+		return nil, err
+	}
+	if len(podList.Items) == 0 {
+		l.Info("no pods found matching labels, creating pod", "labels", selectorLabels)
+		if err := ctrl.SetControllerReference(owner, pod, scheme); err != nil {
+			l.Error(err, "error setting controller reference on pod", "name", pod.GetName())
+			return nil, err
+		}
+		if err := k8sclient.Create(ctx, pod, &client.CreateOptions{}); err != nil {
+			l.Error(err, "error creating pod", "name", pod.GetName())
+			return nil, err
+		}
+		return pod, nil
+	} else if len(podList.Items) > 1 {
+		l.Info("multiple pods found matching labels, using the first one and deleting others", "count", len(podList.Items), "labels", selectorLabels)
+		// delete all but the first one
+		for _, p := range podList.Items[1:] {
+			if err := k8sclient.Delete(ctx, &p, &client.DeleteOptions{}); err != nil {
+				l.Error(err, "error deleting extra pod", "name", p.GetName())
+				return nil, err
+			}
+		}
+		return &podList.Items[0], nil
+	}
+	return &podList.Items[0], nil
 }

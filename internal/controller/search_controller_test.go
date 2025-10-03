@@ -13,11 +13,12 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +37,7 @@ var _ = Describe("Search Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: "default",
 		}
 		search := &ocularcrashoverriderunv1beta1.Search{}
 
@@ -132,21 +133,15 @@ var _ = Describe("Search Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.StartTime).ToNot(BeNil())
 
-			searchJob := &batchv1.Job{}
-			searchJobName := types.NamespacedName{
-				Name:      resource.GetName() + searchResourceSuffix,
-				Namespace: resource.GetNamespace(),
-			}
-			err = k8sClient.Get(ctx, searchJobName, searchJob)
+			searchPods := &corev1.PodList{}
+			err = k8sClient.List(ctx, searchPods, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					TypeLabelKey:   PodTypeSearch,
+					SearchLabelKey: resource.Name,
+				}),
+			})
 			Expect(err).NotTo(HaveOccurred())
-
-			searchSA := &corev1.ServiceAccount{}
-			searchSAName := types.NamespacedName{
-				Name:      resource.GetName() + searchResourceSuffix,
-				Namespace: resource.GetNamespace(),
-			}
-			err = k8sClient.Get(ctx, searchSAName, searchSA)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(searchPods.Items).To(HaveLen(1))
 
 			searchRB := &rbacv1.RoleBinding{}
 			searchRBName := types.NamespacedName{

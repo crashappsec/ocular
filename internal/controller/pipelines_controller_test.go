@@ -13,10 +13,10 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -108,7 +108,7 @@ var _ = Describe("Pipeline Controller", func() {
 		})
 
 		It("should create the pipeline", func() {
-			By("Creating only a job for the scanners")
+			By("Creating only a pod for the scanners")
 			controllerReconciler := &PipelineReconciler{
 				Client:         k8sClient,
 				Scheme:         k8sClient.Scheme(),
@@ -128,24 +128,28 @@ var _ = Describe("Pipeline Controller", func() {
 				Namespace: pipeline.Namespace,
 			}, updatedResource)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(updatedResource.Status.ScanJobOnly).To(BeTrue())
+			Expect(updatedResource.Status.ScanPodOnly).To(BeTrue())
 
-			scanJob := &batchv1.Job{}
-			scanJobName := types.NamespacedName{
-				Name:      updatedResource.Name + scanJobSuffix,
-				Namespace: updatedResource.GetNamespace(),
-			}
-			err = k8sClient.Get(ctx, scanJobName, scanJob)
+			scanPods := &corev1.PodList{}
+			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					TypeLabelKey:     PodTypeScan,
+					PipelineLabelKey: pipeline.Name,
+				}),
+			})
 			Expect(err).NotTo(HaveOccurred())
-			ValidatePipelineScanJobSpec(scanJob.Spec, extractorImage, pipeline, profile, downloader)
+			Expect(scanPods.Items).To(HaveLen(1))
+			ValidatePipelineScanPodSpec(scanPods.Items[0].Spec, extractorImage, pipeline, profile, downloader)
 
-			uploadJob := &batchv1.Job{}
-			uploadJobName := types.NamespacedName{
-				Name:      updatedResource.Name + uploadJobSuffix,
-				Namespace: updatedResource.GetNamespace(),
-			}
-			err = k8sClient.Get(ctx, uploadJobName, uploadJob)
-			Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			uploadPods := &corev1.PodList{}
+			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					TypeLabelKey:     PodTypeUpload,
+					PipelineLabelKey: pipeline.Name,
+				}),
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(uploadPods.Items).To(BeEmpty())
 		})
 	})
 
@@ -258,52 +262,55 @@ var _ = Describe("Pipeline Controller", func() {
 				Namespace: pipeline.Namespace,
 			}, updatedResource)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(updatedResource.Status.ScanJobOnly).To(BeFalse())
+			Expect(updatedResource.Status.ScanPodOnly).To(BeFalse())
 
-			scanJob := &batchv1.Job{}
-			scanJobName := types.NamespacedName{
-				Name:      updatedResource.Name + scanJobSuffix,
-				Namespace: updatedResource.GetNamespace(),
-			}
-			err = k8sClient.Get(ctx, scanJobName, scanJob)
+			scanPods := &corev1.PodList{}
+			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					TypeLabelKey:     PodTypeScan,
+					PipelineLabelKey: pipeline.Name,
+				}),
+			})
 			Expect(err).NotTo(HaveOccurred())
-			ValidatePipelineScanJobSpec(scanJob.Spec, extractorImage, pipeline, profile, downloader)
+			Expect(scanPods.Items).To(HaveLen(1))
+			ValidatePipelineScanPodSpec(scanPods.Items[0].Spec, extractorImage, pipeline, profile, downloader)
 
-			uploadJob := &batchv1.Job{}
-			uploadJobName := types.NamespacedName{
-				Name:      updatedResource.Name + uploadJobSuffix,
-				Namespace: updatedResource.GetNamespace(),
-			}
-			err = k8sClient.Get(ctx, uploadJobName, uploadJob)
+			uploadPods := &corev1.PodList{}
+			err = k8sClient.List(ctx, uploadPods, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					TypeLabelKey:     PodTypeUpload,
+					PipelineLabelKey: pipeline.Name,
+				}),
+			})
 			Expect(err).NotTo(HaveOccurred())
-			ValidatePipelineUploadJobSpec(uploadJob.Spec, extractorImage, pipeline, profile)
+			Expect(uploadPods.Items).To(HaveLen(1))
+			ValidatePipelineUploadPodSpec(uploadPods.Items[0].Spec, extractorImage, pipeline, profile)
 		})
 	})
 })
 
-func ValidatePipelineScanJobSpec(jobSpec batchv1.JobSpec,
+func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
 	extractorImage string,
 	pipeline *ocularcrashoverriderunv1beta1.Pipeline,
 	profile *ocularcrashoverriderunv1beta1.Profile,
 	downloader *ocularcrashoverriderunv1beta1.Downloader) {
-	Expect(jobSpec.Template.Spec.InitContainers).To(HaveLen(2)) // downloader + extractor
-	Expect(jobSpec.Template.Spec.Containers).To(HaveLen(len(profile.Spec.Containers)))
+	Expect(podSpec.InitContainers).To(HaveLen(2)) // downloader + extractor
+	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.Containers)))
 	// Downloader
-	Expect(jobSpec.Template.Spec.InitContainers[0].Name).To(Equal(downloader.Spec.Container.Name))
-	Expect(jobSpec.Template.Spec.InitContainers[0].Image).To(Equal(downloader.Spec.Container.Image))
-	Expect(jobSpec.Template.Spec.InitContainers[0].Command).To(Equal(downloader.Spec.Container.Command))
-	Expect(jobSpec.Template.Spec.InitContainers[0].Args).To(Equal(downloader.Spec.Container.Args))
+	Expect(podSpec.InitContainers[0].Name).To(Equal(downloader.Spec.Container.Name))
+	Expect(podSpec.InitContainers[0].Image).To(Equal(downloader.Spec.Container.Image))
+	Expect(podSpec.InitContainers[0].Command).To(Equal(downloader.Spec.Container.Command))
+	Expect(podSpec.InitContainers[0].Args).To(Equal(downloader.Spec.Container.Args))
 
 	// Extractor
-	Expect(jobSpec.Template.Spec.InitContainers[1].Name).To(Equal("extract-artifacts"))
-	Expect(jobSpec.Template.Spec.InitContainers[1].Image).To(Equal(extractorImage))
-	Expect(jobSpec.Template.Spec.InitContainers[1].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
-	Expect(jobSpec.Template.Spec.InitContainers[1].RestartPolicy).ToNot(BeNil())
-	Expect(*jobSpec.Template.Spec.InitContainers[1].RestartPolicy).To(Equal(corev1.ContainerRestartPolicyAlways)) // is a sidecar
+	Expect(podSpec.InitContainers[1].Name).To(Equal("extract-artifacts"))
+	Expect(podSpec.InitContainers[1].Image).To(Equal(extractorImage))
+	Expect(podSpec.InitContainers[1].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
+	Expect(podSpec.InitContainers[1].RestartPolicy).ToNot(BeNil())
+	Expect(*podSpec.InitContainers[1].RestartPolicy).To(Equal(corev1.ContainerRestartPolicyAlways)) // is a sidecar
 
-	Expect(jobSpec.Template.Spec.ServiceAccountName).To(Equal(pipeline.Spec.ScanServiceAccountName))
-	Expect(jobSpec.TTLSecondsAfterFinished).To(Equal(pipeline.Spec.TTLSecondsAfterFinished))
-	for _, container := range jobSpec.Template.Spec.Containers {
+	Expect(podSpec.ServiceAccountName).To(Equal(pipeline.Spec.ScanServiceAccountName))
+	for _, container := range podSpec.Containers {
 		Expect(container.Env).To(ContainElements(
 			corev1.EnvVar{
 				Name:  "OCULAR_TARGET_IDENTIFIER",
@@ -334,19 +341,19 @@ func ValidatePipelineScanJobSpec(jobSpec batchv1.JobSpec,
 	}
 }
 
-func ValidatePipelineUploadJobSpec(jobSpec batchv1.JobSpec,
+func ValidatePipelineUploadPodSpec(podSpec corev1.PodSpec,
 	extractorImage string,
 	pipeline *ocularcrashoverriderunv1beta1.Pipeline,
 	profile *ocularcrashoverriderunv1beta1.Profile) {
-	Expect(jobSpec.Template.Spec.InitContainers).To(HaveLen(1)) // extractor only
-	Expect(jobSpec.Template.Spec.Containers).To(HaveLen(len(profile.Spec.UploaderRefs)))
+	Expect(podSpec.InitContainers).To(HaveLen(1)) // extractor only
+	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.UploaderRefs)))
 	// Extractor
-	Expect(jobSpec.Template.Spec.InitContainers[0].Name).To(Equal("receive-artifacts"))
-	Expect(jobSpec.Template.Spec.InitContainers[0].Image).To(Equal(extractorImage))
-	Expect(jobSpec.Template.Spec.InitContainers[0].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
+	Expect(podSpec.InitContainers[0].Name).To(Equal("receive-artifacts"))
+	Expect(podSpec.InitContainers[0].Image).To(Equal(extractorImage))
+	Expect(podSpec.InitContainers[0].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
 
-	Expect(jobSpec.Template.Spec.ServiceAccountName).To(Equal(pipeline.Spec.UploadServiceAccountName))
-	for _, container := range jobSpec.Template.Spec.Containers {
+	Expect(podSpec.ServiceAccountName).To(Equal(pipeline.Spec.UploadServiceAccountName))
+	for _, container := range podSpec.Containers {
 		Expect(container.Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
 		Expect(container.Env).To(ContainElements(
 			corev1.EnvVar{

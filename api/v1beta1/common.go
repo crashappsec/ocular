@@ -15,14 +15,17 @@ import (
 const (
 	/*
 		The following condition types are used by both Pipeline and Search
-		Only one of FailedConditionType or CompleteConditionType should be true at any given time
 	*/
 
-	// FailedConditionType indicates that the execution has failed.
-	FailedConditionType = "Failed"
-	// CompleteConditionType indicates that the execution has completed successfully.
-	CompleteConditionType = "Complete"
+	// CompletedSuccessfullyConditionType indicates that the execution has completed successfully.
+	// If this is true, it indicates that the execution has completed without errors.
+	// If this is false, it indicates that the execution has completed, but with a failure.
+	// The absence of this condition indicates that the execution is still in progress.
+	CompletedSuccessfullyConditionType = "Complete"
 	// StartedConditionType indicates that the execution has started.
+	// If this is true, it indicates that the execution has started.
+	// If this is false, it indicates that the execution could not be started due to an error.
+	// The absence of this condition indicates that the execution has not started.
 	StartedConditionType = "Started"
 )
 
