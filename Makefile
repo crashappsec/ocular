@@ -46,7 +46,7 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-
+LD_FLAGS ?= main.version=$(OCULAR_VERSION) -X main.buildTime=$(shell date -Iseconds) -X main.gitCommit=$(shell git rev-parse --short HEAD)
 
 .PHONY: all
 all: build
@@ -198,7 +198,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${OCULAR_CONTROLLER_IMG} .
+	$(CONTAINER_TOOL) build --build-arg LD_FLAGS="$(LD_FLAGS)" -t ${OCULAR_CONTROLLER_IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -219,7 +219,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name ocular-builder
 	$(CONTAINER_TOOL) buildx use ocular-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${OCULAR_CONTROLLER_IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --build-arg LD_FLAGS="$(LD_FLAGS)" --push --platform=$(PLATFORMS) --tag ${OCULAR_CONTROLLER_IMG} -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm ocular-builder
 	rm Dockerfile.cross
 
@@ -230,16 +230,38 @@ build-installer: manifests generate kustomize yq ## Generate a consolidated YAML
 	$(KUSTOMIZE) build config/default > dist/install.yaml
 	@$(MAKE) revert-image
 
+# The build-helm chart is a bit hacky right now since kubebuilder doesn't support
+# adding really any customizations to the 'helm/v2-alpha' plugin. So we do some
+# sed/yq magic to get the values we want into the chart after we generate it from
+# the 'config' kustomization.
+# Steps to build helm are:
+# 1. Ensure the helm chart is copied over from the repo 'crashappsec/helm-charts' to 'dist/chart'
+#    The helm chart is stored there to allow for versioning and easier updates.
+# 2. We use 'kubebuilder edit --plugins=helm/v2-alpha' to update the helm chart as a result
+#    of the 'config' kustomization. This will overwrite the existing resources in 'dist/chart'
+# 3. We then use yq/sed to update the values.yaml and Chart.yaml with any customizations we want
+#    to ensure they weren't lost during the 'kubebuilder edit' step.
+# 4. [TO DISTRIBUTE] we then copy the chart to the 'crashappsec/helm-charts' repo for distribution.
+# NOTE: this target only performs steps 2 and 3. Step 1 is a manual step that must be
+#       performed by the developer to ensure the chart is up-to-date before running
+#       this target. Step 4 is also a manual step to push the updated chart to
+#       the 'crashappsec/helm-charts' repo for distribution.
 .PHONY: build-helm
 build-helm: manifests generate kustomize yq ## Generate a helm-chart using kubebuilder
 	@mkdir -p dist
-	@# hack to get the env var to be templated in the chart, since currrently helm/v2-alpha doesn't support it
-	@# first we set the image to a replaceme value, then we replace it in the generated chart
+	@# we set the image to 'extractor-image-replaceme' and then replace it later with the helm template values
 	@OCULAR_EXTRACTOR_IMAGE=extractor-image-replaceme $(KUBEBUILDER) edit --plugins=helm/v2-alpha
+	@# update manfiests with any templating or customizations
+	@sed -i.bak -r 's/(^[ ]+)(image:)/\1imagePullPolicy: {{ .Values.controllerManager.image.pullPolicy }}\n\1\2/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)\labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.controllerManager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)env:/\1env:\n\1  {{- with .Values.controllerManager.env }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.controllerManager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.controllerManager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak 's/extractor-image-replaceme/{{ .Values.controllerManager.image.repository }}:{{ .Values.controllerManager.image.tag }}/g' dist/chart/templates/manager/manager.yaml
+	@rm dist/chart/templates/manager/manager.yaml.bak # cleanup backup file from sed
+	# Update chart versions
 	@yq -ie '.controllerManager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
 	@yq -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
-	@# replace the image with the helm template values
-	@sed -i.bak 's|extractor-image-replaceme|{{ .Values.controllerManager.image.repository }}:{{ .Values.controllerManager.image.tag }}|g' dist/chart/templates/manager/manager.yaml && rm dist/chart/templates/manager/manager.yaml.bak
 	$(MAKE) revert-image
 
 .PHONY: clean-helm
