@@ -67,8 +67,8 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object)
 		pipeline.Spec.ScanServiceAccountName = "default"
 	}
 
-	if pipeline.Spec.TTLSecondsMax == nil {
-		pipeline.Spec.TTLSecondsMax = ptr.To[int32](0)
+	if pipeline.Spec.TTLSecondsMaxLifetime == nil {
+		pipeline.Spec.TTLSecondsMaxLifetime = ptr.To[int32](0)
 	}
 
 	return nil
@@ -162,8 +162,8 @@ func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcras
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("ttlSecondsAfterFinished"), pipeline.Spec.TTLSecondsAfterFinished, "must be non-negative"))
 	}
 
-	if pipeline.Spec.TTLSecondsMax != nil && *pipeline.Spec.TTLSecondsMax < 0 {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("ttlSecondsMax"), pipeline.Spec.TTLSecondsMax, "must be non-negative"))
+	if pipeline.Spec.TTLSecondsMaxLifetime != nil && *pipeline.Spec.TTLSecondsMaxLifetime < 0 {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("ttlSecondsMax"), pipeline.Spec.TTLSecondsMaxLifetime, "must be non-negative"))
 	}
 
 	volumes := map[string]struct{}{}

@@ -161,9 +161,9 @@ spec:
                   after the specified number of seconds have passed since the pipeline finished.
                 format: int32
                 type: integer
-              ttlSecondsMax:
+              ttlSecondsMaxLifetime:
                 description: |-
-                  TTLSecondsMax
+                  TTLSecondsMaxLifetime
                   If set, the pipeline and its associated resources will be automatically deleted
                   after the specified number of seconds have passed since the pipeline was created,
                   regardless of its state.

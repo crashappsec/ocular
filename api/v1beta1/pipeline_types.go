@@ -45,12 +45,12 @@ type PipelineSpec struct {
 	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"  protobuf:"bytes,6,opt,name=ttlSecondsAfterFinished"`
 
-	// TTLSecondsMax
+	// TTLSecondsMaxLifetime
 	// If set, the pipeline and its associated resources will be automatically deleted
 	// after the specified number of seconds have passed since the pipeline was created,
 	// regardless of its state.
 	// +optional
-	TTLSecondsMax *int32 `json:"ttlSecondsMax,omitempty"  protobuf:"bytes,7,opt,name=ttlSecondsMax" description:"If set, the pipeline and its associated resources will be automatically deleted after the specified number of seconds have passed since the pipeline was created, regardless of its state."`
+	TTLSecondsMaxLifetime *int32 `json:"ttlSecondsMaxLifetime,omitempty" protobuf:"bytes,7,opt,name=TTLSecondsMaxLifetime" description:"If set, the pipeline and its associated resources will be automatically deleted after the specified number of seconds have passed since the pipeline was created, regardless of its state."`
 }
 
 type PipelineStatus struct {

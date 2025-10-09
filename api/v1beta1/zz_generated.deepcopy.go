@@ -485,8 +485,8 @@ func (in *PipelineSpec) DeepCopyInto(out *PipelineSpec) {
 		*out = new(int32)
 		**out = **in
 	}
-	if in.TTLSecondsMax != nil {
-		in, out := &in.TTLSecondsMax, &out.TTLSecondsMax
+	if in.TTLSecondsMaxLifetime != nil {
+		in, out := &in.TTLSecondsMaxLifetime, &out.TTLSecondsMaxLifetime
 		*out = new(int32)
 		**out = **in
 	}

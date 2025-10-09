@@ -227,8 +227,8 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 	t := metav1.NewTime(time.Now())
 
 	ttlMaxSeconds := 0
-	if pipeline.Spec.TTLSecondsMax != nil {
-		ttlMaxSeconds = int(*pipeline.Spec.TTLSecondsMax)
+	if pipeline.Spec.TTLSecondsMaxLifetime != nil {
+		ttlMaxSeconds = int(*pipeline.Spec.TTLSecondsMaxLifetime)
 	}
 
 	if ttlMaxSeconds > 0 && time.Since(pipeline.GetCreationTimestamp().Time) > time.Duration(ttlMaxSeconds)*time.Second {
