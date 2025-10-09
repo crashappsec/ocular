@@ -206,7 +206,7 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: search.GetName() + searchResourceSuffix + "-",
+			GenerateName: search.GetName() + "-",
 			Namespace:    search.GetNamespace(),
 			Labels: map[string]string{
 				SearchLabelKey:  search.GetName(),

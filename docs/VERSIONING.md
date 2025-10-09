@@ -24,3 +24,22 @@ v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(alpha|beta|rc)\.(?<build>\d+))?
 - `v2.0.0`: Major version change, incompatible API changes.
 - `v2.1.0-alpha.1`: Pre-release version, new feature added, backward compatible.
 - `v2.1.0-beta.1`: Pre-release version, new feature added, backward compatible.
+
+## Docker Tagging
+
+Docker images will be tagged using the same versioning scheme as the application. For example:
+- `ocular-controller:v1.0.0`: release v1.0.0
+- `ocular-controller:latest`: latest stable release
+- `ocular-controller:v1.1.0-beta.1`: pre-release version v1.1.0-beta.1
+- `ocular-controller:latest-prerelease`: latest pre-release version
+
+## Releases
+
+Releases are managed via GitHub releases.
+Each release will be tagged with the corresponding version number and will include release notes detailing the changes made in that version.
+
+Each GitHub release will publish both the controller and extractor images to GitHub Container Registry (GHCR) with the appropriate tags,
+and upload a manifest file to the release (named `ocular.yaml`) that can be installed via `kubectl apply -f <URL>`.
+
+Latest releases will be tagged from the `main` branch, while pre-releases (alpha, beta, rc) will be tagged from a development branch,
+typically with the name `feat/<release>` before merge to `main`.

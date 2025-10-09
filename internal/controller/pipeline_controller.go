@@ -32,8 +32,9 @@ import (
 // PipelineReconciler reconciles a Pipeline object
 type PipelineReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	ExtractorImage string
+	Scheme              *runtime.Scheme
+	ExtractorImage      string
+	ExtractorPullPolicy corev1.PullPolicy
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -209,13 +210,14 @@ func (r *PipelineReconciler) createScanExtractorContainer(pipeline *v1beta1.Pipe
 			})
 		}
 	}
+
 	return corev1.Container{
-		Name:          "extract-artifacts",
-		Image:         r.ExtractorImage,
-		Command:       []string{"/extractor"},
-		Args:          append([]string{extractorCommand}, artifactsArgs...),
-		Env:           extractorEnvVars,
-		RestartPolicy: ptr.To(corev1.ContainerRestartPolicyAlways),
+		Name:            "extract-artifacts",
+		Image:           r.ExtractorImage,
+		ImagePullPolicy: r.ExtractorPullPolicy,
+		Args:            append([]string{extractorCommand}, artifactsArgs...),
+		Env:             extractorEnvVars,
+		RestartPolicy:   ptr.To(corev1.ContainerRestartPolicyAlways),
 	}
 }
 
@@ -435,10 +437,9 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 			InitContainers: resources.ApplyOptionsToContainers([]corev1.Container{
 				// Add the extractor as an init container running in receive mode
 				{
-					Name:    "receive-artifacts",
-					Image:   r.ExtractorImage,
-					Command: []string{"/extractor"},
-					Args:    []string{"receive"},
+					Name:  "receive-artifacts",
+					Image: r.ExtractorImage,
+					Args:  []string{"receive"},
 					Env: []corev1.EnvVar{
 						{
 							Name:  v1beta1.EnvVarExtractorPort,

@@ -21,11 +21,22 @@ are, please refer to the [documentation site](https://ocularproject.io/docs/)
 `.env` file (or whatever file you set `OCULAR_ENV_FILE` to), which is loaded automatically by the `make` command.
 An example `.env` file is provided in the repository as [`example.env`](/example.env).
 
+There are two images required inorder to run 'ocular':
+- `OCULAR_CONTROLLER_IMG`: The image for the controller manager. This is a webserver that
+  will act as a kubernetes controller and will manage the lifecycle of all Ocular resources.
+- `OCULAR_EXTRACTOR_IMG`: The image for the extractor. This is a program that facilities
+  the extraction of artifacts from the scanners to uploaders in a pipeline.
+
 ### To Deploy on the cluster
-**Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG`:**
+**Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG` and `OCULAR_EXTRACTOR_IMG`:**
 
 ```sh
-make docker-build docker-push OCULAR_CONTROLLER_IMG=<some-registry>/ocular:tag
+# Controller image
+make docker-build-controller docker-push-controller \
+  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag
+# Extractor image
+make docker-build-extractor docker-push-extractor \
+  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
 ```
 
 **NOTE:** This image ought to be published in the personal registry you specified.
@@ -38,10 +49,12 @@ Make sure you have the proper permission to the registry if the above commands d
 make install
 ```
 
-**Deploy the Manager to the cluster with the image specified by `OCULAR_CONTROLLER_IMG`:**
+**Deploy the Manager to the cluster with the image specified by `OCULAR_CONTROLLER_IMG` and `OCULAR_EXTRACTOR_IMG`:**
 
 ```sh
-make deploy OCULAR_CONTROLLER_IMG=<some-registry>/ocular:tag
+make deploy \
+  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
+  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
 ```
 
 > **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
@@ -84,7 +97,9 @@ Following the options to release and provide this solution to the users.
 1. Build the installer for the image built and published in the registry:
 
 ```sh
-make build-installer OCULAR_CONTROLLER_IMG=<some-registry>/ocular:tag
+make build-installer \
+  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
+  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
 ```
 
 **NOTE:** The makefile target mentioned above generates an 'install.yaml'
@@ -108,7 +123,9 @@ kubectl apply -f ./dist/install.yaml
 **NOTE**: This should only be used if you know what you are doing. Users should prefer installation from the [helm charts repository](https://github.com/crashappsec/helm-charts).
 
 ```sh
-make build-helm OCULAR_CONTROLLER_IMG=<some-registry>/ocular:tag
+make build-helm \
+  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
+  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
 ```
 
 2. See that a chart was generated under 'dist/chart', and users
