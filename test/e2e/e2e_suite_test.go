@@ -32,6 +32,10 @@ var (
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
 	projectImage = "example.com/ocular:v0.0.1"
+
+	// extractorImage is the name of the ocular extractor image used during tests.
+	// It can be built and loaded together with the projectImage.
+	extractorImage = "example.com/ocular-extractor:v0.0.1"
 )
 
 // TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
@@ -46,13 +50,17 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("OCULAR_CONTROLLER_IMG=%s", projectImage))
+	cmd := exec.Command("make", "docker-build-all", fmt.Sprintf("OCULAR_CONTROLLER_IMG=%s", projectImage), fmt.Sprintf("OCULAR_EXTRACTOR_IMG=%s", extractorImage))
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 
 	By("loading the manager(Operator) image on Kind")
 	err = utils.LoadImageToKindClusterWithName(projectImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
+
+	By("loading the extractor image on Kind")
+	err = utils.LoadImageToKindClusterWithName(extractorImage)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the extractor image into Kind")
 
 	// The tests-e2e are intended to run on a temporary cluster that is created and destroyed for testing.
 	// To prevent errors when tests run in environments with CertManager already installed,
