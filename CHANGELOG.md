@@ -1,7 +1,7 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
 
-# [v0.2.1](https://github.com/crashappsec/ocular/releases/tag/v0.2.1) - **October 13, 2025**
+# [v0.2.1](https://github.com/crashappsec/ocular/releases/tag/v0.2.1) - **October 23, 2025**
 
 ### Added
 - `TTLSecondsMaxLifetime` for Pipeline resources
