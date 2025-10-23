@@ -16,7 +16,8 @@ permissions:
 
 env:
   GO_VERSION: 1.25
-  IMAGE_REPOSITORY: "ghcr.io/${{ github.repository_owner }}/ocular-controller"
+  CONTROLLER_IMAGE_REPOSITORY: "ghcr.io/${{ github.repository_owner }}/ocular-controller"
+
   SUFFIX: ${{ github.event.release.prerelease && '-prerelease' || '' }}
   RELEASE_NAME: ${{ github.event.release.name }}
 
@@ -45,6 +46,9 @@ jobs:
   publish-docker:
     name: publish docker image
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [ controller, extractor ]
     permissions:
       packages: write
       contents: read
@@ -77,9 +81,10 @@ jobs:
           platforms: linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
           push: true
           build-args: |
+            COMMAND=${{ matrix.image }}
             LDFLAGS=-s -w -X main.version=${{ github.event.release.tag_name }} -X main.buildTime=${{steps.date.outputs.date}} -X main.gitCommit=${{ github.sha }}
           tags: |
-            ${{ env.IMAGE_REPOSITORY }}:${{ env.RELEASE_NAME }}${{ env.SUFFIX }}
-            ${{ env.IMAGE_REPOSITORY }}:latest${{ env.SUFFIX }}
+            ghcr.io/${{ github.repository_owner }}/ocular-${{ matrix.image }}:${{ env.RELEASE_NAME }}${{ env.SUFFIX }}
+            ghcr.io/${{ github.repository_owner }}/ocular-${{ matrix.image }}:latest${{ env.SUFFIX }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

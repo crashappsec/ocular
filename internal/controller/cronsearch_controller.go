@@ -202,10 +202,10 @@ func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return scheduledResult, nil
 }
 
-func isSearchFinished(search *v1beta1.Search) (bool, string) {
+func isSearchFinished(search *v1beta1.Search) (bool, metav1.ConditionStatus) {
 	for _, c := range search.Status.Conditions {
-		if (c.Type == v1beta1.CompleteConditionType || c.Type == v1beta1.FailedConditionType) && c.Status == metav1.ConditionTrue {
-			return true, c.Type
+		if c.Type == v1beta1.CompletedSuccessfullyConditionType {
+			return true, c.Status
 		}
 	}
 
@@ -324,13 +324,13 @@ func findExistingSearches(ctx context.Context, childSearches *v1beta1.SearchList
 	var mostRecentTime *time.Time // find the last run so we can update the status
 
 	for i, search := range childSearches.Items {
-		_, finishedType := isSearchFinished(&search)
-		switch finishedType {
-		case "": // ongoing
+		finished, finishedType := isSearchFinished(&search)
+		switch {
+		case !finished: // ongoing
 			activeSearches = append(activeSearches, &childSearches.Items[i])
-		case v1beta1.FailedConditionType:
+		case finishedType == metav1.ConditionFalse: // failed
 			failedSearches = append(failedSearches, &childSearches.Items[i])
-		case v1beta1.CompleteConditionType:
+		case finishedType == metav1.ConditionTrue: // succeeded
 			successfulSearches = append(successfulSearches, &childSearches.Items[i])
 		}
 

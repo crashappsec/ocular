@@ -161,6 +161,14 @@ spec:
                   after the specified number of seconds have passed since the pipeline finished.
                 format: int32
                 type: integer
+              ttlSecondsMaxLifetime:
+                description: |-
+                  TTLSecondsMaxLifetime
+                  If set, the pipeline and its associated resources will be automatically deleted
+                  after the specified number of seconds have passed since the pipeline was created,
+                  regardless of its state.
+                format: int32
+                type: integer
               uploadServiceAccountName:
                 description: |-
                   UploadServiceAccountName is the name of the service account that will be used to run the upload job.
@@ -242,9 +250,9 @@ spec:
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic
-              scanJobOnly:
+              scanPodOnly:
                 description: |-
-                  ScanJobOnly indicates if the pipeline is configured to run only the scan job without uploading results.
+                  ScanPodOnly indicates if the pipeline is configured to run only the scan job without uploading results.
                   This is true when the profile associated with the pipeline has no artifacts or uploaders defined.
                 type: boolean
               startTime:

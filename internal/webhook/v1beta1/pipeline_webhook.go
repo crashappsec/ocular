@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	validationutils "k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -64,6 +65,10 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object)
 	}
 	if pipeline.Spec.ScanServiceAccountName == "" {
 		pipeline.Spec.ScanServiceAccountName = "default"
+	}
+
+	if pipeline.Spec.TTLSecondsMaxLifetime == nil {
+		pipeline.Spec.TTLSecondsMaxLifetime = ptr.To[int32](0)
 	}
 
 	return nil
@@ -151,6 +156,14 @@ func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcras
 			}
 			allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("uploadServiceAccountName"), pipeline.Spec.UploadServiceAccountName))
 		}
+	}
+
+	if pipeline.Spec.TTLSecondsAfterFinished != nil && *pipeline.Spec.TTLSecondsAfterFinished < 0 {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("ttlSecondsAfterFinished"), pipeline.Spec.TTLSecondsAfterFinished, "must be non-negative"))
+	}
+
+	if pipeline.Spec.TTLSecondsMaxLifetime != nil && *pipeline.Spec.TTLSecondsMaxLifetime < 0 {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("ttlSecondsMax"), pipeline.Spec.TTLSecondsMaxLifetime, "must be non-negative"))
 	}
 
 	volumes := map[string]struct{}{}

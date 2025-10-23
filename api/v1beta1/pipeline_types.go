@@ -44,6 +44,13 @@ type PipelineSpec struct {
 	// after the specified number of seconds have passed since the pipeline finished.
 	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"  protobuf:"bytes,6,opt,name=ttlSecondsAfterFinished"`
+
+	// TTLSecondsMaxLifetime
+	// If set, the pipeline and its associated resources will be automatically deleted
+	// after the specified number of seconds have passed since the pipeline was created,
+	// regardless of its state.
+	// +optional
+	TTLSecondsMaxLifetime *int32 `json:"ttlSecondsMaxLifetime,omitempty" protobuf:"bytes,7,opt,name=TTLSecondsMaxLifetime" description:"If set, the pipeline and its associated resources will be automatically deleted after the specified number of seconds have passed since the pipeline was created, regardless of its state."`
 }
 
 type PipelineStatus struct {
@@ -59,10 +66,10 @@ type PipelineStatus struct {
 	// +listType=atomic
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
-	// ScanJobOnly indicates if the pipeline is configured to run only the scan job without uploading results.
+	// ScanPodOnly indicates if the pipeline is configured to run only the scan job without uploading results.
 	// This is true when the profile associated with the pipeline has no artifacts or uploaders defined.
 	// +optional
-	ScanJobOnly bool `json:"scanJobOnly,omitempty" description:"Indicates if the pipeline is configured to run only the scan job without uploading results."`
+	ScanPodOnly bool `json:"scanPodOnly,omitempty" description:"Indicates if the pipeline is configured to run only the scan job without uploading results."`
 
 	// StartTime is the time when the pipeline started.
 	// +optional

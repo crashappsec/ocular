@@ -10,7 +10,9 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -23,8 +25,8 @@ type Closer interface {
 // It should be used for defers to ensure that the resource is closed properly and any errors are logged.
 func CloseAndLog(ctx context.Context, c Closer, msg string, keysAndValues ...any) {
 	l := logf.FromContext(ctx)
-	if err := c.Close(); err != nil {
-		l.Error(fmt.Errorf("error closing file: %w", err), msg, keysAndValues...)
+	if err := c.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+		l.Error(fmt.Errorf("error closing reader: %w", err), msg, keysAndValues...)
 	}
 }
 

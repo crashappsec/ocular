@@ -1,6 +1,24 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
 
+# [v0.2.1](https://github.com/crashappsec/ocular/releases/tag/v0.2.1) - **October 13, 2025**
+
+### Added
+- `TTLSecondsMaxLifetime` for Pipeline resources
+    - A non-zero value `N` means they will be deleted `N` seconds after creation
+- Publish separate image for the extractor
+- Helm Chart now generates with support for customizing deployment of controller
+  - Can add custom labels, environment variables, and volume/volume mounts
+
+### Changed
+- Use of pods over jobs for execution resources
+- Bump golangci lint version in CI
+
+### Fixed
+- Zap logger is set to production by default
+- `LDFLAGS` in Makefile to set metadata for dev builds
+
+
 # [v0.2.0](https://github.com/crashappsec/ocular/releases/tag/v0.2.0) - **September 29, 2025**
 
 ### Added

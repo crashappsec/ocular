@@ -13,7 +13,9 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 
+	corev1 "k8s.io/api/core/v1"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -78,9 +80,7 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	opts := zap.Options{
-		Development: true,
-	}
+	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
@@ -196,10 +196,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	extractorPullPolicy := corev1.PullPolicy(os.Getenv("OCULAR_EXTRACTOR_PULLPOLICY"))
+	if !slices.Contains([]corev1.PullPolicy{
+		corev1.PullAlways, corev1.PullIfNotPresent, corev1.PullNever,
+	}, extractorPullPolicy) {
+		extractorPullPolicy = corev1.PullIfNotPresent
+	}
+
 	if err := (&controller.PipelineReconciler{
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		ExtractorImage: os.Getenv("OCULAR_EXTRACTOR_IMG"),
+		Client:              mgr.GetClient(),
+		Scheme:              mgr.GetScheme(),
+		ExtractorImage:      os.Getenv("OCULAR_EXTRACTOR_IMG"),
+		ExtractorPullPolicy: extractorPullPolicy,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Pipeline")
 		os.Exit(1)

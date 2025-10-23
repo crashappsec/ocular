@@ -7,20 +7,9 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - pods
   - serviceaccounts
   - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - batch
-  resources:
-  - jobs
   verbs:
   - create
   - delete
@@ -58,7 +47,7 @@ rules:
   - ocular.crashoverride.run
   resources:
   - cronsearches/finalizers
-  - pipeliness/finalizers
+  - pipelines/finalizers
   - searches/finalizers
   verbs:
   - update
