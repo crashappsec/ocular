@@ -193,10 +193,10 @@ var _ = Describe("Manager", Ordered, func() {
 			By("verifying that the controller manager is serving the metrics server")
 			verifyMetricsServerStarted := func(g Gomega) {
 				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace)
+				logMatch := ContainSubstring("\"logger\":\"controller-runtime.metrics\",\"msg\":\"Serving metrics server\"")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(ContainSubstring("\"logger\":\"controller-runtime.metrics\",\"msg\":\"Serving metrics server\""),
-					"Metrics server not yet started")
+				g.Expect(output).To(logMatch, "Metrics server not yet started")
 			}
 			Eventually(verifyMetricsServerStarted).Should(Succeed())
 
