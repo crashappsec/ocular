@@ -9,6 +9,7 @@
 package v1beta1
 
 import (
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,6 +31,12 @@ type SearchSpec struct {
 	// TTLSecondsAfterFinished is the number of seconds to retain the search after it has finished.
 	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,2,opt,name=ttlSecondsAfterFinished"`
+
+	// ServiceAccountOverride is an optional reference to a ServiceAccount to use when running the search.
+	// If not specified, a temporary ServiceAccount will be created for the search.
+	// NOTE: This ServiceAccount must exist in the same namespace as the Search.
+	// +optional
+	ServiceAccountOverride *v1.ObjectReference `json:"serviceAccountOverride,omitempty" protobuf:"bytes,3,opt,name=serviceAccountOverride"`
 }
 
 // SearchStatus defines the observed state of Search.

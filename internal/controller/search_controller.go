@@ -87,13 +87,21 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// generate desired upload pod, service, and scan pod
-	searchServiceAccount := r.newSearchServiceAccount(search)
+	var searchServiceAccount *corev1.ServiceAccount
+	if search.Spec.ServiceAccountOverride == nil {
+		searchServiceAccount = r.newSearchServiceAccount(search)
 
-	if err = resources.ReconcileChildResource[*corev1.ServiceAccount](ctx, r.Client, searchServiceAccount, nil, r.Scheme, copyOwnership); err != nil {
-		l.Error(err, "error reconciling service account for search", "name", search.GetName())
-		return ctrl.Result{}, err
+		if err = resources.ReconcileChildResource[*corev1.ServiceAccount](ctx, r.Client, searchServiceAccount, nil, r.Scheme, copyOwnership); err != nil {
+			l.Error(err, "error reconciling service account for search", "name", search.GetName())
+			return ctrl.Result{}, err
+		}
+	} else {
+		searchServiceAccount, err = r.getServiceAccountFromOverride(ctx, search)
+		if err != nil {
+			l.Error(err, "error getting service account from override for search", "name", search.GetName(), "saName", search.Spec.ServiceAccountOverride.Name)
+			return ctrl.Result{}, err
+		}
 	}
-
 	searchRoleBinding := r.newSearchRoleBinding(search, searchServiceAccount)
 
 	if err = resources.ReconcileChildResource[*rbacv1.RoleBinding](ctx, r.Client, searchRoleBinding, searchServiceAccount, r.Scheme, nil); err != nil {
@@ -150,6 +158,16 @@ func (r *SearchReconciler) newSearchServiceAccount(search *v1beta1.Search) *core
 			},
 		},
 	}
+}
+
+func (r *SearchReconciler) getServiceAccountFromOverride(ctx context.Context, search *v1beta1.Search) (*corev1.ServiceAccount, error) {
+	var sa corev1.ServiceAccount
+	err := r.Get(ctx, client.ObjectKey{
+		Name:      search.Spec.ServiceAccountOverride.Name,
+		Namespace: search.Namespace,
+	}, &sa)
+	return &sa, err
+
 }
 
 func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *corev1.ServiceAccount) *rbacv1.RoleBinding {

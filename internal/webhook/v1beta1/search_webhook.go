@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -109,6 +110,21 @@ func validateSearch(ctx context.Context, c client.Client, search *ocularcrashove
 			return fmt.Errorf("error fetching crawler %s/%s: %w", namespace, search.Namespace, err)
 		}
 		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("crawlerRef").Child("name"), fmt.Sprintf("%s/%s", search.Spec.CrawlerRef.Namespace, search.Spec.CrawlerRef.Name)))
+	}
+
+	if search.Spec.ServiceAccountOverride != nil {
+		var serviceAccount corev1.ServiceAccount
+		err = c.Get(ctx, client.ObjectKey{
+			Name:      search.Spec.ServiceAccountOverride.Name,
+			Namespace: search.Namespace,
+		}, &serviceAccount)
+
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return fmt.Errorf("error fetching service account %s/%s: %w", search.Namespace, search.Spec.ServiceAccountOverride.Name, err)
+			}
+			allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("serviceAccountOverride").Child("name"), fmt.Sprintf("%s/%s", search.Namespace, search.Spec.ServiceAccountOverride.Name)))
+		}
 	}
 
 	paramErrs := validateSetParameters(crawler.Name,
