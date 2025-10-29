@@ -9,6 +9,5 @@ docs/
 .git/
 .idea/
 .vscode/
-pkg/generated
 dist/
 .env*

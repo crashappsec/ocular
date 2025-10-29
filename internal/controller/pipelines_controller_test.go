@@ -133,8 +133,8 @@ var _ = Describe("Pipeline Controller", func() {
 			scanPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					TypeLabelKey:     PodTypeScan,
-					PipelineLabelKey: pipeline.Name,
+					ocularcrashoverriderunv1beta1.TypeLabelKey:     ocularcrashoverriderunv1beta1.PodTypeScan,
+					ocularcrashoverriderunv1beta1.PipelineLabelKey: pipeline.Name,
 				}),
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -144,8 +144,8 @@ var _ = Describe("Pipeline Controller", func() {
 			uploadPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					TypeLabelKey:     PodTypeUpload,
-					PipelineLabelKey: pipeline.Name,
+					ocularcrashoverriderunv1beta1.TypeLabelKey:     ocularcrashoverriderunv1beta1.PodTypeUpload,
+					ocularcrashoverriderunv1beta1.PipelineLabelKey: pipeline.Name,
 				}),
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -267,8 +267,8 @@ var _ = Describe("Pipeline Controller", func() {
 			scanPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					TypeLabelKey:     PodTypeScan,
-					PipelineLabelKey: pipeline.Name,
+					ocularcrashoverriderunv1beta1.TypeLabelKey:     ocularcrashoverriderunv1beta1.PodTypeScan,
+					ocularcrashoverriderunv1beta1.PipelineLabelKey: pipeline.Name,
 				}),
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -278,8 +278,8 @@ var _ = Describe("Pipeline Controller", func() {
 			uploadPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, uploadPods, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					TypeLabelKey:     PodTypeUpload,
-					PipelineLabelKey: pipeline.Name,
+					ocularcrashoverriderunv1beta1.TypeLabelKey:     ocularcrashoverriderunv1beta1.PodTypeUpload,
+					ocularcrashoverriderunv1beta1.PipelineLabelKey: pipeline.Name,
 				}),
 			})
 			Expect(err).NotTo(HaveOccurred())

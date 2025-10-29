@@ -27,6 +27,24 @@ const (
 	// If this is false, it indicates that the execution could not be started due to an error.
 	// The absence of this condition indicates that the execution has not started.
 	StartedConditionType = "Started"
+
+	// TypeLabelKey is the label key used to indicate the type of resource created by Ocular.
+	// See the constants PodType* and ServiceType* for the possible values.
+	TypeLabelKey = "ocular.crashoverride.run/type"
+
+	// PodTypeScan is the value of the TypeLabelKey label for scan pods.
+	PodTypeScan = "scan"
+	// PodTypeUpload is the value of the TypeLabelKey label for upload pods.
+	PodTypeUpload = "upload"
+	// PodTypeSearch is the value of the TypeLabelKey label for search pods.
+	PodTypeSearch = "search"
+
+	// ServiceTypeUpload is the value of the TypeLabelKey label for upload services.
+	ServiceTypeUpload = "upload"
+	// ServiceAccountTypeSearch is the value of the TypeLabelKey label for scan service accounts.
+	ServiceAccountTypeSearch = "search"
+	// RoleBindingTypeSearch is the value of the TypeLabelKey label for search role bindings.
+	RoleBindingTypeSearch = "search"
 )
 
 // Target represents a target to be downloaded by a Downloader.
