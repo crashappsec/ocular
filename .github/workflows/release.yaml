@@ -40,7 +40,7 @@ jobs:
           make build-installer OCULAR_VERSION="$RELEASE_NAME$SUFFIX"
           mv dist/install.yaml ocular${SUFFIX}.yaml
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2
+        uses: softprops/action-gh-release@6da8fa9354ddfdc4aeace5fc48d7f679b5214090 # v2
         with:
           files: ocular${{ env.SUFFIX }}.yaml
   publish-docker:
@@ -68,7 +68,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Chalk
-        uses: crashappsec/setup-chalk-action@ae2a8b025779ec81c87394297d34d5a9174a33af # main
+        uses: crashappsec/setup-chalk-action@6422f6cf3b5a61443c121a48fbca0d8d020b8ad6 # main
         continue-on-error: true
       - name: setup qemu
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
