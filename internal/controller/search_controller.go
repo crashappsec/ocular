@@ -88,7 +88,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// generate desired upload pod, service, and scan pod
 	var searchServiceAccount *corev1.ServiceAccount
-	if search.Spec.ServiceAccountOverride == nil {
+	if search.Spec.ServiceAccountNameOverride != "" {
 		searchServiceAccount = r.newSearchServiceAccount(search)
 
 		if err = resources.ReconcileChildResource[*corev1.ServiceAccount](ctx, r.Client, searchServiceAccount, nil, r.Scheme, copyOwnership); err != nil {
@@ -98,7 +98,8 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	} else {
 		searchServiceAccount, err = r.getServiceAccountFromOverride(ctx, search)
 		if err != nil {
-			l.Error(err, "error getting service account from override for search", "name", search.GetName(), "saName", search.Spec.ServiceAccountOverride.Name)
+			l.Error(err, "error getting service account from override for search",
+				"name", search.GetName(), "serviceaccount", search.Spec.ServiceAccountNameOverride)
 			return ctrl.Result{}, err
 		}
 	}
@@ -111,9 +112,9 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	searchPod := r.newSearchPod(search, crawler, searchServiceAccount, containerOpts...)
 
-	searchPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, search, searchPod, map[string]string{
-		v1beta1.SearchLabelKey: search.GetName(),
-		v1beta1.TypeLabelKey:   v1beta1.PodTypeSearch,
+	searchPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, search, searchPod, []string{
+		v1beta1.SearchLabelKey,
+		v1beta1.TypeLabelKey,
 	})
 	if err != nil {
 		l.Error(err, "error reconciling upload pod for search", "name", search.GetName())
@@ -148,14 +149,16 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *SearchReconciler) newSearchServiceAccount(search *v1beta1.Search) *corev1.ServiceAccount {
+
+	labels := generateChildLabels(search)
+	labels[v1beta1.SearchLabelKey] = search.GetName()
+	labels[v1beta1.TypeLabelKey] = v1beta1.ServiceAccountTypeSearch
+
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
-			Labels: map[string]string{
-				v1beta1.TypeLabelKey:   v1beta1.ServiceAccountTypeSearch,
-				v1beta1.SearchLabelKey: search.GetName(),
-			},
+			Labels:    labels,
 		},
 	}
 }
@@ -163,7 +166,7 @@ func (r *SearchReconciler) newSearchServiceAccount(search *v1beta1.Search) *core
 func (r *SearchReconciler) getServiceAccountFromOverride(ctx context.Context, search *v1beta1.Search) (*corev1.ServiceAccount, error) {
 	var sa corev1.ServiceAccount
 	err := r.Get(ctx, client.ObjectKey{
-		Name:      search.Spec.ServiceAccountOverride.Name,
+		Name:      search.Spec.ServiceAccountNameOverride,
 		Namespace: search.Namespace,
 	}, &sa)
 	return &sa, err
@@ -171,14 +174,15 @@ func (r *SearchReconciler) getServiceAccountFromOverride(ctx context.Context, se
 }
 
 func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *corev1.ServiceAccount) *rbacv1.RoleBinding {
+
+	labels := generateChildLabels(search)
+	labels[v1beta1.SearchLabelKey] = search.GetName()
+	labels[v1beta1.TypeLabelKey] = v1beta1.RoleBindingTypeSearch
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
-			Labels: map[string]string{
-				v1beta1.SearchLabelKey: search.GetName(),
-				v1beta1.TypeLabelKey:   v1beta1.RoleBindingTypeSearch,
-			},
+			Labels:    labels,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
@@ -222,15 +226,16 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 		}
 	}
 
+	labels := generateChildLabels(search)
+	labels[v1beta1.SearchLabelKey] = search.GetName()
+	labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeSearch
+	labels[v1beta1.CrawlerLabelKey] = crawler.GetName()
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: search.GetName() + "-",
 			Namespace:    search.GetNamespace(),
-			Labels: map[string]string{
-				v1beta1.SearchLabelKey:  search.GetName(),
-				v1beta1.CrawlerLabelKey: crawler.GetName(),
-				v1beta1.TypeLabelKey:    v1beta1.PodTypeSearch,
-			},
+			Labels:       labels,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: sa.GetName(),

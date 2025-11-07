@@ -9,16 +9,15 @@
 package v1beta1
 
 import (
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
 	// SearchLabelKey is the label key used to identify resources associated with a specific search.
-	SearchLabelKey = "ocular.crashoverride.run/search"
+	SearchLabelKey = Group + "/search"
 
 	// CrawlerLabelKey is the label key used to identify searches created from a specific crawler.
-	CrawlerLabelKey = "ocular.crashoverride.run/crawler"
+	CrawlerLabelKey = Group + "/crawler"
 )
 
 // SearchSpec defines the desired state of Search
@@ -32,11 +31,12 @@ type SearchSpec struct {
 	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,2,opt,name=ttlSecondsAfterFinished"`
 
-	// ServiceAccountOverride is an optional reference to a ServiceAccount to use when running the search.
+	// ServiceAccountNameOverride is the name of the service account that will be used to run the scan job.
+	// If not set, the default service account of the namespace will be used.
 	// If not specified, a temporary ServiceAccount will be created for the search.
 	// NOTE: This ServiceAccount must exist in the same namespace as the Search.
 	// +optional
-	ServiceAccountOverride *v1.ObjectReference `json:"serviceAccountOverride,omitempty" protobuf:"bytes,3,opt,name=serviceAccountOverride"`
+	ServiceAccountNameOverride string `json:"scanServiceAccountName,omitempty" protobuf:"bytes,4,opt,name=scanServiceAccountName" description:"The name of the service account that will be used to run the scan job."`
 }
 
 // SearchStatus defines the observed state of Search.
