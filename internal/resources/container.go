@@ -59,16 +59,17 @@ func ApplyOptionsToContainers(
 
 func ContainerWithPodSecurityStandardRestricted() ContainerOption {
 	return func(c *corev1.Container) {
-		c.SecurityContext = &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			// RunAsNonRoot:             ptr.To(true),
-			// RunAsUser:                ptr.To[int64](43690),
-			SeccompProfile: &corev1.SeccompProfile{
-				Type: corev1.SeccompProfileTypeRuntimeDefault,
-			},
-			Capabilities: &corev1.Capabilities{
-				Drop: []corev1.Capability{"ALL"},
-			},
+		if c.SecurityContext == nil {
+			c.SecurityContext = &corev1.SecurityContext{}
+		}
+		c.SecurityContext.AllowPrivilegeEscalation = ptr.To(false)
+		// c.SecurityContext.RunAsNonRoot = ptr.To(true)
+		// c.SecurityContext.RunAsUser = ptr.To[int64](65538)
+		c.SecurityContext.Capabilities = &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		}
+		c.SecurityContext.SeccompProfile = &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
 		}
 	}
 }
