@@ -49,6 +49,11 @@ type CrawlerSpec struct {
 	// +listType=map
 	// +listMapKey=name
 	Parameters []ParameterDefinition `json:"parameters,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,3,rep,name=parameters"`
+
+	// AdditionalPodMetadata defines additional specifications to be added to the pod
+	// running the scanners, such as annotations and labels.
+	// +optional
+	AdditionalPodMetadata AdditionalPodMetadata `json:"podSpecAdditions,omitempty" yaml:"podSpecAdditions,omitempty" description:"Additional specifications to be added to the pod running the crawler, such as annotations and labels."`
 }
 
 // +kubebuilder:object:root=true

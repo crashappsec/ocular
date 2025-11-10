@@ -47,6 +47,11 @@ type ProfileSpec struct {
 	// name of the uploader and any parameters that are required.
 	// +optional
 	UploaderRefs []UploaderObjectReference `json:"uploaderRefs" yaml:"uploaderRefs" description:"A list of uploaders that will be used to upload the results of the scanners. An uploader will be passed each of the artifacts as command line arguments, prefixed by the argument '--'. Each UploaderRunRequest must specify the name of the uploader and any parameters that are required."`
+
+	// AdditionalPodMetadata defines additional specifications to be added to the pod
+	// running the scanners, such as annotations and labels.
+	// +optional
+	AdditionalPodMetadata AdditionalPodMetadata `json:"additionalPodMetadata,omitempty" yaml:"additionalPodMetadata,omitempty" description:"Additional specifications to be added to the pod running the scanners, such as annotations and labels."`
 }
 
 type ProfileStatus struct {

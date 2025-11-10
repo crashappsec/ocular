@@ -49,7 +49,9 @@ func newUploadBody(filePath string) (io.ReadCloser, int64, error) {
 	}
 
 	src, err := os.Open(filePath)
-	if err != nil {
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, 0, nil
+	} else if err != nil {
 		return nil, -1, fmt.Errorf("failed to open file %s: %w", filePath, err)
 	}
 

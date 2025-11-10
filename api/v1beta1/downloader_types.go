@@ -62,7 +62,7 @@ type Downloader struct {
 
 	// status defines the observed state of Downloader
 	// +optional
-	Status DownloaderStatus `json:"status,omitempty"`
+	Status DownloaderStatus `json:"status,omitempty,omitzero"`
 }
 
 // +kubebuilder:object:root=true

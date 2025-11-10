@@ -122,7 +122,7 @@ func Receive(ctx context.Context, files []string) error {
 		logger.Info("starting server", "address", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error(err, "server error")
-			os.Exit(1)
+			panic(err)
 		}
 	}()
 	logger.Info("awaiting file downloads", "count", len(files))

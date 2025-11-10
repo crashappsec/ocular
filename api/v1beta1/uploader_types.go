@@ -69,7 +69,7 @@ type Uploader struct {
 
 	// status defines the observed state of Uploader
 	// +optional
-	Status UploaderStatus `json:"status,omitempty"`
+	Status UploaderStatus `json:"status,omitempty,omitzero"`
 }
 
 // +kubebuilder:object:root=true
