@@ -51,7 +51,7 @@ type ProfileSpec struct {
 	// AdditionalPodMetadata defines additional specifications to be added to the pod
 	// running the scanners, such as annotations and labels.
 	// +optional
-	AdditionalPodMetadata AdditionalPodMetadata `json:"additionalPodMetadata,omitempty" yaml:"additionalPodMetadata,omitempty" description:"Additional specifications to be added to the pod running the scanners, such as annotations and labels."`
+	AdditionalPodMetadata AdditionalPodMetadata `json:"additionalPodMetadata,omitempty,omitzero" yaml:"additionalPodMetadata,omitempty,omitzero" description:"Additional specifications to be added to the pod running the scanners, such as annotations and labels."`
 }
 
 type ProfileStatus struct {

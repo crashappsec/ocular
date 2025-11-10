@@ -53,7 +53,7 @@ type CrawlerSpec struct {
 	// AdditionalPodMetadata defines additional specifications to be added to the pod
 	// running the scanners, such as annotations and labels.
 	// +optional
-	AdditionalPodMetadata AdditionalPodMetadata `json:"podSpecAdditions,omitempty" yaml:"podSpecAdditions,omitempty" description:"Additional specifications to be added to the pod running the crawler, such as annotations and labels."`
+	AdditionalPodMetadata AdditionalPodMetadata `json:"podSpecAdditions,omitempty,omitzero" yaml:"podSpecAdditions,omitempty,omitzero" description:"Additional specifications to be added to the pod running the crawler, such as annotations and labels."`
 }
 
 // +kubebuilder:object:root=true
