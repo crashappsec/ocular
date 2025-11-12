@@ -142,7 +142,7 @@ spec:
                             type: string
                         type: object
                         x-kubernetes-map-type: atomic
-                      scanServiceAccountName:
+                      serviceAccountNameOverride:
                         description: |-
                           ServiceAccountNameOverride is the name of the service account that will be used to run the scan job.
                           If not set, the default service account of the namespace will be used.

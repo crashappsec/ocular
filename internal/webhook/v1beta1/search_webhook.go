@@ -74,7 +74,20 @@ func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newO
 	if !ok {
 		return nil, fmt.Errorf("expected a Search object for the newObj but got %T", newObj)
 	}
+	oldSearch, ok := oldObj.(*ocularcrashoverriderunv1beta1.Search)
+	if !ok {
+		return nil, fmt.Errorf("expected a Search object for the oldObj but got %T", oldObj)
+	}
 	searchlog.Info("validating Search resource update", "name", search.GetName())
+
+	if oldSearch.Spec.ServiceAccountNameOverride != "" && oldSearch.Spec.ServiceAccountNameOverride != search.Spec.ServiceAccountNameOverride {
+		return nil, apierrors.NewInvalid(
+			schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
+			search.Name,
+			field.ErrorList{
+				field.Invalid(field.NewPath("spec").Child("serviceAccountNameOverride"), search.Spec.ServiceAccountNameOverride, "serviceAccountNameOverride cannot be changed once set"),
+			})
+	}
 
 	return nil, validateSearch(ctx, v.c, search)
 }

@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"time"
 
-	errs "errors"
-
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/resources"
 	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
@@ -25,7 +23,6 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -102,6 +99,12 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			l.Error(err, "error reconciling service account for search", "name", search.GetName())
 			return ctrl.Result{}, err
 		}
+		search.Spec.ServiceAccountNameOverride = searchServiceAccount.Name
+		if err = r.Update(ctx, search); err != nil {
+			l.Error(err, "error updating search with service account name override", "name", search.GetName())
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 	searchRoleBinding := r.newSearchRoleBinding(search, searchServiceAccount)
 
@@ -137,11 +140,6 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if err := updateStatus(ctx, r.Client, search, "step", "child resources created"); err != nil {
 			return ctrl.Result{}, err
 		}
-	}
-
-	if err = r.ensurePodOwnsServiceAccount(ctx, searchPod, searchServiceAccount); err != nil {
-		l.Error(err, "error ensuring pod owns service account", "name", search.GetName())
-		return ctrl.Result{}, err
 	}
 
 	// Check for completion of pods and update status accordingly
@@ -251,19 +249,6 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 	}
 
 	return pod
-}
-
-func (r *SearchReconciler) ensurePodOwnsServiceAccount(ctx context.Context, pod *corev1.Pod, sa *corev1.ServiceAccount) error {
-	err := ctrl.SetControllerReference(pod, sa, r.Scheme)
-	// ensure the pod owns the service account
-	if err != nil {
-		alreadyOwnedErr := &controllerutil.AlreadyOwnedError{}
-		if errs.As(err, &alreadyOwnedErr) {
-			return nil
-		}
-		return fmt.Errorf("failed to set controller reference for service account: %w", err)
-	}
-	return r.Update(ctx, sa)
 }
 
 func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1.Search, pod *corev1.Pod) (ctrl.Result, error) {
