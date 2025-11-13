@@ -31,11 +31,11 @@ var (
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
-	projectImage = "example.com/ocular:v0.0.1"
+	projectImage = "ocular-controller:e2e-test"
 
 	// extractorImage is the name of the ocular extractor image used during tests.
 	// It can be built and loaded together with the projectImage.
-	extractorImage = "example.com/ocular-extractor:v0.0.1"
+	extractorImage = "ocular-extractor:e2e-test"
 )
 
 // TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,

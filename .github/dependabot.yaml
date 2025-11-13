@@ -7,7 +7,7 @@ updates:
     schedule:
       interval: "monthly"
     groups:
-      update:
+      gha:
         patterns:
           - "*"
   - package-ecosystem: "gomod"
@@ -17,7 +17,7 @@ updates:
     schedule:
       interval: "monthly"
     groups:
-      update:
+      gomod:
         patterns:
           - "*"
   - package-ecosystem: "docker"
@@ -27,6 +27,6 @@ updates:
     schedule:
       interval: "monthly"
     groups:
-      update:
+      docker:
         patterns:
           - "*"

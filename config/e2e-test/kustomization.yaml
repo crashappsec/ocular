@@ -1,0 +1,13 @@
+resources:
+  - ../default
+
+images:
+  - name: ghcr.io/crashappsec/ocular-controller
+    newTag: e2e-test
+    newName: ocular-controller
+
+configMapGenerator:
+  - name: controller-manager-config
+    behavior: merge
+    literals:
+      - OCULAR_EXTRACTOR_IMG=ocular-extractor:e2e-test
