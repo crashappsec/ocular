@@ -54,12 +54,12 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - command:
-        - /entrypoint
-        args:
+      - args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-        image: controller:latest
+#        command:
+#          - /entrypoint
+        image: controller
         name: manager
         ports: []
         securityContext:
@@ -91,11 +91,20 @@ spec:
         volumeMounts: []
         env:
           - name: OCULAR_EXTRACTOR_IMG
-            value: controller:latest
+            valueFrom:
+              configMapKeyRef:
+                key: OCULAR_EXTRACTOR_IMG
+                name: controller-manager-config
           - name: OCULAR_EXTRACTOR_PULLPOLICY
-            value: IfNotPresent
+            valueFrom:
+              configMapKeyRef:
+                key: OCULAR_EXTRACTOR_PULLPOLICY
+                name: controller-manager-config
           - name: OCULAR_SEARCH_CLUSTER_ROLE
-            value: ocular-search-cluster-role
+            valueFrom:
+              configMapKeyRef:
+                key: OCULAR_SEARCH_CLUSTER_ROLE
+                name: controller-manager-config
       volumes: []
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

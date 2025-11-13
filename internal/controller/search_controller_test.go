@@ -123,6 +123,7 @@ var _ = Describe("Search Controller", func() {
 				SearchClusterRole: "test-search-cluster-role",
 			}
 
+			// First run will create the ServiceAccount since one is not specified
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
@@ -131,13 +132,22 @@ var _ = Describe("Search Controller", func() {
 			resource := &ocularcrashoverriderunv1beta1.Search{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
+			Expect(resource.Spec.ServiceAccountNameOverride).ToNot(BeEmpty())
+
+			// Second run will create the Pod and RoleBinding
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			err = k8sClient.Get(ctx, typeNamespacedName, resource)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Status.StartTime).ToNot(BeNil())
 
 			searchPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, searchPods, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					TypeLabelKey:   PodTypeSearch,
-					SearchLabelKey: resource.Name,
+					ocularcrashoverriderunv1beta1.TypeLabelKey:   ocularcrashoverriderunv1beta1.PodTypeSearch,
+					ocularcrashoverriderunv1beta1.SearchLabelKey: resource.Name,
 				}),
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -150,7 +160,6 @@ var _ = Describe("Search Controller", func() {
 			}
 			err = k8sClient.Get(ctx, searchRBName, searchRB)
 			Expect(err).NotTo(HaveOccurred())
-
 		})
 	})
 })

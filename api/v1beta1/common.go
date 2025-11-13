@@ -27,6 +27,24 @@ const (
 	// If this is false, it indicates that the execution could not be started due to an error.
 	// The absence of this condition indicates that the execution has not started.
 	StartedConditionType = "Started"
+
+	// TypeLabelKey is the label key used to indicate the type of resource created by Ocular.
+	// See the constants PodType* and ServiceType* for the possible values.
+	TypeLabelKey = Group + "/type"
+
+	// PodTypeScan is the value of the TypeLabelKey label for scan pods.
+	PodTypeScan = "scan"
+	// PodTypeUpload is the value of the TypeLabelKey label for upload pods.
+	PodTypeUpload = "upload"
+	// PodTypeSearch is the value of the TypeLabelKey label for search pods.
+	PodTypeSearch = "search"
+
+	// ServiceTypeUpload is the value of the TypeLabelKey label for upload services.
+	ServiceTypeUpload = "upload"
+	// ServiceAccountTypeSearch is the value of the TypeLabelKey label for scan service accounts.
+	ServiceAccountTypeSearch = "search"
+	// RoleBindingTypeSearch is the value of the TypeLabelKey label for search role bindings.
+	RoleBindingTypeSearch = "search"
 )
 
 // Target represents a target to be downloaded by a Downloader.
@@ -111,4 +129,14 @@ type ServiceAccountDefinition struct {
 	// TokenProjection is the projection of the service account token that will be mounted into the pod.
 	// +optional
 	Token v1.ServiceAccountTokenProjection `json:"token,omitempty" yaml:"token,omitempty" description:"The projection of the service account token that will be mounted into the pod. If not specified, the token will not be mounted."`
+}
+
+type AdditionalPodMetadata struct {
+	// Annotations are key-value pairs that will be added to the pod running the scanners.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty" description:"Annotations of the object."`
+
+	// Labels are key-value pairs that will be added to the pod running the scanners.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty" description:"Labels of the object."`
 }

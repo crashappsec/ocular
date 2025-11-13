@@ -12,6 +12,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// SearchLabelKey is the label key used to identify resources associated with a specific search.
+	SearchLabelKey = Group + "/search"
+
+	// CrawlerLabelKey is the label key used to identify searches created from a specific crawler.
+	CrawlerLabelKey = Group + "/crawler"
+)
+
 // SearchSpec defines the desired state of Search
 type SearchSpec struct {
 	// CrawlerRef is a reference to the crawler that will be run in this search.
@@ -22,6 +30,13 @@ type SearchSpec struct {
 	// TTLSecondsAfterFinished is the number of seconds to retain the search after it has finished.
 	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,2,opt,name=ttlSecondsAfterFinished"`
+
+	// ServiceAccountNameOverride is the name of the service account that will be used to run the scan job.
+	// If not set, the default service account of the namespace will be used.
+	// If not specified, a temporary ServiceAccount will be created for the search.
+	// NOTE: This ServiceAccount must exist in the same namespace as the Search.
+	// +optional
+	ServiceAccountNameOverride string `json:"serviceAccountNameOverride,omitempty" protobuf:"bytes,4,opt,name=serviceAccountNameOverride" description:"The name of the service account that will be used to run the scan job."`
 }
 
 // SearchStatus defines the observed state of Search.

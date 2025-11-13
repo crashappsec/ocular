@@ -142,6 +142,13 @@ spec:
                             type: string
                         type: object
                         x-kubernetes-map-type: atomic
+                      serviceAccountNameOverride:
+                        description: |-
+                          ServiceAccountNameOverride is the name of the service account that will be used to run the scan job.
+                          If not set, the default service account of the namespace will be used.
+                          If not specified, a temporary ServiceAccount will be created for the search.
+                          NOTE: This ServiceAccount must exist in the same namespace as the Search.
+                        type: string
                       ttlSecondsAfterFinished:
                         description: TTLSecondsAfterFinished is the number of seconds
                           to retain the search after it has finished.

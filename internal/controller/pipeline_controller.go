@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/crashappsec/ocular/internal/resources"
+	"github.com/crashappsec/ocular/internal/utils"
 	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -114,37 +115,47 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	envVars := generateBasePipelineEnvironment(pipeline, profile, downloader)
 	containerOpts := generateBaseContainerOptions(envVars)
-	// artifactArgs are the arguments passed to the extractor
+	// extractorArgs are the arguments passed to the extractor
 	// & uploaders to specify which artifacts to extract
-	artifactsArgs := generateArtifactArguments(profile)
+	extractorArgs := generateExtractorArguments(downloader.Spec.MetadataFiles, profile.Spec.Artifacts)
 
 	// generate desired upload pod, service, and scan pod
 	uploadPod := r.newUploaderPod(pipeline, profile, uploaders,
 		append(containerOpts,
-			resources.ContainerWithAdditionalArgs(artifactsArgs...),
-			resources.ContainerWithWorkingDir(PipelineResultsDirectory),
+			resources.ContainerWithAdditionalArgs(extractorArgs...),
+			resources.ContainerWithWorkingDir(v1beta1.PipelineResultsDirectory),
 			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
-				Name:      PipelineResultsVolumeName,
-				MountPath: PipelineResultsDirectory,
-			}))...)
+				Name:      pipelineResultsVolumeName,
+				MountPath: v1beta1.PipelineResultsDirectory,
+			}),
+			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
+				Name:      pipelineMetadataVolumeName,
+				MountPath: v1beta1.PipelineMetadataDirectory,
+			}),
+		)...)
 
 	uploadService := r.newUploadService(pipeline, uploadPod)
 
-	scanPod := r.newScanPod(pipeline, profile, downloader, r.createScanExtractorContainer(pipeline, uploadService, artifactsArgs),
+	scanPod := r.newScanPod(pipeline, profile, downloader,
+		r.createScanExtractorContainer(pipeline, uploadService, extractorArgs),
 		append(containerOpts,
-			resources.ContainerWithWorkingDir(PipelineTargetDirectory),
+			resources.ContainerWithWorkingDir(v1beta1.PipelineTargetDirectory),
 			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
-				Name:      PipelineTargetVolumeName,
-				MountPath: PipelineTargetDirectory,
+				Name:      pipelineTargetVolumeName,
+				MountPath: v1beta1.PipelineTargetDirectory,
 			}),
 			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
-				Name:      PipelineResultsVolumeName,
-				MountPath: PipelineResultsDirectory,
+				Name:      pipelineMetadataVolumeName,
+				MountPath: v1beta1.PipelineMetadataDirectory,
+			}),
+			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
+				Name:      pipelineResultsVolumeName,
+				MountPath: v1beta1.PipelineResultsDirectory,
 			}))...)
 
-	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, map[string]string{
-		PipelineLabelKey: pipeline.GetName(),
-		TypeLabelKey:     PodTypeUpload,
+	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, []string{
+		v1beta1.PipelineLabelKey,
+		v1beta1.TypeLabelKey,
 	})
 	if err != nil {
 		l.Error(err, "error reconciling upload pod for pipeline", "name", pipeline.GetName())
@@ -158,9 +169,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 	}
 
-	scanPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, scanPod, map[string]string{
-		PipelineLabelKey: pipeline.GetName(),
-		TypeLabelKey:     PodTypeScan,
+	scanPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, scanPod, []string{
+		v1beta1.PipelineLabelKey,
+		v1beta1.TypeLabelKey,
 	})
 
 	if err != nil {
@@ -206,7 +217,7 @@ func (r *PipelineReconciler) createScanExtractorContainer(pipeline *v1beta1.Pipe
 		if uploadService != nil {
 			extractorEnvVars = append(extractorEnvVars, corev1.EnvVar{
 				Name:  v1beta1.EnvVarExtractorHost,
-				Value: fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", uploadService.Name, uploadService.Namespace, ExtractorPort),
+				Value: fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", uploadService.Name, uploadService.Namespace, extractorPort),
 			})
 		}
 	}
@@ -347,24 +358,26 @@ func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, upload
 		return nil
 	}
 
+	labels := map[string]string{
+		v1beta1.TypeLabelKey:       v1beta1.ServiceTypeUpload,
+		v1beta1.PipelineLabelKey:   pipeline.GetName(),
+		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
+		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
+	}
+
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pipeline.GetName() + uploadServiceSuffix,
 			Namespace: uploadPod.Namespace,
-			Labels: map[string]string{
-				PipelineLabelKey:   pipeline.GetName(),
-				ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
-				DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
-				TypeLabelKey:       ServiceTypeUpload,
-			},
+			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
-				PipelineLabelKey: pipeline.GetName(),
-				TypeLabelKey:     "upload",
+				v1beta1.PipelineLabelKey: pipeline.GetName(),
+				v1beta1.TypeLabelKey:     "upload",
 			},
 			Ports: []corev1.ServicePort{
-				{Port: ExtractorPort, TargetPort: intstr.FromInt32(ExtractorPort)},
+				{Port: extractorPort, TargetPort: intstr.FromInt32(extractorPort)},
 			},
 			// we want to be able to connect during the init phase
 			// which is before the pod is marked ready.
@@ -418,17 +431,19 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 
 		uploaderContainers = append(uploaderContainers, baseContainer)
 	}
+	standardLabels := map[string]string{
+		v1beta1.TypeLabelKey:       v1beta1.PodTypeUpload,
+		v1beta1.PipelineLabelKey:   pipeline.GetName(),
+		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
+		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
+	}
+	labels := utils.MergeMaps(profile.Spec.AdditionalPodMetadata.Labels, standardLabels)
 
 	uploadPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: pipeline.GetName() + uploadPodSuffix + "-",
 			Namespace:    pipeline.GetNamespace(),
-			Labels: map[string]string{
-				PipelineLabelKey:   pipeline.GetName(),
-				ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
-				DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
-				TypeLabelKey:       PodTypeUpload,
-			},
+			Labels:       labels,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: pipeline.Spec.UploadServiceAccountName,
@@ -443,22 +458,27 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 					Env: []corev1.EnvVar{
 						{
 							Name:  v1beta1.EnvVarExtractorPort,
-							Value: fmt.Sprintf("%d", ExtractorPort),
+							Value: fmt.Sprintf("%d", extractorPort),
 						},
 					},
 				},
 			}, containerOpts...),
 			Volumes: append(volumes,
 				// add shared volume for target and results
-				corev1.Volume{Name: "target",
+				corev1.Volume{Name: pipelineTargetVolumeName,
 					VolumeSource: corev1.VolumeSource{
 						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
-				}, corev1.Volume{Name: "results",
+				}, corev1.Volume{Name: pipelineResultsVolumeName,
 					VolumeSource: corev1.VolumeSource{
 						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
-				}),
+				}, corev1.Volume{Name: pipelineMetadataVolumeName,
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
+					},
+				},
+			),
 		},
 	}
 
@@ -470,16 +490,19 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profile *v1b
 
 	volumes := append(profile.Spec.Volumes, downloader.Spec.Volumes...)
 
+	standardLabels := map[string]string{
+		v1beta1.TypeLabelKey:       v1beta1.PodTypeScan,
+		v1beta1.PipelineLabelKey:   pipeline.GetName(),
+		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
+		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
+	}
+	labels := utils.MergeMaps(profile.Spec.AdditionalPodMetadata.Labels, standardLabels)
+
 	scanPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: pipeline.GetName() + scanPodSuffix + "-",
 			Namespace:    pipeline.GetNamespace(),
-			Labels: map[string]string{
-				PipelineLabelKey:   pipeline.GetName(),
-				ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
-				DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
-				TypeLabelKey:       PodTypeScan,
-			},
+			Labels:       labels,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: pipeline.Spec.ScanServiceAccountName,
@@ -492,32 +515,45 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profile *v1b
 				extractorContainer,
 			}, containerOpts...),
 			Volumes: append(volumes,
-				corev1.Volume{Name: PipelineTargetVolumeName,
+				corev1.Volume{Name: pipelineTargetVolumeName,
 					VolumeSource: corev1.VolumeSource{
 						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
-				}, corev1.Volume{Name: PipelineResultsVolumeName,
+				}, corev1.Volume{Name: pipelineResultsVolumeName,
 					VolumeSource: corev1.VolumeSource{
 						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
-				}),
+				}, corev1.Volume{Name: pipelineMetadataVolumeName,
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
+					},
+				},
+			),
 		},
 	}
 
 	return scanPod
 }
 
-func generateArtifactArguments(profile *v1beta1.Profile) []string {
-	artifactsArgs := []string{"--"}
-	for _, artifact := range profile.Spec.Artifacts {
+func generateExtractorArguments(metadataFiles []string, artifacts []string) []string {
+	args := []string{"--"}
+	for _, artifact := range artifacts {
 		artifactPath := path.Clean(artifact)
 		if path.IsAbs(artifactPath) {
-			artifactsArgs = append(artifactsArgs, artifactPath)
+			args = append(args, artifactPath)
 		} else {
-			artifactsArgs = append(artifactsArgs, path.Join(PipelineResultsDirectory, artifactPath))
+			args = append(args, path.Join(v1beta1.PipelineResultsDirectory, artifactPath))
 		}
 	}
-	return artifactsArgs
+	for _, artifact := range metadataFiles {
+		artifactPath := path.Clean(artifact)
+		if path.IsAbs(artifactPath) {
+			args = append(args, artifactPath)
+		} else {
+			args = append(args, path.Join(v1beta1.PipelineMetadataDirectory, artifactPath))
+		}
+	}
+	return args
 }
 
 func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline, profile *v1beta1.Profile, downloader *v1beta1.Downloader) []corev1.EnvVar {
@@ -544,11 +580,15 @@ func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline, profile *v1beta
 		},
 		{
 			Name:  v1beta1.EnvVarTargetDir,
-			Value: PipelineTargetDirectory,
+			Value: v1beta1.PipelineTargetDirectory,
 		},
 		{
 			Name:  v1beta1.EnvVarResultsDir,
-			Value: PipelineResultsDirectory,
+			Value: v1beta1.PipelineResultsDirectory,
+		},
+		{
+			Name:  v1beta1.EnvVarMetadataDir,
+			Value: v1beta1.PipelineMetadataDirectory,
 		},
 		{
 			Name:      v1beta1.EnvVarNamespaceName,

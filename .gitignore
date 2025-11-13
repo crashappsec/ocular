@@ -302,3 +302,9 @@ CLAUDE.md
 # kubebuilder helm plugin github workflow
 # for somereason can't be turned off in the plugin
 .github/workflows/test-chart.yml
+
+config/dev*
+config/local*
+config/prod*
+config/staging*
+config/test*

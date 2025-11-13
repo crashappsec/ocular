@@ -14,7 +14,7 @@ ifneq (,$(wildcard ${OCULAR_ENV_FILE}))
 endif
 
 
-OCULAR_VERSION ?= $(shell git describe --tags --dirty=-dev)
+OCULAR_VERSION ?= latest
 export OCULAR_VERSION
 # Image URL to use all building/pushing image targets
 OCULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/ocular-controller:$(OCULAR_VERSION)
@@ -22,12 +22,6 @@ export OCULAR_CONTROLLER_IMG
 OCULAR_EXTRACTOR_IMG ?= ghcr.io/crashappsec/ocular-extractor:$(OCULAR_VERSION)
 export OCULAR_EXTRACTOR_IMG
 
-
-# This is the default image for the ocular controller. Updating the image
-# via kustomize writes to disk, so we store this value to revert after any
-# build/deploy commands are used. This is used in the 'revert-image' target.
-DEFAULT_OCULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/ocular-controller:latest
-DEFAULT_OCULAR_EXTRACTOR_IMG ?= ghcr.io/crashappsec/ocular-extractor:latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -86,9 +80,10 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && yq -ie '.[0].value.value = strenv(OCULAR_EXTRACTOR_IMG)' extractor-patch.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
-	$(MAKE) revert-image
+
+deploy-%: manifests kustomize ## Specify which config folder (%) to deploy to the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE) build config/$(@:deploy-%=%) | $(KUBECTL) apply -f -
 
 .PHONY: refresh-deployment
 refresh-deployment: ## Refresh the controller deployment in the K8s cluster specified in ~/.kube/config.
@@ -97,6 +92,10 @@ refresh-deployment: ## Refresh the controller deployment in the K8s cluster spec
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
+undeploy-%: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE) build config/$(@:deploy-%=%) | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
 
 ##@ Development
 
@@ -111,7 +110,7 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 
 .PHONY: generate-clientset
 generate-clientset: client-gen ## Generate clientset for our CRDs.
-	$(CLIENT_GEN) \
+	@$(CLIENT_GEN) \
  		--input-base "" \
 		--input "github.com/crashappsec/ocular/api/v1beta1" \
 	 	--clientset-name "clientset" \
@@ -199,14 +198,27 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build-all
-docker-build-all: ## Build docker image with the manager.
-	$(MAKE) docker-build-controller
-	$(MAKE) docker-build-extractor
+docker-build-all: docker-build-controller docker-build-extractor ## Build docker image with the manager.
 
-docker-build-%:
-	$(CONTAINER_TOOL) build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-build-%=%) -t $(OCULAR_$(shell echo '$(@:docker-build-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) .
+.PHONY: docker-build-controller
+docker-build-controller:  docker-build-img-controller ## Build docker image with the manager.
 
-docker-push-%: ## Push docker image with the manager.
+.PHONY: docker-build-extractor
+docker-build-extractor: docker-build-img-extractor ## Build docker image with the extractor.
+
+docker-build-img-%:
+	$(CONTAINER_TOOL) build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-build-img-%=%) -t $(OCULAR_$(shell echo '$(@:docker-build-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) .
+
+.PHONY: docker-push-all
+docker-push-all: docker-push-controller docker-push-extractor ## Push docker both manager and extractor images.
+
+.PHONY: docker-push-controller
+docker-push-controller: docker-push-img-controller ## Push docker image with the manager.
+
+.PHONY: docker-push-extractor
+docker-push-extractor: docker-push-img-extractor ## Push docker image with the extractor.
+
+docker-push-img-%: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push $(OCULAR_$(shell echo '$(@:docker-build-%=%)' | tr '[:lower:]' '[:upper:]')_IMG)
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
@@ -216,29 +228,34 @@ docker-push-%: ## Push docker image with the manager.
 # - be able to push the image to your registry (i.e. if you do not set a valid value via OCULAR_CONTROLLER_IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
-
 .PHONY: docker-buildx-all
-docker-buildx-all:
-	$(MAKE) docker-buildx-controller
-	$(MAKE) docker-buildx-extractor
+docker-buildx-all: docker-buildx-controller  docker-buildx-extractor ## Build and push docker images for both manager and extractor for cross-platform support.
 
-docker-buildx-%: ## Build and push docker image for the manager for cross-platform support
-	@echo -e "This will build and \e[31m$$(tput bold)push$$(tput sgr0)\e[0m the image $(OCULAR_$(shell echo '$(@:docker-buildx-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) for platforms: ${PLATFORMS}."
+.PHONY: docker-buildx-controller
+docker-buildx-controller: docker-buildx-img-controller ## Build and push docker image for the manager for cross-platform support
+
+.PHONY: docker-buildx-extractor
+docker-buildx-extractor: docker-buildx-img-extractor ## Build and push docker image for the extractor for cross-platform support
+
+docker-buildx-img-%: ## Build and push docker image for the manager for cross-platform support
+	@echo -e "This will build and \e[31m$$(tput bold)push$$(tput sgr0)\e[0m the image $(OCULAR_$(shell echo '$(@:docker-buildx-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) for platforms: ${PLATFORMS}."
 	@read -p "press enter to continue, or ctrl-c to abort: "
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name ocular-builder
 	$(CONTAINER_TOOL) buildx use ocular-builder
-	- $(CONTAINER_TOOL) buildx build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-buildx-%=%) --push --platform=$(PLATFORMS) --tag $(OCULAR_$(shell echo '$(@:docker-buildx-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-buildx-img-%=%) --push --platform=$(PLATFORMS) --tag $(OCULAR_$(shell echo '$(@:docker-buildx-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx rm ocular-builder
 	rm Dockerfile.cross
 
 .PHONY: build-installer
 build-installer: manifests generate kustomize yq ## Generate a consolidated YAML with CRDs and deployment.
-	mkdir -p dist
-	cd config/manager && yq -ie '.[0].value.value = strenv(OCULAR_EXTRACTOR_IMG)' extractor-patch.yaml && $(KUSTOMIZE) edit set image controller=${OCULAR_CONTROLLER_IMG}
+	@mkdir -p dist
 	$(KUSTOMIZE) build config/default > dist/install.yaml
-	@$(MAKE) revert-image
+
+build-installer-%: manifests generate kustomize yq ## Generate a consolidated YAML with CRDs and deployment from a specific config folder.
+	@mkdir -p dist
+	$(KUSTOMIZE) build config/$(@:build-installer-%=%) > dist/install-$(@:build-installer-%=%).yaml
 
 # The build-helm chart is a bit hacky right now since kubebuilder doesn't support
 # adding really any customizations to the 'helm/v2-alpha' plugin. So we do some
@@ -257,32 +274,29 @@ build-installer: manifests generate kustomize yq ## Generate a consolidated YAML
 #       this target. Step 4 is also a manual step to push the updated chart to
 #       the 'crashappsec/helm-charts' repo for distribution.
 .PHONY: build-helm
-build-helm: manifests generate kustomize yq ## Generate a helm-chart using kubebuilder
+build-helm: kubebuilder ## Generate a helm-chart using kubebuilder
 	@mkdir -p dist
-	@# we set the image to 'extractor-image-replaceme' and then replace it later with the helm template values
-	@OCULAR_EXTRACTOR_PULLPOLICY=extractor-pullpolicy-replaceme OCULAR_EXTRACTOR_IMG=extractor-image-replaceme $(KUBEBUILDER) edit --plugins=helm/v2-alpha
-	@# update manfiests with any templating or customizations
+	@$(KUBEBUILDER) edit --plugins=helm/v2-alpha
+	@# update manfiests with any templating or customizations TODO(bryce): have this be one script
 	@sed -i.bak -r 's/(^[ ]+)(image:)/\1imagePullPolicy: {{ .Values.controllerManager.image.pullPolicy }}\n\1\2/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)\labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.controllerManager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.controllerManager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)env:/\1env:\n\1  {{- with .Values.controllerManager.env }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.controllerManager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.controllerManager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak 's/extractor-image-replaceme/"{{ .Values.extractor.image.repository }}:{{ .Values.extractor.image.tag }}"/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+OCULAR_EXTRACTOR_IMG:)[^\n]+/\1 "{{ .Values.extractor.image.repository }}:{{ .Values.extractor.image.tag }}"/g' dist/chart/templates/other/other.yaml
+	@sed -i.bak -r 's/^([ ]+cpu:[ ]+)["]?500m["]?$$/\1"{{ .Values.controllerManager.resources.limits.cpu }}"/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+memory:[ ]+)["]?128Mi["]?$$/\1 "{{ .Values.controllerManager.resources.limits.memory }}"/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+cpu:[ ]+)["]?10m["]?$$/\1 "{{ .Values.controllerManager.resources.requests.cpu }}"/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+memory:[ ]+)["]?64Mi["]?$$/\1 "{{ .Values.controllerManager.resources.requests.memory }}"/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+value:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.extractor.image.pullPolicy }}"/g' dist/chart/templates/manager/manager.yaml
-	@rm dist/chart/templates/manager/manager.yaml.bak # cleanup backup file from sed
-	# Update chart versions
+	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/other/other.yaml.bak  # cleanup backup file from sed
 	@yq -ie '.controllerManager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
 	@yq -ie '.extractor.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
 	@yq -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
-	$(MAKE) revert-image
 
 .PHONY: clean-helm
 clean-helm: ## Clean up the helm chart generated files
 	@rm -rf dist/chart
-
-.PHONY: revert-image
-revert-image: kustomize ## Revert the image in the kustomization to the default image.
-	@cd config/manager && yq -ie '.[0].value.value = strenv(DEFAULT_OCULAR_EXTRACTOR_IMG)' extractor-patch.yaml && $(KUSTOMIZE) edit set image controller=${DEFAULT_OCULAR_CONTROLLER_IMG}
 
 ##@ Dependencies
 

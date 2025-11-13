@@ -11,7 +11,10 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
+	"strings"
 
+	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/resources"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -45,7 +48,7 @@ func reconcilePodFromLabel[T client.Object](
 	scheme *runtime.Scheme,
 	owner T,
 	pod *corev1.Pod,
-	selectorLabels map[string]string,
+	selectorLabels []string,
 ) (*corev1.Pod, error) {
 	if pod == nil {
 		return nil, nil
@@ -55,9 +58,15 @@ func reconcilePodFromLabel[T client.Object](
 	l.Info("reconciling pod", "name", pod.GetName(), "labels", selectorLabels)
 
 	var podList corev1.PodList
+
+	labelSet := make(labels.Set)
+	for _, label := range selectorLabels {
+		labelSet[label] = pod.Labels[label]
+	}
+
 	listOpts := &client.ListOptions{
 		Namespace:     owner.GetNamespace(),
-		LabelSelector: labels.SelectorFromSet(selectorLabels),
+		LabelSelector: labels.SelectorFromSet(labelSet),
 	}
 
 	if err := k8sclient.List(ctx, &podList, listOpts); err != nil {
@@ -87,4 +96,21 @@ func reconcilePodFromLabel[T client.Object](
 		return &podList.Items[0], nil
 	}
 	return &podList.Items[0], nil
+}
+
+func generateChildLabels(parents ...client.Object) map[string]string {
+	childLabels := make(map[string]string)
+	for _, parent := range parents {
+		for k, v := range parent.GetLabels() {
+			childLabels[k] = v
+		}
+	}
+	// we want to remove any existing ocular controller labels to avoid conflicts
+	// or incorrect labeling
+	maps.DeleteFunc(childLabels, func(k string, _ string) bool {
+		return strings.HasPrefix(k, v1beta1.Group)
+	})
+
+	childLabels["app.kubernetes.io/managed-by"] = "ocular-controller"
+	return childLabels
 }

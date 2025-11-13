@@ -57,6 +57,15 @@ func Receive(ctx context.Context, files []string) error {
 			return
 		}
 
+		isResultFile := strings.HasPrefix(file, v1beta1.PipelineResultsDirectory)
+		isMetadataFile := strings.HasPrefix(file, v1beta1.PipelineMetadataDirectory)
+
+		if !isResultFile && !isMetadataFile {
+			w.WriteHeader(http.StatusBadRequest)
+			logger.Info("file is not located in whitelisted directories", "path", file)
+			return
+		}
+
 		mutex.Lock()
 		written, exists := downloadedFiles[file]
 		defer mutex.Unlock()
@@ -71,19 +80,23 @@ func Receive(ctx context.Context, files []string) error {
 			return
 		}
 
-		defer utils.CloseAndLog(ctx, r.Body, "closing upload request body")
-		dst, err := os.Create(filepath.Clean(file))
-		if err != nil {
-			logger.Error(err, "failed to create file", "path", file)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		defer utils.CloseAndLog(ctx, dst, "closing uploaded file writer")
-		_, err = io.Copy(dst, r.Body)
-		if err != nil && !errors.Is(err, io.EOF) {
-			logger.Error(err, "failed to write file", "path", file)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+		if r.ContentLength > 0 {
+			defer utils.CloseAndLog(ctx, r.Body, "closing upload request body")
+			dst, err := os.Create(filepath.Clean(file))
+			if err != nil {
+				logger.Error(err, "failed to create file", "path", file)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			defer utils.CloseAndLog(ctx, dst, "closing uploaded file writer")
+			_, err = io.Copy(dst, r.Body)
+			if err != nil && !errors.Is(err, io.EOF) {
+				logger.Error(err, "failed to write file", "path", file)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		} else {
+			logger.Info("file given with zero content length, assuming missing file and will not create", "path", file)
 		}
 		wg.Done()
 		logger.Info("file downloaded", "path", file)
@@ -109,7 +122,7 @@ func Receive(ctx context.Context, files []string) error {
 		logger.Info("starting server", "address", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error(err, "server error")
-			os.Exit(1)
+			panic(err)
 		}
 	}()
 	logger.Info("awaiting file downloads", "count", len(files))

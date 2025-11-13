@@ -80,6 +80,7 @@ func main() {
 	}
 
 	if err != nil {
+		fmt.Println("error:", err)
 		logger.Error(err, "failed to extract files", "command", command)
 		os.Exit(1)
 	}

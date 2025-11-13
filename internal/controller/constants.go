@@ -11,15 +11,13 @@ package controller
 const (
 	/* Volumes */
 
-	PipelineResultsVolumeName = "results"
-	PipelineResultsDirectory  = "/mnt/results"
-
-	PipelineTargetVolumeName = "target"
-	PipelineTargetDirectory  = "/mnt/target"
+	pipelineResultsVolumeName  = "results"
+	pipelineTargetVolumeName   = "target"
+	pipelineMetadataVolumeName = "metadata"
 
 	/* Ports */
 
-	ExtractorPort = 2121
+	extractorPort = 2121
 
 	/* Naming */
 
@@ -27,20 +25,4 @@ const (
 	uploadPodSuffix      = "-upload"
 	uploadServiceSuffix  = "-upload-svc"
 	searchResourceSuffix = "-search"
-
-	/* Labels */
-
-	PipelineLabelKey   = "ocular.crashoverride.run/pipeline"
-	SearchLabelKey     = "ocular.crashoverride.run/search"
-	TypeLabelKey       = "ocular.crashoverride.run/type"
-	ProfileLabelKey    = "ocular.crashoverride.run/profile"
-	DownloaderLabelKey = "ocular.crashoverride.run/downloader"
-	CrawlerLabelKey    = "ocular.crashoverride.run/crawler"
-
-	PodTypeScan           = "scan"
-	PodTypeUpload         = "upload"
-	PodTypeSearch         = "search"
-	ServiceTypeUpload     = "upload"
-	ServiceTypeSearch     = "search"
-	RoleBindingTypeSearch = "search"
 )

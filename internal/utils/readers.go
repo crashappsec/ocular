@@ -24,6 +24,9 @@ type Closer interface {
 // CloseAndLog is a utility function that closes a resource and logs any error that occurs.
 // It should be used for defers to ensure that the resource is closed properly and any errors are logged.
 func CloseAndLog(ctx context.Context, c Closer, msg string, keysAndValues ...any) {
+	if c == nil {
+		return
+	}
 	l := logf.FromContext(ctx)
 	if err := c.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
 		l.Error(fmt.Errorf("error closing reader: %w", err), msg, keysAndValues...)
@@ -37,6 +40,9 @@ type CloserIgnore[I any] interface {
 // CloseIgnoreAndLog is a utility function that closes a resource and logs any error that occurs, and ignores
 // the result. It should be used for defers to ensure that the resource is closed properly and any errors are logged.
 func CloseIgnoreAndLog[I any](ctx context.Context, c CloserIgnore[I]) {
+	if c == nil {
+		return
+	}
 	l := logf.FromContext(ctx)
 	if _, err := c.Close(); err != nil {
 		l.Error(err, "failed to close")

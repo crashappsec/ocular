@@ -13,6 +13,29 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// PipelineResultsDirectory is the directory where the target scan results will be stored.
+	// This directory should contain all the [ProfileSpec.Artifacts] after the scan is complete.
+	PipelineResultsDirectory = "/mnt/results"
+
+	// PipelineMetadataDirectory is the directory where the target metadata will be stored.
+	// This directory should contain all the [DownloaderSpec.MetadataFiles] after the download is complete.
+	PipelineMetadataDirectory = "/mnt/metadata"
+
+	// PipelineTargetDirectory is the directory where the pipeline target will be stored.
+	// This directory is where the [Downloader] should write the target to be scanned to.
+	PipelineTargetDirectory = "/mnt/target"
+
+	// PipelineLabelKey is the label key used to identify resources associated with a specific pipeline.
+	// It will contain the name of the pipeline as its value.
+	PipelineLabelKey = Group + "/pipeline"
+
+	// ProfileLabelKey is the label key used to identify pipelines created from a specific profile.
+	ProfileLabelKey = Group + "/profile"
+	// DownloaderLabelKey is the label key used to identify pipelines created from a specific downloader.
+	DownloaderLabelKey = Group + "/downloader"
+)
+
 type PipelineSpec struct {
 	// DownloaderRef is a reference to the downloader that will be used in this pipeline.
 	// It should point to a valid Downloader resource in the same namespace.

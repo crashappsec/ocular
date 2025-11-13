@@ -1,6 +1,25 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
 
+# [v0.2.2](https://github.com/crashappsec/ocular/releases/tag/v0.2.2) - **November 13, 2025**
+
+### Added
+
+- Support for downloaders to pass metadata files about target to scanners/uploaders
+    - files written to `/mnt/metadata` and specified in the Downloader spec will now be combined with the scanner artifacts and passed to uploaders
+
+- Ability for searches to specify a custom service account instead randomly generating one per search
+    - if a custom search account is specified, a temporary role-binding is given to give the service account permissions to start pipelines/searches in the namespace where the search was created
+    - a custom service account will not have it owner references set
+
+- Addition of `additionalPodMetadata` field for pipelines/searches where user can specify additional annotations and labels to add to the child pods of the resource
+
+### Changes
+
+- improve use of kustomize deployment, can now run `make deploy-$NAME` where `$NAME` is a folder in the `config/` directory to deploy, instead of `default` (which is used by `make deploy`
+- use `omitzero` on fields on CRDs that when not specified were rendering as `{}`
+
+
 # [v0.2.1](https://github.com/crashappsec/ocular/releases/tag/v0.2.1) - **October 23, 2025**
 
 ### Added

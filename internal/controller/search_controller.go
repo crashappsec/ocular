@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"time"
 
-	errs "errors"
-
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/resources"
 	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
@@ -25,7 +23,6 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -87,25 +84,40 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// generate desired upload pod, service, and scan pod
-	searchServiceAccount := r.newSearchServiceAccount(search)
+	var searchServiceAccount *corev1.ServiceAccount
+	if search.Spec.ServiceAccountNameOverride != "" {
+		searchServiceAccount, err = r.getServiceAccountFromOverride(ctx, search)
+		if err != nil {
+			l.Error(err, "error getting service account from override for search",
+				"name", search.GetName(), "serviceaccount", search.Spec.ServiceAccountNameOverride)
+			return ctrl.Result{}, err
+		}
+	} else {
+		searchServiceAccount = r.newSearchServiceAccount(search)
 
-	if err = resources.ReconcileChildResource[*corev1.ServiceAccount](ctx, r.Client, searchServiceAccount, nil, r.Scheme, copyOwnership); err != nil {
-		l.Error(err, "error reconciling service account for search", "name", search.GetName())
-		return ctrl.Result{}, err
+		if err = resources.ReconcileChildResource[*corev1.ServiceAccount](ctx, r.Client, searchServiceAccount, search, r.Scheme, copyOwnership); err != nil {
+			l.Error(err, "error reconciling service account for search", "name", search.GetName())
+			return ctrl.Result{}, err
+		}
+		search.Spec.ServiceAccountNameOverride = searchServiceAccount.Name
+		if err = r.Update(ctx, search); err != nil {
+			l.Error(err, "error updating search with service account name override", "name", search.GetName())
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
-
 	searchRoleBinding := r.newSearchRoleBinding(search, searchServiceAccount)
 
-	if err = resources.ReconcileChildResource[*rbacv1.RoleBinding](ctx, r.Client, searchRoleBinding, searchServiceAccount, r.Scheme, nil); err != nil {
+	if err = resources.ReconcileChildResource[*rbacv1.RoleBinding](ctx, r.Client, searchRoleBinding, search, r.Scheme, nil); err != nil {
 		l.Error(err, "error reconciling upload pod for pipeline", "name", search.GetName())
 		return ctrl.Result{}, err
 	}
 
 	searchPod := r.newSearchPod(search, crawler, searchServiceAccount, containerOpts...)
 
-	searchPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, search, searchPod, map[string]string{
-		SearchLabelKey: search.GetName(),
-		TypeLabelKey:   PodTypeSearch,
+	searchPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, search, searchPod, []string{
+		v1beta1.SearchLabelKey,
+		v1beta1.TypeLabelKey,
 	})
 	if err != nil {
 		l.Error(err, "error reconciling upload pod for search", "name", search.GetName())
@@ -130,37 +142,48 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	if err = r.ensurePodOwnsServiceAccount(ctx, searchPod, searchServiceAccount); err != nil {
-		l.Error(err, "error ensuring pod owns service account", "name", search.GetName())
-		return ctrl.Result{}, err
-	}
-
 	// Check for completion of pods and update status accordingly
 	return r.handleCompletion(ctx, search, searchPod)
 }
 
 func (r *SearchReconciler) newSearchServiceAccount(search *v1beta1.Search) *corev1.ServiceAccount {
+
+	labels := map[string]string{
+		v1beta1.SearchLabelKey: search.GetName(),
+		v1beta1.TypeLabelKey:   v1beta1.ServiceAccountTypeSearch,
+	}
+
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
-			Labels: map[string]string{
-				TypeLabelKey:   ServiceTypeSearch,
-				SearchLabelKey: search.GetName(),
-			},
+			Labels:    labels,
 		},
 	}
 }
 
+func (r *SearchReconciler) getServiceAccountFromOverride(ctx context.Context, search *v1beta1.Search) (*corev1.ServiceAccount, error) {
+	var sa corev1.ServiceAccount
+	err := r.Get(ctx, client.ObjectKey{
+		Name:      search.Spec.ServiceAccountNameOverride,
+		Namespace: search.Namespace,
+	}, &sa)
+	return &sa, err
+
+}
+
 func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *corev1.ServiceAccount) *rbacv1.RoleBinding {
+
+	labels := map[string]string{
+		v1beta1.SearchLabelKey: search.GetName(),
+		v1beta1.TypeLabelKey:   v1beta1.RoleBindingTypeSearch,
+	}
+
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
-			Labels: map[string]string{
-				SearchLabelKey: search.GetName(),
-				TypeLabelKey:   RoleBindingTypeSearch,
-			},
+			Labels:    labels,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
@@ -204,15 +227,16 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 		}
 	}
 
+	labels := generateChildLabels(search)
+	labels[v1beta1.SearchLabelKey] = search.GetName()
+	labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeSearch
+	labels[v1beta1.CrawlerLabelKey] = crawler.GetName()
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: search.GetName() + "-",
 			Namespace:    search.GetNamespace(),
-			Labels: map[string]string{
-				SearchLabelKey:  search.GetName(),
-				CrawlerLabelKey: crawler.GetName(),
-				TypeLabelKey:    PodTypeSearch,
-			},
+			Labels:       labels,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: sa.GetName(),
@@ -225,19 +249,6 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 	}
 
 	return pod
-}
-
-func (r *SearchReconciler) ensurePodOwnsServiceAccount(ctx context.Context, pod *corev1.Pod, sa *corev1.ServiceAccount) error {
-	err := ctrl.SetControllerReference(pod, sa, r.Scheme)
-	// ensure the pod owns the service account
-	if err != nil {
-		alreadyOwnedErr := &controllerutil.AlreadyOwnedError{}
-		if errs.As(err, &alreadyOwnedErr) {
-			return nil
-		}
-		return fmt.Errorf("failed to set controller reference for service account: %w", err)
-	}
-	return r.Update(ctx, sa)
 }
 
 func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1.Search, pod *corev1.Pod) (ctrl.Result, error) {
