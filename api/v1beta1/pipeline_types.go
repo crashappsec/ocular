@@ -28,12 +28,12 @@ const (
 
 	// PipelineLabelKey is the label key used to identify resources associated with a specific pipeline.
 	// It will contain the name of the pipeline as its value.
-	PipelineLabelKey = "ocular.crashoverride.run/pipeline"
+	PipelineLabelKey = Group + "/pipeline"
 
 	// ProfileLabelKey is the label key used to identify pipelines created from a specific profile.
-	ProfileLabelKey = "ocular.crashoverride.run/profile"
+	ProfileLabelKey = Group + "/profile"
 	// DownloaderLabelKey is the label key used to identify pipelines created from a specific downloader.
-	DownloaderLabelKey = "ocular.crashoverride.run/downloader"
+	DownloaderLabelKey = Group + "/downloader"
 )
 
 type PipelineSpec struct {

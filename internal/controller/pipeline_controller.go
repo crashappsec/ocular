@@ -152,9 +152,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				MountPath: v1beta1.PipelineResultsDirectory,
 			}))...)
 
-	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, map[string]string{
-		v1beta1.PipelineLabelKey: pipeline.GetName(),
-		v1beta1.TypeLabelKey:     v1beta1.PodTypeUpload,
+	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, []string{
+		v1beta1.PipelineLabelKey,
+		v1beta1.TypeLabelKey,
 	})
 	if err != nil {
 		l.Error(err, "error reconciling upload pod for pipeline", "name", pipeline.GetName())
@@ -168,9 +168,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 	}
 
-	scanPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, scanPod, map[string]string{
-		v1beta1.PipelineLabelKey: pipeline.GetName(),
-		v1beta1.TypeLabelKey:     v1beta1.PodTypeScan,
+	scanPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, scanPod, []string{
+		v1beta1.PipelineLabelKey,
+		v1beta1.TypeLabelKey,
 	})
 
 	if err != nil {
@@ -357,16 +357,17 @@ func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, upload
 		return nil
 	}
 
+	labels := generateChildLabels(pipeline)
+	labels[v1beta1.TypeLabelKey] = v1beta1.ServiceTypeUpload
+	labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
+	labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
+	labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
+
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pipeline.GetName() + uploadServiceSuffix,
 			Namespace: uploadPod.Namespace,
-			Labels: map[string]string{
-				v1beta1.PipelineLabelKey:   pipeline.GetName(),
-				v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
-				v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
-				v1beta1.TypeLabelKey:       v1beta1.ServiceTypeUpload,
-			},
+			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
@@ -429,16 +430,17 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 		uploaderContainers = append(uploaderContainers, baseContainer)
 	}
 
+	labels := generateChildLabels(pipeline)
+	labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeUpload
+	labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
+	labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
+	labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
+
 	uploadPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: pipeline.GetName() + uploadPodSuffix + "-",
 			Namespace:    pipeline.GetNamespace(),
-			Labels: map[string]string{
-				v1beta1.PipelineLabelKey:   pipeline.GetName(),
-				v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
-				v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
-				v1beta1.TypeLabelKey:       v1beta1.PodTypeUpload,
-			},
+			Labels:       labels,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: pipeline.Spec.UploadServiceAccountName,
@@ -485,16 +487,17 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profile *v1b
 
 	volumes := append(profile.Spec.Volumes, downloader.Spec.Volumes...)
 
+	labels := generateChildLabels(pipeline)
+	labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeScan
+	labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
+	labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
+	labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
+
 	scanPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: pipeline.GetName() + scanPodSuffix + "-",
 			Namespace:    pipeline.GetNamespace(),
-			Labels: map[string]string{
-				v1beta1.PipelineLabelKey:   pipeline.GetName(),
-				v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
-				v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
-				v1beta1.TypeLabelKey:       v1beta1.PodTypeScan,
-			},
+			Labels:       labels,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: pipeline.Spec.ScanServiceAccountName,

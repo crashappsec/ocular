@@ -30,7 +30,7 @@ const (
 
 	// TypeLabelKey is the label key used to indicate the type of resource created by Ocular.
 	// See the constants PodType* and ServiceType* for the possible values.
-	TypeLabelKey = "ocular.crashoverride.run/type"
+	TypeLabelKey = Group + "/type"
 
 	// PodTypeScan is the value of the TypeLabelKey label for scan pods.
 	PodTypeScan = "scan"

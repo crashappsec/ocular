@@ -261,13 +261,17 @@ build-helm: manifests generate kustomize yq ## Generate a helm-chart using kubeb
 	@mkdir -p dist
 	@# we set the image to 'extractor-image-replaceme' and then replace it later with the helm template values
 	@OCULAR_EXTRACTOR_PULLPOLICY=extractor-pullpolicy-replaceme OCULAR_EXTRACTOR_IMG=extractor-image-replaceme $(KUBEBUILDER) edit --plugins=helm/v2-alpha
-	@# update manfiests with any templating or customizations
+	@# update manfiests with any templating or customizations TODO(bryce): have this be one script
 	@sed -i.bak -r 's/(^[ ]+)(image:)/\1imagePullPolicy: {{ .Values.controllerManager.image.pullPolicy }}\n\1\2/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)\labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.controllerManager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.controllerManager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)env:/\1env:\n\1  {{- with .Values.controllerManager.env }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.controllerManager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.controllerManager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak 's/extractor-image-replaceme/"{{ .Values.extractor.image.repository }}:{{ .Values.extractor.image.tag }}"/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+cpu:[ ]+)["]?500m["]?$$/\1 "{{ .Values.controllerManager.resources.limits.cpu }}"/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+memory:[ ]+)["]?128Mi["]?$$/\1 "{{ .Values.controllerManager.resources.limits.memory }}"/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+cpu:[ ]+)["]?10m["]?$$/\1 "{{ .Values.controllerManager.resources.requests.cpu }}"/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+memory:[ ]+)["]?64Mi["]?$$/\1 "{{ .Values.controllerManager.resources.requests.memory }}"/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+value:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.extractor.image.pullPolicy }}"/g' dist/chart/templates/manager/manager.yaml
 	@rm dist/chart/templates/manager/manager.yaml.bak # cleanup backup file from sed
 	# Update chart versions

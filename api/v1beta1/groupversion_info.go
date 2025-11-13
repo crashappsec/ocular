@@ -16,9 +16,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
+const (
+	Group   = "ocular.crashoverride.run"
+	Version = "v1beta1"
+)
+
 var (
 	// GroupVersion is group version used to register these objects.
-	GroupVersion = schema.GroupVersion{Group: "ocular.crashoverride.run", Version: "v1beta1"}
+	GroupVersion = schema.GroupVersion{Group: Group, Version: Version}
 	// SchemeGroupVersion is group version used to register these objects.
 	// It is the same as GroupVersion and provided for legacy compatibility.
 	SchemeGroupVersion = GroupVersion
