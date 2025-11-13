@@ -59,14 +59,28 @@ type CrawlerCustomValidator struct {
 var _ webhook.CustomValidator = &CrawlerCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *CrawlerCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	crawler, ok := obj.(*ocularcrashoverriderunv1beta1.Crawler)
 	if !ok {
 		return nil, fmt.Errorf("expected a Crawler object but got %T", obj)
 	}
 	crawlerlog.Info("crawler validate create should not be registered, see NOTE in webhook/v1beta1/crawler_webhook.go", "name", crawler.GetName())
 
-	return nil, nil
+	return nil, v.validateCrawler(ctx, crawler)
+}
+
+func (v *CrawlerCustomValidator) validateCrawler(_ context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) error {
+
+	var allErrs field.ErrorList
+	allErrs = append(allErrs, validators.ValidateAdditionalLabels(crawler.Spec.AdditionalPodMetadata.Labels, field.NewPath("spec").Child("additionalPodMetadata").Child("labels"))...)
+
+	allErrs = append(allErrs, validators.ValidateAdditionalAnnotations(crawler.Spec.AdditionalPodMetadata.Annotations, field.NewPath("spec").Child("additionalPodMetadata").Child("annotations"))...)
+	if len(allErrs) == 0 {
+		return nil
+	}
+
+	return apierrors.NewInvalid(schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Crawler"}, crawler.Name, allErrs)
+
 }
 
 func (v *CrawlerCustomValidator) validateNewRequiredParameters(ctx context.Context, oldCrawler, newCrawler *ocularcrashoverriderunv1beta1.Crawler) error {
@@ -129,6 +143,9 @@ func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldObj, new
 	}
 
 	crawlerlog.Info("validating crawler update", "name", crawler.GetName())
+	if err := v.validateCrawler(ctx, crawler); err != nil {
+		return nil, err
+	}
 
 	return nil, v.validateNewRequiredParameters(ctx, oldCrawler, crawler)
 }

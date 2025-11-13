@@ -11,7 +11,7 @@ package utils
 // MergeMaps merges two maps, with the values from the second map
 // overriding the values from the first map.
 func MergeMaps[K comparable, V any](base, override map[K]V) map[K]V {
-	merged := make(map[K]V)
+	merged := make(map[K]V, len(base)+len(override))
 
 	for k, v := range base {
 		merged[k] = v

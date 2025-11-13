@@ -130,3 +130,13 @@ type ServiceAccountDefinition struct {
 	// +optional
 	Token v1.ServiceAccountTokenProjection `json:"token,omitempty" yaml:"token,omitempty" description:"The projection of the service account token that will be mounted into the pod. If not specified, the token will not be mounted."`
 }
+
+type AdditionalPodMetadata struct {
+	// Annotations are key-value pairs that will be added to the pod running the scanners.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty" description:"Annotations of the object."`
+
+	// Labels are key-value pairs that will be added to the pod running the scanners.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty" description:"Labels of the object."`
+}

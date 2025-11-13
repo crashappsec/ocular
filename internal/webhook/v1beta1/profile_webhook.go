@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/crashappsec/ocular/internal/validators"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -52,6 +53,10 @@ func (v *ProfileCustomValidator) validateProfile(ctx context.Context, profile *o
 	var allErrs field.ErrorList
 
 	allErrs = append(allErrs, validateUploaderReferences(ctx, v.c, profile)...)
+
+	allErrs = append(allErrs, validators.ValidateAdditionalLabels(profile.Spec.AdditionalPodMetadata.Labels, field.NewPath("spec").Child("additionalPodMetadata").Child("labels"))...)
+
+	allErrs = append(allErrs, validators.ValidateAdditionalAnnotations(profile.Spec.AdditionalPodMetadata.Annotations, field.NewPath("spec").Child("additionalPodMetadata").Child("annotations"))...)
 
 	if len(allErrs) == 0 {
 		return nil

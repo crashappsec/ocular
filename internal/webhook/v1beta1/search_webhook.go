@@ -74,7 +74,20 @@ func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newO
 	if !ok {
 		return nil, fmt.Errorf("expected a Search object for the newObj but got %T", newObj)
 	}
+	oldSearch, ok := oldObj.(*ocularcrashoverriderunv1beta1.Search)
+	if !ok {
+		return nil, fmt.Errorf("expected a Search object for the oldObj but got %T", oldObj)
+	}
 	searchlog.Info("validating Search resource update", "name", search.GetName())
+
+	if oldSearch.Spec.ServiceAccountNameOverride != "" && oldSearch.Spec.ServiceAccountNameOverride != search.Spec.ServiceAccountNameOverride {
+		return nil, apierrors.NewInvalid(
+			schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
+			search.Name,
+			field.ErrorList{
+				field.Invalid(field.NewPath("spec").Child("serviceAccountNameOverride"), search.Spec.ServiceAccountNameOverride, "serviceAccountNameOverride cannot be changed once set"),
+			})
+	}
 
 	return nil, validateSearch(ctx, v.c, search)
 }
@@ -112,18 +125,18 @@ func validateSearch(ctx context.Context, c client.Client, search *ocularcrashove
 		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("crawlerRef").Child("name"), fmt.Sprintf("%s/%s", search.Spec.CrawlerRef.Namespace, search.Spec.CrawlerRef.Name)))
 	}
 
-	if search.Spec.ServiceAccountOverride != nil {
+	if search.Spec.ServiceAccountNameOverride != "" {
 		var serviceAccount corev1.ServiceAccount
 		err = c.Get(ctx, client.ObjectKey{
-			Name:      search.Spec.ServiceAccountOverride.Name,
+			Name:      search.Spec.ServiceAccountNameOverride,
 			Namespace: search.Namespace,
 		}, &serviceAccount)
 
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
-				return fmt.Errorf("error fetching service account %s/%s: %w", search.Namespace, search.Spec.ServiceAccountOverride.Name, err)
+				return fmt.Errorf("error fetching service account %s/%s: %w", search.Namespace, search.Spec.ServiceAccountNameOverride, err)
 			}
-			allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("serviceAccountOverride").Child("name"), fmt.Sprintf("%s/%s", search.Namespace, search.Spec.ServiceAccountOverride.Name)))
+			allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("serviceAccountNameOverride"), fmt.Sprintf("%s/%s", search.Namespace, search.Spec.ServiceAccountNameOverride)))
 		}
 	}
 

@@ -36,7 +36,7 @@ type SearchSpec struct {
 	// If not specified, a temporary ServiceAccount will be created for the search.
 	// NOTE: This ServiceAccount must exist in the same namespace as the Search.
 	// +optional
-	ServiceAccountNameOverride string `json:"scanServiceAccountName,omitempty" protobuf:"bytes,4,opt,name=scanServiceAccountName" description:"The name of the service account that will be used to run the scan job."`
+	ServiceAccountNameOverride string `json:"serviceAccountNameOverride,omitempty" protobuf:"bytes,4,opt,name=serviceAccountNameOverride" description:"The name of the service account that will be used to run the scan job."`
 }
 
 // SearchStatus defines the observed state of Search.

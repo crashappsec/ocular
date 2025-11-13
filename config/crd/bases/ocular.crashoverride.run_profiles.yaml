@@ -39,6 +39,24 @@ spec:
           spec:
             description: spec defines the desired state of Profile
             properties:
+              additionalPodMetadata:
+                description: |-
+                  AdditionalPodMetadata defines additional specifications to be added to the pod
+                  running the scanners, such as annotations and labels.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations are key-value pairs that will be added
+                      to the pod running the scanners.
+                    type: object
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: Labels are key-value pairs that will be added to
+                      the pod running the scanners.
+                    type: object
+                type: object
               artifacts:
                 description: |-
                   Artifacts is a list of paths to the artifacts that will be produced

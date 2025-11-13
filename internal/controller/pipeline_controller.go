@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/crashappsec/ocular/internal/resources"
+	"github.com/crashappsec/ocular/internal/utils"
 	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -357,11 +358,12 @@ func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, upload
 		return nil
 	}
 
-	labels := generateChildLabels(pipeline)
-	labels[v1beta1.TypeLabelKey] = v1beta1.ServiceTypeUpload
-	labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
-	labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
-	labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
+	labels := map[string]string{
+		v1beta1.TypeLabelKey:       v1beta1.ServiceTypeUpload,
+		v1beta1.PipelineLabelKey:   pipeline.GetName(),
+		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
+		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
+	}
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -429,12 +431,13 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 
 		uploaderContainers = append(uploaderContainers, baseContainer)
 	}
-
-	labels := generateChildLabels(pipeline)
-	labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeUpload
-	labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
-	labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
-	labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
+	standardLabels := map[string]string{
+		v1beta1.TypeLabelKey:       v1beta1.PodTypeUpload,
+		v1beta1.PipelineLabelKey:   pipeline.GetName(),
+		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
+		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
+	}
+	labels := utils.MergeMaps(profile.Spec.AdditionalPodMetadata.Labels, standardLabels)
 
 	uploadPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -487,11 +490,13 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profile *v1b
 
 	volumes := append(profile.Spec.Volumes, downloader.Spec.Volumes...)
 
-	labels := generateChildLabels(pipeline)
-	labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeScan
-	labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
-	labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
-	labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
+	standardLabels := map[string]string{
+		v1beta1.TypeLabelKey:       v1beta1.PodTypeScan,
+		v1beta1.PipelineLabelKey:   pipeline.GetName(),
+		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
+		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
+	}
+	labels := utils.MergeMaps(profile.Spec.AdditionalPodMetadata.Labels, standardLabels)
 
 	scanPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

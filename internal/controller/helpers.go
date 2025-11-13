@@ -98,10 +98,12 @@ func reconcilePodFromLabel[T client.Object](
 	return &podList.Items[0], nil
 }
 
-func generateChildLabels(parent client.Object) map[string]string {
-	childLabels := parent.GetLabels()
-	if childLabels == nil {
-		childLabels = make(map[string]string)
+func generateChildLabels(parents ...client.Object) map[string]string {
+	childLabels := make(map[string]string)
+	for _, parent := range parents {
+		for k, v := range parent.GetLabels() {
+			childLabels[k] = v
+		}
 	}
 	// we want to remove any existing ocular controller labels to avoid conflicts
 	// or incorrect labeling
@@ -109,8 +111,6 @@ func generateChildLabels(parent client.Object) map[string]string {
 		return strings.HasPrefix(k, v1beta1.Group)
 	})
 
-	childLabels["app.kubernetes.io/owner-name"] = parent.GetName()
-	childLabels["app.kubernetes.io/owner-kind"] = parent.GetObjectKind().GroupVersionKind().Kind
 	childLabels["app.kubernetes.io/managed-by"] = "ocular-controller"
 	return childLabels
 }
