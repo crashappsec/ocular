@@ -12,6 +12,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// SearchLabelKey is the label key used to identify resources associated with a specific search.
+	SearchLabelKey = "ocular.crashoverride.run/search"
+
+	// CrawlerLabelKey is the label key used to identify searches created from a specific crawler.
+	CrawlerLabelKey = "ocular.crashoverride.run/crawler"
+)
+
 // SearchSpec defines the desired state of Search
 type SearchSpec struct {
 	// CrawlerRef is a reference to the crawler that will be run in this search.

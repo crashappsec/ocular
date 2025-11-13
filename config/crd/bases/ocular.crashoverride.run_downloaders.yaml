@@ -1552,6 +1552,17 @@ spec:
                 required:
                 - name
                 type: object
+              metadataFiles:
+                description: |-
+                  MetadataFiles is a list of metadata files that the downloader will produce
+                  alongside the downloaded target. These files can contain additional information
+                  about the download process, such as checksums, download timestamps, or source URLs.
+                items:
+                  type: string
+                maxItems: 10
+                minItems: 0
+                type: array
+                x-kubernetes-list-type: set
               volumes:
                 description: |-
                   List of volumes that can be mounted by containers belonging to the pod.

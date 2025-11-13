@@ -26,7 +26,16 @@ type DownloaderSpec struct {
 	// +patchStrategy=merge,retainKeys
 	// +listType=map
 	// +listMapKey=name
-	Volumes []v1.Volume `json:"volumes,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,1,rep,name=volumes"`
+	Volumes []v1.Volume `json:"volumes,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,2,rep,name=volumes"`
+
+	// MetadataFiles is a list of metadata files that the downloader will produce
+	// alongside the downloaded target. These files can contain additional information
+	// about the download process, such as checksums, download timestamps, or source URLs.
+	// +optional
+	// +kubebuilder:validation:MinItems=0
+	// +kubebuilder:validation:MaxItems=10
+	// +listType=set
+	MetadataFiles []string `json:"metadataFiles,omitempty" protobuf:"bytes,3,opt,name=metadataFiles" patchStrategy:"merge"`
 }
 
 type DownloaderStatus struct {

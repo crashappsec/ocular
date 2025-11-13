@@ -136,8 +136,8 @@ var _ = Describe("Search Controller", func() {
 			searchPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, searchPods, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					TypeLabelKey:   PodTypeSearch,
-					SearchLabelKey: resource.Name,
+					ocularcrashoverriderunv1beta1.TypeLabelKey:   ocularcrashoverriderunv1beta1.PodTypeSearch,
+					ocularcrashoverriderunv1beta1.SearchLabelKey: resource.Name,
 				}),
 			})
 			Expect(err).NotTo(HaveOccurred())

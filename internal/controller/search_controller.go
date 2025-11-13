@@ -104,8 +104,8 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	searchPod := r.newSearchPod(search, crawler, searchServiceAccount, containerOpts...)
 
 	searchPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, search, searchPod, map[string]string{
-		SearchLabelKey: search.GetName(),
-		TypeLabelKey:   PodTypeSearch,
+		v1beta1.SearchLabelKey: search.GetName(),
+		v1beta1.TypeLabelKey:   v1beta1.PodTypeSearch,
 	})
 	if err != nil {
 		l.Error(err, "error reconciling upload pod for search", "name", search.GetName())
@@ -145,8 +145,8 @@ func (r *SearchReconciler) newSearchServiceAccount(search *v1beta1.Search) *core
 			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
 			Labels: map[string]string{
-				TypeLabelKey:   ServiceTypeSearch,
-				SearchLabelKey: search.GetName(),
+				v1beta1.TypeLabelKey:   v1beta1.ServiceAccountTypeSearch,
+				v1beta1.SearchLabelKey: search.GetName(),
 			},
 		},
 	}
@@ -158,8 +158,8 @@ func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *core
 			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
 			Labels: map[string]string{
-				SearchLabelKey: search.GetName(),
-				TypeLabelKey:   RoleBindingTypeSearch,
+				v1beta1.SearchLabelKey: search.GetName(),
+				v1beta1.TypeLabelKey:   v1beta1.RoleBindingTypeSearch,
 			},
 		},
 		RoleRef: rbacv1.RoleRef{
@@ -209,9 +209,9 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 			GenerateName: search.GetName() + "-",
 			Namespace:    search.GetNamespace(),
 			Labels: map[string]string{
-				SearchLabelKey:  search.GetName(),
-				CrawlerLabelKey: crawler.GetName(),
-				TypeLabelKey:    PodTypeSearch,
+				v1beta1.SearchLabelKey:  search.GetName(),
+				v1beta1.CrawlerLabelKey: crawler.GetName(),
+				v1beta1.TypeLabelKey:    v1beta1.PodTypeSearch,
 			},
 		},
 		Spec: corev1.PodSpec{

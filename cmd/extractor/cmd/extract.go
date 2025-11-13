@@ -10,7 +10,9 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,6 +40,22 @@ func Extract(ctx context.Context, files []string) error {
 	return err
 }
 
+func newUploadBody(filePath string) (io.ReadCloser, int64, error) {
+	fInfo, err := os.Stat(filePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, 0, nil
+	} else if err != nil {
+		return nil, -1, fmt.Errorf("failed to stat file %s: %w", filePath, err)
+	}
+
+	src, err := os.Open(filePath)
+	if err != nil {
+		return nil, -1, fmt.Errorf("failed to open file %s: %w", filePath, err)
+	}
+
+	return src, fInfo.Size(), nil
+}
+
 func uploadFiles(ctx context.Context, uploaderURL string, files []string) error {
 	var (
 		wg     = &sync.WaitGroup{}
@@ -45,15 +63,15 @@ func uploadFiles(ctx context.Context, uploaderURL string, files []string) error 
 		logger = log.FromContext(ctx)
 	)
 	for _, file := range files {
+		filePath := filepath.Clean(file)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			src, err := os.Open(filepath.Clean(file))
+			src, size, err := newUploadBody(filePath)
 			if err != nil {
 				merr = multierror.Append(merr, err)
 				return
 			}
-			defer utils.CloseAndLog(ctx, src, "closing source file", "file", file)
 
 			u := fmt.Sprintf("%s/upload/%s", uploaderURL, url.PathEscape(file))
 			logger.Info("uploading file", "file", file, "url", u)
@@ -63,16 +81,19 @@ func uploadFiles(ctx context.Context, uploaderURL string, files []string) error 
 				merr = multierror.Append(merr, err)
 				return
 			}
-			// Let the OS fill Content-Length automatically if possible:
-			info, _ := src.Stat()
-			req.ContentLength = info.Size()
+
+			req.ContentLength = size
 
 			retries := 0
 			for {
 				resp, err := http.DefaultClient.Do(req)
-				if err != nil || resp.StatusCode >= http.StatusInternalServerError {
-					logger.Error(err, "Error uploading file",
-						"file", file, "url", u, "retries", retries)
+				utils.CloseAndLog(ctx, resp.Body, "error received from server")
+				if resp.StatusCode != http.StatusOK {
+					err = fmt.Errorf("received %d response from server", resp.StatusCode)
+				}
+				if err != nil || resp.StatusCode != http.StatusOK {
+					logger.Error(err, "failed to upload file",
+						"file", file, "url", u, "status", resp.Status, "status_code", resp.StatusCode, "retries", retries)
 					if retries > 5 {
 						merr = multierror.Append(merr, err)
 						return
@@ -83,8 +104,6 @@ func uploadFiles(ctx context.Context, uploaderURL string, files []string) error 
 					time.Sleep(time.Duration(retries) * time.Second)
 					continue
 				}
-
-				utils.CloseAndLog(ctx, resp.Body, "closing upload response body")
 				break
 			}
 			logger.Info("Uploaded file", "file", file)
