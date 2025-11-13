@@ -304,3 +304,7 @@ CLAUDE.md
 .github/workflows/test-chart.yml
 
 config/dev*
+config/local*
+config/prod*
+config/staging*
+config/test*

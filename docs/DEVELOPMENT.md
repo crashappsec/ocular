@@ -28,20 +28,6 @@ There are two images required inorder to run 'ocular':
   the extraction of artifacts from the scanners to uploaders in a pipeline.
 
 ### To Deploy on the cluster
-**Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG` and `OCULAR_EXTRACTOR_IMG`:**
-
-```sh
-# Controller image
-make docker-build-controller docker-push-controller \
-  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag
-# Extractor image
-make docker-build-extractor docker-push-extractor \
-  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
-```
-
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
 
 **Install the CRDs into the cluster:**
 
@@ -49,25 +35,12 @@ Make sure you have the proper permission to the registry if the above commands d
 make install
 ```
 
-**Deploy the Manager to the cluster with the image specified by `OCULAR_CONTROLLER_IMG` and `OCULAR_EXTRACTOR_IMG`:**
+**Deploy the Manager to the cluster with the image**
 
 ```sh
-make deploy \
-  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
-  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
+make deploy
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
-
-```sh
-kubectl apply -k config/samples/
-```
-
->**NOTE**: Ensure that the samples has default values to test it out.
 
 ### To Uninstall
 **Delete the instances (CRs) from the cluster:**
@@ -87,6 +60,75 @@ make uninstall
 ```sh
 make undeploy
 ```
+
+### To Deploy with custom images
+
+**Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG` and `OCULAR_EXTRACTOR_IMG`:**
+
+```sh
+# Controller image
+make docker-build-controller docker-push-controller \
+  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag
+
+# Extractor image
+make docker-build-extractor docker-push-extractor \
+  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
+  
+# Or both at once
+make docker-build-all docker-push-all \
+  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
+  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
+
+```
+
+**NOTE:** This image ought to be published in the personal registry you specified.
+And it is required to have access to pull the image from the working environment.
+Make sure you have the proper permission to the registry if the above commands don’t work.
+
+**Install the CRDs into the cluster:**
+
+```sh
+make install
+```
+
+**Create a custom deployment configuration (in this example we will name it `dev`)**
+
+```sh
+export DEPLOYMENT_NAME=dev \
+       OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
+       OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
+# NOTE you should make this folder will be ignored by git
+# you can check the .gitignore file for which config folders are ignored
+# and use one of those names to avoid committing custom configs by mistake
+mkdir -p config/${DEPLOYMENT_NAME}
+cd config/${DEPLOYMENT_NAME}
+
+kustomize create
+kustomize edit add resource ../default
+kustomize edit set image ghcr.io/crashappsec/ocular-controller=${OCULAR_CONTROLLER_IMG}
+kustomize edit set configmap  controller-manager-config --from-literal=OCULAR_EXTRACTOR_IMG=${OCULAR_EXTRACTOR_IMG}
+```
+
+
+**Deploy the custom configuration to the cluster with the folder specified by ${DEPLOYMENT_NAME}:**
+
+```sh
+make deploy-${DEPLOYMENT_NAME}
+```
+
+> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
+privileges or be logged in as admin.
+
+### To Uninstall a custom deployment
+
+**UnDeploy the controller from the cluster:**
+
+```sh
+make undeploy-${DEPLOYMENT_NAME}
+```
+
+>**NOTE**: Ensure that the samples has default values to test it out.
+
 
 ## Project Distribution
 

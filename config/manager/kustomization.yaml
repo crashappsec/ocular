@@ -6,9 +6,9 @@ images:
 - name: controller
   newName: ghcr.io/crashappsec/ocular-controller
   newTag: latest
-patches:
-- path: extractor-patch.yaml
-  target:
-    kind: Deployment
-    name: controller-manager
-    namespace: system
+configMapGenerator:
+  - name: controller-manager-config
+    literals:
+      - OCULAR_EXTRACTOR_PULLPOLICY=IfNotPresent
+      - OCULAR_EXTRACTOR_IMG=ghcr.io/crashappsec/ocular-extractor:latest
+      - OCULAR_SEARCH_CLUSTER_ROLE=ocular-search-cluster-role
