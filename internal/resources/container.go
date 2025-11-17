@@ -63,11 +63,6 @@ func ContainerWithPodSecurityStandardRestricted() ContainerOption {
 			c.SecurityContext = &corev1.SecurityContext{}
 		}
 		c.SecurityContext.AllowPrivilegeEscalation = ptr.To(false)
-		// Using 0 here to avoid issues with images that don't have a non-root user
-		// This is particularly important for handling git repository, since
-		// git will refuse to operate if the user of the git command does not match
-		// the owner of the .git directory/files.
-		c.SecurityContext.RunAsUser = ptr.To[int64](0)
 		c.SecurityContext.Capabilities = &corev1.Capabilities{
 			Drop: []corev1.Capability{"ALL"},
 		}
