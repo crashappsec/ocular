@@ -330,7 +330,7 @@ YQ_VERSION ?= v4.47.1
 CODE_GENERATOR_VERSION ?= v0.34.0
 LICENSE_EYE_VERSION ?= v0.7.0
 FRIZBEEE_VERSION ?=  v0.1.7
-KUBEBUILDER_VERSION ?= master # support for helm-v2 isn't available in a release yet
+KUBEBUILDER_VERSION ?= v4.10.1 # support for helm-v2 isn't available in a release yet
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
