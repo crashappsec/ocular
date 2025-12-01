@@ -29,9 +29,9 @@ jobs:
       contents: write
     steps:
       - name: checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v5
       - name: setup go
-        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v5
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v5
         with:
           go-version-file: 'go.mod'
           cache-dependency-path: 'go.sum'
@@ -40,7 +40,7 @@ jobs:
           make build-installer OCULAR_VERSION="$RELEASE_NAME$SUFFIX"
           mv dist/install.yaml ocular${SUFFIX}.yaml
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe # v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
         with:
           files: ocular${{ env.SUFFIX }}.yaml
   publish-docker:
@@ -58,7 +58,7 @@ jobs:
         id: date
         run: echo "::set-output name=date::$(date +'%Y-%m-%dT%H:%M:%SZ')"
       - name: checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v5
         with:
           persist-credentials: false
       - name: Login to GitHub Container Registry
