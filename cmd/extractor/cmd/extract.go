@@ -89,24 +89,32 @@ func uploadFiles(ctx context.Context, uploaderURL string, files []string) error 
 			retries := 0
 			for {
 				resp, err := http.DefaultClient.Do(req)
-				utils.CloseAndLog(ctx, resp.Body, "error received from server")
-				if resp.StatusCode != http.StatusOK {
-					err = fmt.Errorf("received %d response from server", resp.StatusCode)
-				}
-				if err != nil || resp.StatusCode != http.StatusOK {
-					logger.Error(err, "failed to upload file",
-						"file", file, "url", u, "status", resp.Status, "status_code", resp.StatusCode, "retries", retries)
-					if retries > 5 {
-						merr = multierror.Append(merr, err)
-						return
+				if err != nil {
+					logger.Error(err, "failed to perform upload file request",
+						"file", file, "url", u, "retries", retries)
+				} else {
+					if resp.StatusCode != http.StatusOK {
+						logger.Error(err, "non-200 response uploading file",
+							"file", file, "url", u, "status", resp.Status, "status_code", resp.StatusCode,
+							"retries", retries)
+						err = fmt.Errorf("received non-200 response from receiver: %s", resp.Status)
 					}
-					retries++
-					logger.
-						Info("Retrying upload", "file", file, "retries", retries)
-					time.Sleep(time.Duration(retries) * time.Second)
-					continue
+					utils.CloseAndLog(ctx, resp.Body, "error received from server")
 				}
-				break
+
+				if err == nil {
+					break
+				}
+
+				if retries > 5 {
+					merr = multierror.Append(merr, err)
+					return
+				}
+				retries++
+				logger.
+					Info("Retrying upload", "file", file, "retries", retries)
+				time.Sleep(time.Duration(retries) * time.Second)
+				continue
 			}
 			logger.Info("Uploaded file", "file", file)
 		}()
