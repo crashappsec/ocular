@@ -76,6 +76,92 @@ type PipelineSpec struct {
 	TTLSecondsMaxLifetime *int32 `json:"ttlSecondsMaxLifetime,omitempty" protobuf:"bytes,7,opt,name=TTLSecondsMaxLifetime" description:"If set, the pipeline and its associated resources will be automatically deleted after the specified number of seconds have passed since the pipeline was created, regardless of its state."`
 }
 
+// PipelinePhase is a label for the condition of a pipeline at the current time.
+// +enum
+type PipelinePhase string
+
+// These are the valid statuses of pods.
+const (
+	// PipelinePending means the pipeline pods are still creating and have not been accepted by the system,
+	// but one or more of the containers has not been started.
+	PipelinePending PipelinePhase = "Pending"
+	// PipelineDownloading means the pipeline scan pod is in the process of downloading the target.
+	PipelineDownloading PipelinePhase = "Downloading"
+	// PipelineScanning means that the pipeline scan pod is in the process of scanning the target.
+	PipelineScanning PipelinePhase = "Scanning"
+	// PipelineUploading means that the pipeline upload pod is in the process of uploading the results.
+	PipelineUploading PipelinePhase = "Uploading"
+	// PipelineSucceeded means that all containers in the pipeline have terminated in success
+	// (exited with a zero exit code).
+	PipelineSucceeded PipelinePhase = "Succeeded"
+	// PipelineFailed means that one or more containers in the pipeline
+	// (downloader, uploader, scanner) have terminated in a failure
+	// (exited with a non-zero exit code or was stopped by the system).
+	// View the pipeline's Reason or Conditions for more details.
+	PipelineFailed PipelinePhase = "Failed"
+
+	// PipelineStateUnknown means that for some reason the state of the pod could not be obtained, typically due
+	// to an error in communicating with the host of the pod.
+	PipelineStateUnknown PipelinePhase = "Unknown"
+)
+
+const (
+
+	// PipelineScanPodCreatedConditionType is the condition type used when the scan pod for a pipeline has been created.
+	// If this condition is true, it indicates that the scan pod has been successfully created.
+	// If this condition is false, it indicates that there was an error creating the scan pod.
+	// The absence of this condition indicates that the scan pod has not been created yet.
+	PipelineScanPodCreatedConditionType = "PipelineScanPodCreated"
+
+	// PipelineUploadPodCreatedConditionType is the condition type used when the upload pod for a pipeline has been created.
+	// If this condition is true, it indicates that the upload pod has been successfully created.
+	// If this condition is false, it indicates that there was an error creating the upload pod.
+	// The absence of this condition indicates that the upload pod has not been created yet (or won't be
+	// created if the pipeline is scanPodOnly).
+	PipelineUploadPodCreatedConditionType = "PipelineUploadPodCreated"
+
+	// PipelineCompletedSuccessfullyConditionType is the condition type used when a pipeline has completed successfully.
+	// If this condition is true, it indicates that the pipeline has completed all its stages without errors.
+	// If this condition is false, it indicates that the pipeline has completed, but with a failure.
+	// The absence of this condition indicates that the pipeline is still in progress.
+	PipelineCompletedSuccessfullyConditionType = "PipelineCompletedSuccessful"
+)
+
+// PipelineStageStatus represents the status of a specific (downloader, uploader, scanners)
+// stage in the pipeline.
+// +enum
+type PipelineStageStatus string
+
+const (
+	// PipelineStageNotStarted indicates that the stage has not started yet.
+	PipelineStageNotStarted PipelineStageStatus = "NotStarted"
+	// PipelineStageInProgress indicates that the stage is currently in progress.
+	PipelineStageInProgress PipelineStageStatus = "InProgress"
+	// PipelineStageCompleted indicates that the stage has completed successfully.
+	PipelineStageCompleted PipelineStageStatus = "Completed"
+	// PipelineStageFailed indicates that the stage has failed.
+	PipelineStageFailed PipelineStageStatus = "Failed"
+	// PipelineStageSkipped indicates that the stage was skipped.
+	// either because the pipeline is configured to skip it,
+	// or due to an earlier failure in the pipeline.
+	PipelineStageSkipped PipelineStageStatus = "Skipped"
+)
+
+// PipelineStageStatuses represents the status of each stage in the pipeline.
+type PipelineStageStatuses struct {
+	// DownloadStatus represents the current status of the download stage.
+	// +optional
+	DownloadStatus PipelineStageStatus `json:"downloadStatus" description:"The current status of the download stage."`
+
+	// ScanStatus represents the current status of the scan stage.
+	// +optional
+	ScanStatus PipelineStageStatus `json:"scanStatus" description:"The current status of the scan stage."`
+
+	// UploadStatus represents the current status of the upload stage.
+	// +optional
+	UploadStatus PipelineStageStatus `json:"uploadStatus" description:"The current status of the upload stage."`
+}
+
 type PipelineStatus struct {
 	// Conditions latest available observations of an object's current state. When a Search
 	// fails, one of the conditions will have type [FailedConditionType] and status true.
@@ -101,6 +187,15 @@ type PipelineStatus struct {
 	// CompletionTime is the time when the pipeline completed.
 	// +optional
 	CompletionTime *metav1.Time `json:"completionTime,omitempty" description:"The time when the pipeline completed, nil represents that the pipeline has not completed yet."`
+
+	// PipelinePhase is the current phase of the pipeline.
+	// For more information about a particular stage in the pipeline, refer to StageStatuses.
+	// +optional
+	Phase PipelinePhase `json:"phase" description:"The current state of the pipeline."`
+
+	// StageStatuses represents the current status of each stage in the pipeline.
+	// +optional
+	StageStatuses PipelineStageStatuses `json:"stageStatuses,omitempty,omitzero" description:"The current status of each stage in the pipeline."`
 }
 
 // +kubebuilder:object:root=true

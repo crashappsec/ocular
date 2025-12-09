@@ -71,6 +71,13 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object)
 		pipeline.Spec.TTLSecondsMaxLifetime = ptr.To[int32](0)
 	}
 
+	pipeline.Status.Phase = ocularcrashoverriderunv1beta1.PipelinePending
+	pipeline.Status.StageStatuses = ocularcrashoverriderunv1beta1.PipelineStageStatuses{
+		DownloadStatus: ocularcrashoverriderunv1beta1.PipelineStageNotStarted,
+		ScanStatus:     ocularcrashoverriderunv1beta1.PipelineStageNotStarted,
+		UploadStatus:   ocularcrashoverriderunv1beta1.PipelineStageNotStarted,
+	}
+
 	return nil
 }
 
