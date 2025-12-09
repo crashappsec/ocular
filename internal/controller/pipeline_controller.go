@@ -203,6 +203,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			})
 		}
 		pipeline.Status.StartTime = &startTime
+		pipeline.Status.Phase = v1beta1.PipelineDownloading
 		pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageInProgress
 		if err := updateStatus(ctx, r.Client, pipeline, "step", "child resources created"); err != nil {
 			return ctrl.Result{}, err
@@ -310,11 +311,9 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 			case corev1.PodRunning, corev1.PodPending:
 				// upload pod still running or pending
 				uploadStatus := determineUploadPodStageStatuses(uploadPod)
-				if pipeline.Status.StageStatuses.UploadStatus != uploadStatus {
-					pipeline.Status.StageStatuses.UploadStatus = uploadStatus
-					return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "upload pod in progress")
-				}
-				return ctrl.Result{}, nil
+				pipeline.Status.StageStatuses.UploadStatus = uploadStatus
+				pipeline.Status.Phase = v1beta1.PipelineUploading
+				return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "upload pod in progress")
 			default:
 				// upload pod in unknown state, requeue for further investigation
 				l.Error(fmt.Errorf("upload pod in unknown state"), "upload pod is in an unknown state", "phase", uploadPod.Status.Phase, "name", pipeline.GetName())
@@ -325,6 +324,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		downloaderStatus, scanStatus := determineScanPodStageStatuses(scanPod)
 		pipeline.Status.StageStatuses.DownloadStatus = downloaderStatus
 		pipeline.Status.StageStatuses.ScanStatus = scanStatus
+		pipeline.Status.Phase = v1beta1.PipelineFailed
 		pipeline.Status.CompletionTime = ptr.To(t)
 		pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 			metav1.Condition{
@@ -343,13 +343,12 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		}
 	case corev1.PodRunning:
 		downloaderStatus, scanStatus := determineScanPodStageStatuses(scanPod)
-		if pipeline.Status.StageStatuses.DownloadStatus != downloaderStatus ||
-			pipeline.Status.StageStatuses.ScanStatus != scanStatus {
-			pipeline.Status.StageStatuses.DownloadStatus = downloaderStatus
-			pipeline.Status.StageStatuses.ScanStatus = scanStatus
-			return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "scan pod in progress")
+		if downloaderStatus == v1beta1.PipelineStageInProgress {
+			pipeline.Status.Phase = v1beta1.PipelineDownloading
+		} else if scanStatus == v1beta1.PipelineStageInProgress {
+			pipeline.Status.Phase = v1beta1.PipelineScanning
 		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "scan pod in progress")
 	case corev1.PodPending:
 		// scan pod still running or pending
 		return ctrl.Result{}, nil
