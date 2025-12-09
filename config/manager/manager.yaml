@@ -89,22 +89,9 @@ spec:
             cpu: 10m
             memory: 64Mi
         volumeMounts: []
-        env:
-          - name: OCULAR_EXTRACTOR_IMG
-            valueFrom:
-              configMapKeyRef:
-                key: OCULAR_EXTRACTOR_IMG
-                name: controller-manager-config
-          - name: OCULAR_EXTRACTOR_PULLPOLICY
-            valueFrom:
-              configMapKeyRef:
-                key: OCULAR_EXTRACTOR_PULLPOLICY
-                name: controller-manager-config
-          - name: OCULAR_SEARCH_CLUSTER_ROLE
-            valueFrom:
-              configMapKeyRef:
-                key: OCULAR_SEARCH_CLUSTER_ROLE
-                name: controller-manager-config
+        envFrom:
+          - configMapRef:
+              name: controller-manager-config
       volumes: []
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
