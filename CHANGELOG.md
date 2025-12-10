@@ -1,6 +1,19 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
 
+
+# [v0.2.3](https://github.com/crashappsec/ocular/releases/tag/v0.2.2) - **December 10, 2025**
+
+### Added
+
+- New `Pipeline.Status.Phase` field to indicate the current phase of the pipeline (e.g., Pending, Downloading, Scanning, Uploading, Completed, Failed)
+- New `Pipeline.Status.StageStatuses` field to provide detailed status information for each stage of the pipeline (downloader, scanner, uploader)
+
+### Fixes
+
+- Fixed panic when HTTP requests failed in the extractor
+
+
 # [v0.2.2](https://github.com/crashappsec/ocular/releases/tag/v0.2.2) - **November 17, 2025**
 
 ### Added

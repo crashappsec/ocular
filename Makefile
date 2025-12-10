@@ -278,19 +278,13 @@ build-helm: kubebuilder ## Generate a helm-chart using kubebuilder
 	@mkdir -p dist
 	@$(KUBEBUILDER) edit --plugins=helm/v2-alpha
 	@# update manfiests with any templating or customizations TODO(bryce): have this be one script
-	@sed -i.bak -r 's/(^[ ]+)(image:)/\1imagePullPolicy: {{ .Values.controllerManager.image.pullPolicy }}\n\1\2/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.controllerManager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)env:/\1env:\n\1  {{- with .Values.controllerManager.env }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.controllerManager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.controllerManager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.manager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.manager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.manager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+OCULAR_EXTRACTOR_IMG:)[^\n]+/\1 "{{ .Values.extractor.image.repository }}:{{ .Values.extractor.image.tag }}"/g' dist/chart/templates/other/other.yaml
-	@sed -i.bak -r 's/^([ ]+cpu:[ ]+)["]?500m["]?$$/\1"{{ .Values.controllerManager.resources.limits.cpu }}"/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+memory:[ ]+)["]?128Mi["]?$$/\1 "{{ .Values.controllerManager.resources.limits.memory }}"/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+cpu:[ ]+)["]?10m["]?$$/\1 "{{ .Values.controllerManager.resources.requests.cpu }}"/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+memory:[ ]+)["]?64Mi["]?$$/\1 "{{ .Values.controllerManager.resources.requests.memory }}"/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+value:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.extractor.image.pullPolicy }}"/g' dist/chart/templates/manager/manager.yaml
 	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/other/other.yaml.bak  # cleanup backup file from sed
-	@yq -ie '.controllerManager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
+	@yq -ie '.manager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
 	@yq -ie '.extractor.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
 	@yq -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
 
@@ -330,7 +324,7 @@ YQ_VERSION ?= v4.47.1
 CODE_GENERATOR_VERSION ?= v0.34.0
 LICENSE_EYE_VERSION ?= v0.7.0
 FRIZBEEE_VERSION ?=  v0.1.7
-KUBEBUILDER_VERSION ?= v4.10.1 # support for helm-v2 isn't available in a release yet
+KUBEBUILDER_VERSION ?= v4.10.1
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
