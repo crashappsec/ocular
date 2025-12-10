@@ -111,6 +111,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	shouldRunUploadPod := len(profile.Spec.Artifacts) > 0 && len(profile.Spec.UploaderRefs) > 0
 	if !shouldRunUploadPod && !pipeline.Status.ScanPodOnly {
 		pipeline.Status.ScanPodOnly = true
+		pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageSkipped
 	}
 
 	envVars := generateBasePipelineEnvironment(pipeline, profile, downloader)
@@ -181,22 +182,28 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Update status to reflect pods have been created
 	if pipeline.Status.StartTime == nil {
-		reason, message := "ScanPodCreated", fmt.Sprintf("The scan pod %s has been created.", scanPod.Name)
-		if !pipeline.Status.ScanPodOnly {
-			reason = "ScanAndUploadPodCreated"
-			message = fmt.Sprintf("The scan pod %s and upload pod %s have been created.", scanPod.GetName(), uploadPod.GetName())
-		}
+		reason, message := "ScanPodSuccessfullyCreated", fmt.Sprintf("The scan pod %s has been created.", scanPod.Name)
 		startTime := metav1.NewTime(time.Now())
-		pipeline.Status.Conditions = []metav1.Condition{
-			{
-				Type:               v1beta1.StartedConditionType,
+		pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
+			Type:               v1beta1.PipelineScanPodCreatedConditionType,
+			Status:             metav1.ConditionTrue,
+			Reason:             reason,
+			Message:            message,
+			LastTransitionTime: startTime,
+		})
+
+		if !pipeline.Status.ScanPodOnly {
+			reason, message = "UploadPodSuccessfullyCreated", fmt.Sprintf("The upload pod %s has been created.", uploadPod.GetName())
+			pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
+				Type:               v1beta1.PipelineUploadPodCreatedConditionType,
 				Status:             metav1.ConditionTrue,
 				Reason:             reason,
 				Message:            message,
 				LastTransitionTime: startTime,
-			},
+			})
 		}
 		pipeline.Status.StartTime = &startTime
+		pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageInProgress
 		if err := updateStatus(ctx, r.Client, pipeline, "step", "child resources created"); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -205,6 +212,15 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Check for completion of pods and update status accordingly
 	return r.handleCompletion(ctx, pipeline, scanPod, uploadPod)
 }
+
+const (
+	// extractorPodName is the name of the extractor container in the scan pod
+	// that handles extracting artifacts and uploading them to the upload pod
+	extractorPodName = "extract-artifacts"
+
+	// receiverPodName is the name of the receiver container in the upload pod
+	receiverPodName = "receive-artifacts"
+)
 
 func (r *PipelineReconciler) createScanExtractorContainer(pipeline *v1beta1.Pipeline, uploadService *corev1.Service, artifactsArgs []string) corev1.Container {
 	var (
@@ -223,7 +239,7 @@ func (r *PipelineReconciler) createScanExtractorContainer(pipeline *v1beta1.Pipe
 	}
 
 	return corev1.Container{
-		Name:            "extract-artifacts",
+		Name:            extractorPodName,
 		Image:           r.ExtractorImage,
 		ImagePullPolicy: r.ExtractorPullPolicy,
 		Args:            append([]string{extractorCommand}, artifactsArgs...),
@@ -251,11 +267,14 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 	switch scanPod.Status.Phase {
 	case corev1.PodSucceeded:
 		// scan pod completed successfully
+		pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageCompleted
+		pipeline.Status.StageStatuses.ScanStatus = v1beta1.PipelineStageCompleted
 		if pipeline.Status.ScanPodOnly {
+			pipeline.Status.Phase = v1beta1.PipelineSucceeded
 			pipeline.Status.CompletionTime = ptr.To(t)
 			pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 				metav1.Condition{
-					Type:               v1beta1.CompletedSuccessfullyConditionType,
+					Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
 					Status:             metav1.ConditionTrue,
 					Reason:             "ScanCompletedSuccessfully",
 					Message:            "The scan pod has completed successfully.",
@@ -265,10 +284,12 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 			// if we have an upload pod, wait for it to complete
 			switch uploadPod.Status.Phase {
 			case corev1.PodSucceeded:
+				pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageCompleted
+				pipeline.Status.Phase = v1beta1.PipelineSucceeded
 				pipeline.Status.CompletionTime = ptr.To(t)
 				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 					metav1.Condition{
-						Type:               v1beta1.CompletedSuccessfullyConditionType,
+						Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
 						Status:             metav1.ConditionTrue,
 						Reason:             "ScanAndUploadPodComplete",
 						Message:            "The scan and upload pods have completed successfully.",
@@ -276,17 +297,23 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 					})
 			case corev1.PodFailed:
 				pipeline.Status.CompletionTime = ptr.To(t)
+				pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageFailed
 				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 					metav1.Condition{
-						Type:               v1beta1.CompletedSuccessfullyConditionType,
+						Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
 						Status:             metav1.ConditionFalse,
-						Reason:             "UploadCompletedWithFailures",
+						Reason:             "",
 						Message:            "The upload pod has failed.",
 						LastTransitionTime: t,
 					})
+				pipeline.Status.Phase = v1beta1.PipelineFailed
 			case corev1.PodRunning, corev1.PodPending:
 				// upload pod still running or pending
-				// TODO(bryce): check if uploader received files or not
+				uploadStatus := determineUploadPodStageStatuses(uploadPod)
+				if pipeline.Status.StageStatuses.UploadStatus != uploadStatus {
+					pipeline.Status.StageStatuses.UploadStatus = uploadStatus
+					return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "upload pod in progress")
+				}
 				return ctrl.Result{}, nil
 			default:
 				// upload pod in unknown state, requeue for further investigation
@@ -295,12 +322,15 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 			}
 		}
 	case corev1.PodFailed:
+		downloaderStatus, scanStatus := determineScanPodStageStatuses(scanPod)
+		pipeline.Status.StageStatuses.DownloadStatus = downloaderStatus
+		pipeline.Status.StageStatuses.ScanStatus = scanStatus
 		pipeline.Status.CompletionTime = ptr.To(t)
 		pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 			metav1.Condition{
 				Type:               v1beta1.CompletedSuccessfullyConditionType,
 				Status:             metav1.ConditionFalse,
-				Reason:             "ScanCompletedWithFailures",
+				Reason:             "ScanPodTerminatedWithFailures",
 				Message:            "The scan and/or upload pod have failed.",
 				LastTransitionTime: t,
 			})
@@ -311,12 +341,22 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 			// TODO(bryce): cleanup pod
 			return ctrl.Result{}, r.failPod(ctx, uploadPod)
 		}
-	case corev1.PodRunning, corev1.PodPending:
+	case corev1.PodRunning:
+		downloaderStatus, scanStatus := determineScanPodStageStatuses(scanPod)
+		if pipeline.Status.StageStatuses.DownloadStatus != downloaderStatus ||
+			pipeline.Status.StageStatuses.ScanStatus != scanStatus {
+			pipeline.Status.StageStatuses.DownloadStatus = downloaderStatus
+			pipeline.Status.StageStatuses.ScanStatus = scanStatus
+			return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "scan pod in progress")
+		}
+		return ctrl.Result{}, nil
+	case corev1.PodPending:
 		// scan pod still running or pending
 		return ctrl.Result{}, nil
 	default:
 		// scan pod in unknown state, requeue for further investigation
 		l.Error(fmt.Errorf("scan pod in unknown state"), "scan pod is in an unknown state", "phase", scanPod.Status.Phase, "name", pipeline.GetName())
+		pipeline.Status.Phase = v1beta1.PipelineStateUnknown
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -452,7 +492,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 			InitContainers: resources.ApplyOptionsToContainers([]corev1.Container{
 				// Add the extractor as an init container running in receive mode
 				{
-					Name:  "receive-artifacts",
+					Name:  receiverPodName,
 					Image: r.ExtractorImage,
 					Args:  []string{"receive"},
 					Env: []corev1.EnvVar{
@@ -619,4 +659,70 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 	}
 	l.Info("pipeline has completed, skipping reconciliation", "name", pipeline.GetName(), "completionTime", pipeline.Status.CompletionTime)
 	return ctrl.Result{}, nil
+}
+
+func determineScanPodStageStatuses(scanPod *corev1.Pod) (dlStatus v1beta1.PipelineStageStatus, scanStatus v1beta1.PipelineStageStatus) {
+	completed, failed := true, false
+	for _, cs := range scanPod.Status.InitContainerStatuses {
+		if cs.Name != extractorPodName {
+			completed = completed && cs.State.Terminated != nil
+			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
+				failed = true
+			}
+		}
+	}
+
+	if failed {
+		dlStatus = v1beta1.PipelineStageFailed
+	} else if completed {
+		dlStatus = v1beta1.PipelineStageCompleted
+	} else {
+		dlStatus = v1beta1.PipelineStageInProgress
+	}
+
+	switch dlStatus {
+	case v1beta1.PipelineStageInProgress:
+		scanStatus = v1beta1.PipelineStageNotStarted
+	case v1beta1.PipelineStageFailed:
+		scanStatus = v1beta1.PipelineStageSkipped
+	default:
+		completed, failed = true, false
+		for _, cs := range scanPod.Status.ContainerStatuses {
+			if cs.State.Terminated != nil {
+				completed = completed && cs.State.Terminated != nil
+				if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
+					failed = true
+				}
+			}
+		}
+
+		if failed {
+			scanStatus = v1beta1.PipelineStageFailed
+		} else if completed {
+			scanStatus = v1beta1.PipelineStageCompleted
+		} else {
+			scanStatus = v1beta1.PipelineStageInProgress
+		}
+	}
+	return dlStatus, scanStatus
+}
+
+func determineUploadPodStageStatuses(uploadPod *corev1.Pod) (status v1beta1.PipelineStageStatus) {
+	completed, failed := true, false
+	for _, cs := range uploadPod.Status.ContainerStatuses {
+		completed = completed && cs.State.Terminated != nil
+		if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
+			failed = true
+		}
+	}
+
+	if failed {
+		status = v1beta1.PipelineStageFailed
+	} else if completed {
+		status = v1beta1.PipelineStageCompleted
+	} else {
+		status = v1beta1.PipelineStageInProgress
+	}
+
+	return
 }

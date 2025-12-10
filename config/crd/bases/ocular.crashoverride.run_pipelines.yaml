@@ -250,11 +250,33 @@ spec:
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic
+              phase:
+                description: |-
+                  PipelinePhase is the current phase of the pipeline.
+                  For more information about a particular stage in the pipeline, refer to StageStatuses.
+                type: string
               scanPodOnly:
                 description: |-
                   ScanPodOnly indicates if the pipeline is configured to run only the scan job without uploading results.
                   This is true when the profile associated with the pipeline has no artifacts or uploaders defined.
                 type: boolean
+              stageStatuses:
+                description: StageStatuses represents the current status of each stage
+                  in the pipeline.
+                properties:
+                  downloadStatus:
+                    description: DownloadStatus represents the current status of the
+                      download stage.
+                    type: string
+                  scanStatus:
+                    description: ScanStatus represents the current status of the scan
+                      stage.
+                    type: string
+                  uploadStatus:
+                    description: UploadStatus represents the current status of the
+                      upload stage.
+                    type: string
+                type: object
               startTime:
                 description: StartTime is the time when the pipeline started.
                 format: date-time
