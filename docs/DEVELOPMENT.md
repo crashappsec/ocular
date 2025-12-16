@@ -106,7 +106,7 @@ cd config/${DEPLOYMENT_NAME}
 kustomize create
 kustomize edit add resource ../default
 kustomize edit set image ghcr.io/crashappsec/ocular-controller=${OCULAR_CONTROLLER_IMG}
-kustomize edit set configmap  controller-manager-config --from-literal=OCULAR_EXTRACTOR_IMG=${OCULAR_EXTRACTOR_IMG}
+kustomize edit set configmap controller-manager-config --from-literal=OCULAR_EXTRACTOR_IMG=${OCULAR_EXTRACTOR_IMG}
 ```
 
 
@@ -178,7 +178,7 @@ using the same command above to sync the latest changes. Furthermore,
 if you create webhooks, you need to use the above command with
 the '--force' flag and manually ensure that any custom configuration
 previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
+is manually re-applied afterward.
 
 
 
