@@ -5,6 +5,7 @@ Resource Controllers. The following instructions will guide you through the setu
 
 ## Prerequisites
 - A Kubernetes v1.28.0+ cluster.
+- [Cert Manager](https://cert-manager.io/docs/installation/) installed in the cluster.
 - An ability to create resources in the cluster (e.g., admin access).
 - [OPTIONAL] `kubectl` command-line tool installed and configured to interact with your cluster.
 - [OPTIONAL] `helm` command-line tool installed if you prefer Helm for installation.
