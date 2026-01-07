@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (C) 2025 Crash Override, Inc.
+# Copyright (C) 2025-2026 Crash Override, Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
