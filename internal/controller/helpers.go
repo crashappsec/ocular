@@ -16,6 +16,7 @@ import (
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/resources"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,6 +50,7 @@ func reconcilePodFromLabel[T client.Object](
 	owner T,
 	pod *corev1.Pod,
 	selectorLabels []string,
+	metric prometheus.Counter,
 ) (*corev1.Pod, error) {
 	if pod == nil {
 		return nil, nil
@@ -83,6 +85,7 @@ func reconcilePodFromLabel[T client.Object](
 			l.Error(err, "error creating pod", "name", pod.GetName())
 			return nil, err
 		}
+		metric.Add(1)
 		return pod, nil
 	} else if len(podList.Items) > 1 {
 		l.Info("multiple pods found matching labels, using the first one and deleting others", "count", len(podList.Items), "labels", selectorLabels)

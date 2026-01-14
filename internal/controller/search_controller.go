@@ -16,6 +16,7 @@ import (
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/resources"
 	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,7 +25,32 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
+
+var (
+	searchPodsCreated = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ocular_search_pods_created_total",
+			Help: "Number of search pods ocular has created",
+		},
+		[]string{"crawler", "namespace"},
+	)
+	searchDurationSeconds = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name: "ocular_search_duration_seconds",
+			Help: "Number of seconds it took the ocular search to complete",
+		},
+		[]string{"crawler", "namespace"},
+	)
+)
+
+func init() {
+	metrics.Registry.MustRegister(
+		searchPodsCreated,
+		searchDurationSeconds,
+	)
+}
 
 // SearchReconciler reconciles a Search object
 type SearchReconciler struct {
@@ -74,6 +100,8 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
+	metricLabels := prometheus.Labels{"namespace": search.Namespace, "crawler": crawler.Name}
+
 	envVars := generateBaseSearchEnvironment(search, crawler)
 
 	containerOpts := generateBaseContainerOptions(envVars)
@@ -95,7 +123,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	} else {
 		searchServiceAccount = r.newSearchServiceAccount(search)
 
-		if err = resources.ReconcileChildResource[*corev1.ServiceAccount](ctx, r.Client, searchServiceAccount, search, r.Scheme, copyOwnership); err != nil {
+		if err = resources.ReconcileChildResource(ctx, r.Client, searchServiceAccount, search, r.Scheme, copyOwnership); err != nil {
 			l.Error(err, "error reconciling service account for search", "name", search.GetName())
 			return ctrl.Result{}, err
 		}
@@ -118,7 +146,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	searchPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, search, searchPod, []string{
 		v1beta1.SearchLabelKey,
 		v1beta1.TypeLabelKey,
-	})
+	}, searchPodsCreated.With(metricLabels))
 	if err != nil {
 		l.Error(err, "error reconciling upload pod for search", "name", search.GetName())
 		return ctrl.Result{}, err
@@ -253,7 +281,7 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 
 func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1.Search, pod *corev1.Pod) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
-
+	metricLabels := prometheus.Labels{"namespace": search.Namespace, "crawler": search.Spec.CrawlerRef.Name}
 	switch pod.Status.Phase {
 	case corev1.PodFailed:
 		l.Info("search pod has failed", "name", search.GetName(), "pod", pod.GetName())
@@ -288,8 +316,14 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 		l.Info("search pod is in unknown state, requeuing", "name", search.GetName(), "pod", pod.GetName(), "phase", pod.Status.Phase)
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
+	if err := updateStatus(ctx, r.Client, search, "step", "search pod completion"); err != nil {
+		return ctrl.Result{}, err
+	}
 
-	return ctrl.Result{}, updateStatus(ctx, r.Client, search, "step", "search pod completion")
+	duration := search.Status.CompletionTime.Sub(search.Status.StartTime.Time)
+	searchDurationSeconds.With(metricLabels).Observe(duration.Seconds())
+
+	return ctrl.Result{}, nil
 }
 
 func generateBaseSearchEnvironment(_ *v1beta1.Search, crawler *v1beta1.Crawler) []corev1.EnvVar {

@@ -108,12 +108,14 @@ func uploadFiles(ctx context.Context, uploaderURL string, files []string) error 
 
 				if retries > 5 {
 					merr = multierror.Append(merr, err)
+					logger.Error(err, "failed to upload file after retries", "file", file)
 					return
 				}
 				retries++
+				wait := time.Duration(retries) * time.Second
 				logger.
-					Info("Retrying upload", "file", file, "retries", retries)
-				time.Sleep(time.Duration(retries) * time.Second)
+					Info("retrying upload", "file", file, "retries", retries, "wait_seconds", wait.Seconds())
+				time.Sleep(wait)
 				continue
 			}
 			logger.Info("Uploaded file", "file", file)
