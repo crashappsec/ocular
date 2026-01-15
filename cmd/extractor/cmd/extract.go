@@ -66,9 +66,7 @@ func uploadFiles(ctx context.Context, uploaderURL string, files []string) error 
 	)
 	for _, file := range files {
 		filePath := filepath.Clean(file)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			src, size, err := newUploadBody(filePath)
 			if err != nil {
 				merr = multierror.Append(merr, err)
@@ -119,7 +117,7 @@ func uploadFiles(ctx context.Context, uploaderURL string, files []string) error 
 				continue
 			}
 			logger.Info("Uploaded file", "file", file)
-		}()
+		})
 	}
 
 	wg.Wait()
