@@ -18,6 +18,7 @@ import (
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/crashappsec/ocular/internal/utils"
 	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -26,9 +27,58 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 )
+
+var (
+	pipelinesCompleted = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ocular_pipelines_completed_total",
+			Help: "Number of ocular pipelines created",
+		},
+		[]string{"profile", "downloader", "namespace", "phase"},
+	)
+	pipelinesRunning = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ocular_pipelines_running",
+			Help: "Number of ocular pipelines running currently",
+		},
+		[]string{"profile", "downloader", "namespace"},
+	)
+	scanPodsCreated = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ocular_scan_pods_created_total",
+			Help: "Number of scan pods ocular has created",
+		},
+		[]string{"profile", "downloader", "namespace"},
+	)
+	uploadPodsCreated = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ocular_upload_pods_created_total",
+			Help: "Number of scan pods ocular has created",
+		},
+		[]string{"profile", "downloader", "namespace"},
+	)
+	pipelineDurationSeconds = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Name: "ocular_pipeline_duration_seconds",
+			Help: "Number of seconds it took the ocular pipeline to complete",
+		},
+		[]string{"profile", "downloader", "namespace", "phase"},
+	)
+)
+
+func init() {
+	// Register custom metrics with the global prometheus registry
+	metrics.Registry.MustRegister(
+		pipelinesCompleted,
+		pipelinesRunning,
+		scanPodsCreated, uploadPodsCreated,
+		pipelineDurationSeconds,
+	)
+}
 
 // PipelineReconciler reconciles a Pipeline object
 type PipelineReconciler struct {
@@ -154,10 +204,11 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				MountPath: v1beta1.PipelineResultsDirectory,
 			}))...)
 
+	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace, "downloader": downloader.Name, "profile": profile.Name}
 	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, []string{
 		v1beta1.PipelineLabelKey,
 		v1beta1.TypeLabelKey,
-	})
+	}, uploadPodsCreated.With(metricLabels))
 	if err != nil {
 		l.Error(err, "error reconciling upload pod for pipeline", "name", pipeline.GetName())
 		return ctrl.Result{}, err
@@ -173,7 +224,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	scanPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, scanPod, []string{
 		v1beta1.PipelineLabelKey,
 		v1beta1.TypeLabelKey,
-	})
+	}, scanPodsCreated.With(metricLabels))
 
 	if err != nil {
 		l.Error(err, "error reconciling scan pod for pipeline", "name", pipeline.GetName())
@@ -208,6 +259,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := updateStatus(ctx, r.Client, pipeline, "step", "child resources created"); err != nil {
 			return ctrl.Result{}, err
 		}
+		pipelinesRunning.With(metricLabels).Add(1)
 	}
 
 	// Check for completion of pods and update status accordingly
@@ -253,14 +305,20 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 	l := logf.FromContext(ctx)
 	l.Info("checking for scan & upload pod completion")
 	t := metav1.NewTime(time.Now())
+	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace, "downloader": pipeline.Spec.DownloaderRef.Name, "profile": pipeline.Spec.ProfileRef.Name}
 
 	ttlMaxSeconds := 0
 	if pipeline.Spec.TTLSecondsMaxLifetime != nil {
 		ttlMaxSeconds = int(*pipeline.Spec.TTLSecondsMaxLifetime)
 	}
 
+	markedRunning := pipeline.Status.CompletionTime == nil
+
 	if ttlMaxSeconds > 0 && time.Since(pipeline.GetCreationTimestamp().Time) > time.Duration(ttlMaxSeconds)*time.Second {
 		l.Info("pipeline has exceeded maximum allowed runtime, cleaning up", "maxTTL", ttlMaxSeconds)
+		if markedRunning {
+			pipelinesRunning.With(metricLabels).Dec()
+		}
 		err := r.Delete(ctx, pipeline)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -303,7 +361,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 					metav1.Condition{
 						Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
 						Status:             metav1.ConditionFalse,
-						Reason:             "",
+						Reason:             "UploadPodTerminatedWithFailures",
 						Message:            "The upload pod has failed.",
 						LastTransitionTime: t,
 					})
@@ -359,7 +417,26 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	return ctrl.Result{}, updateStatus(ctx, r.Client, pipeline, "step", "scan pod completed")
+	if err := updateStatus(ctx, r.Client, pipeline, "step", "scan pod completed"); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// checked if we marked complete during this run
+	if markedComplete := pipeline.Status.CompletionTime != nil; markedRunning && markedComplete {
+		pipelinesRunning.With(metricLabels).Dec()
+		metricLabels["phase"] = string(pipeline.Status.Phase)
+		pipelinesCompleted.With(metricLabels).Add(1)
+		duration := pipeline.Status.CompletionTime.Sub(pipeline.Status.StartTime.Time)
+		pipelineDurationSeconds.With(metricLabels).Observe(duration.Seconds())
+		l.Info("pipeline completed",
+			"pipeline", pipeline.Name, "namespace", pipeline.Namespace,
+			"profile", pipeline.Spec.ProfileRef.Name, "downloader", pipeline.Spec.DownloaderRef.Name,
+			"target", pipeline.Spec.Target,
+			"phase", pipeline.Status.Phase,
+			"start_time", pipeline.Status.StartTime, "completion_time", pipeline.Status.CompletionTime)
+	}
+
+	return ctrl.Result{}, nil
 }
 
 func (r *PipelineReconciler) failPod(ctx context.Context, pod *corev1.Pod) error {

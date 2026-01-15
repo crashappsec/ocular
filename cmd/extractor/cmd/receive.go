@@ -89,12 +89,13 @@ func Receive(ctx context.Context, files []string) error {
 				return
 			}
 			defer utils.CloseAndLog(ctx, dst, "closing uploaded file writer")
-			_, err = io.Copy(dst, r.Body)
+			n, err := io.Copy(dst, r.Body)
 			if err != nil && !errors.Is(err, io.EOF) {
-				logger.Error(err, "failed to write file", "path", file)
+				logger.Error(err, "failed to write file", "path", file, "bytes", n)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			logger.Info("wrote file", "path", file, "bytes", n)
 		} else {
 			logger.Info("file given with zero content length, assuming missing file and will not create", "path", file)
 		}
