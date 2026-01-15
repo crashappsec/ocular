@@ -2,7 +2,20 @@
 <!-- https://keepachangelog.com -->
 
 
-# [v0.2.3](https://github.com/crashappsec/ocular/releases/tag/v0.2.2) - **December 10, 2025**
+# [v0.2.4](https://github.com/crashappsec/ocular/releases/tag/v0.2.4) - **January 15, 2026**
+
+### Added
+
+- Custom application specific metrics now published via the kubernetes controller metrics endpoint
+  - `ocular_pipelines_completed_total` - Counter of total number of pipelines created
+  - `ocular_pipelines_running` - Gauge for the number of pipelines currently running
+  - `ocular_scan_pods_created_total` - Counter for the total number of scan pods created
+  - `ocular_upload_pods_created_total` - Counter for the total number of upload pods created
+  - `oulcar_pipeline_duration_seconds` - Summary for the number of seconds a pipeline took to complete
+  - `ocular_search_pods_created_total` - Counter for the total number of search pods created
+  - `ocular_search_duration_seconds` - Summary for the number of seconds a search took to complete
+
+# [v0.2.3](https://github.com/crashappsec/ocular/releases/tag/v0.2.3) - **December 10, 2025**
 
 ### Added
 
