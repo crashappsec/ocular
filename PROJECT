@@ -86,7 +86,7 @@ resources:
   domain: ocular.crashoverride.run
   kind: CronSearch
   path: github.com/crashappsec/ocular/api/v1beta1
-  version: v1betav1
+  version: v1beta1
   webhooks:
     defaulting: true
     validation: true
