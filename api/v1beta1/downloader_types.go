@@ -40,6 +40,8 @@ type DownloaderSpec struct {
 
 type DownloaderStatus struct {
 	// Conditions represent the latest available observations of a Downloader's current state.
+	// +listType=map
+	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Downloader's current state."`
 }
@@ -54,7 +56,7 @@ type Downloader struct {
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitzero"`
 
 	// spec defines the desired state of Downloader
 	// +required
@@ -62,7 +64,7 @@ type Downloader struct {
 
 	// status defines the observed state of Downloader
 	// +optional
-	Status DownloaderStatus `json:"status,omitempty,omitzero"`
+	Status DownloaderStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
@@ -70,7 +72,7 @@ type Downloader struct {
 // DownloaderList contains a list of Downloader
 type DownloaderList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Downloader `json:"items"`
 }
 

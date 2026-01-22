@@ -14,13 +14,11 @@ import (
 
 	"github.com/crashappsec/ocular/internal/validators"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -32,7 +30,7 @@ var profilelog = logf.Log.WithName("profile-resource")
 
 // SetupProfileWebhookWithManager registers the webhook for Profile in the manager.
 func SetupProfileWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&ocularcrashoverriderunv1beta1.Profile{}).
+	return ctrl.NewWebhookManagedBy(mgr, &ocularcrashoverriderunv1beta1.Profile{}).
 		WithValidator(&ProfileCustomValidator{
 			c: mgr.GetClient(),
 		}).
@@ -46,8 +44,6 @@ func SetupProfileWebhookWithManager(mgr ctrl.Manager) error {
 type ProfileCustomValidator struct {
 	c client.Client
 }
-
-var _ webhook.CustomValidator = &ProfileCustomValidator{}
 
 func (v *ProfileCustomValidator) validateProfile(ctx context.Context, profile *ocularcrashoverriderunv1beta1.Profile) error {
 	var allErrs field.ErrorList
@@ -115,24 +111,15 @@ func validateSetParameters(name string, fieldPath *field.Path, params []ocularcr
 }
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Profile.
-func (v *ProfileCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	profile, ok := obj.(*ocularcrashoverriderunv1beta1.Profile)
-	if !ok {
-		return nil, fmt.Errorf("expected a Profile object but got %T", obj)
-	}
+func (v *ProfileCustomValidator) ValidateCreate(ctx context.Context, profile *ocularcrashoverriderunv1beta1.Profile) (admission.Warnings, error) {
 
 	return nil, v.validateProfile(ctx, profile)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Profile.
-func (v *ProfileCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	profile, ok := newObj.(*ocularcrashoverriderunv1beta1.Profile)
-	if !ok {
-		return nil, fmt.Errorf("expected a Profile object for the newObj but got %T", newObj)
-	}
-	profilelog.Info("Validation for Profile upon update", "name", profile.GetName())
+func (v *ProfileCustomValidator) ValidateUpdate(ctx context.Context, _, newProfile *ocularcrashoverriderunv1beta1.Profile) (admission.Warnings, error) {
 
-	return nil, v.validateProfile(ctx, profile)
+	return nil, v.validateProfile(ctx, newProfile)
 }
 
 func (v *ProfileCustomValidator) checkForPipelinesReferencingProfile(ctx context.Context, profile *ocularcrashoverriderunv1beta1.Profile) error {
@@ -163,11 +150,7 @@ func (v *ProfileCustomValidator) checkForPipelinesReferencingProfile(ctx context
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Profile.
-func (v *ProfileCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	profile, ok := obj.(*ocularcrashoverriderunv1beta1.Profile)
-	if !ok {
-		return nil, fmt.Errorf("expected a Profile object but got %T", obj)
-	}
+func (v *ProfileCustomValidator) ValidateDelete(ctx context.Context, profile *ocularcrashoverriderunv1beta1.Profile) (admission.Warnings, error) {
 	profilelog.Info("Validation for Profile upon deletion", "name", profile.GetName())
 
 	return nil, v.checkForPipelinesReferencingProfile(ctx, profile)

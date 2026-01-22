@@ -14,7 +14,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	validationutils "k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -22,7 +21,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -34,9 +32,10 @@ var pipelinelog = logf.Log.WithName("pipeline-resource")
 
 // SetupPipelineWebhookWithManager registers the webhook for Pipeline in the manager.
 func SetupPipelineWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&ocularcrashoverriderunv1beta1.Pipeline{}).
+	c := mgr.GetClient()
+	return ctrl.NewWebhookManagedBy(mgr, &ocularcrashoverriderunv1beta1.Pipeline{}).
 		WithValidator(&PipelineCustomValidator{
-			c: mgr.GetClient(),
+			c: c,
 		}).
 		WithDefaulter(&PipelineCustomDefaulter{}).
 		Complete()
@@ -46,19 +45,11 @@ func SetupPipelineWebhookWithManager(mgr ctrl.Manager) error {
 
 // PipelineCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind Pipeline when those are created or updated.
-type PipelineCustomDefaulter struct {
-	// TODO(user): Add more fields as needed for defaulting
-}
-
-var _ webhook.CustomDefaulter = &PipelineCustomDefaulter{}
+type PipelineCustomDefaulter struct{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pipeline.
-func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	pipeline, ok := obj.(*ocularcrashoverriderunv1beta1.Pipeline)
-
-	if !ok {
-		return fmt.Errorf("expected an Pipeline object but got %T", obj)
-	}
+func (d *PipelineCustomDefaulter) Default(_ context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) error {
+	pipelinelog.Info("defaulting for Pipeline", "name", pipeline.GetName())
 
 	if pipeline.Spec.UploadServiceAccountName == "" {
 		pipeline.Spec.UploadServiceAccountName = "default"
@@ -89,26 +80,17 @@ type PipelineCustomValidator struct {
 	c client.Client
 }
 
-var _ webhook.CustomValidator = &PipelineCustomValidator{}
-
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	pipeline, ok := obj.(*ocularcrashoverriderunv1beta1.Pipeline)
-	if !ok {
-		return nil, fmt.Errorf("expected a Pipeline object but got %T", obj)
-	}
+func (v *PipelineCustomValidator) ValidateCreate(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
 
 	return nil, validatePipeline(ctx, v.c, pipeline)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	pipeline, ok := newObj.(*ocularcrashoverriderunv1beta1.Pipeline)
-	if !ok {
-		return nil, fmt.Errorf("expected a Pipeline object for the newObj but got %T", newObj)
-	}
+func (v *PipelineCustomValidator) ValidateUpdate(ctx context.Context, _, newPipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
+	pipelinelog.Info("validation for Pipeline upon update", "name", newPipeline.GetName())
 
-	return nil, validatePipeline(ctx, v.c, pipeline)
+	return nil, validatePipeline(ctx, v.c, newPipeline)
 }
 
 func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcrashoverriderunv1beta1.Pipeline) error {
@@ -191,12 +173,7 @@ func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcras
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	pipeline, ok := obj.(*ocularcrashoverriderunv1beta1.Pipeline)
-	if !ok {
-		return nil, fmt.Errorf("expected a Pipeline object but got %T", obj)
-	}
-
+func (v *PipelineCustomValidator) ValidateDelete(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
 	pipelinelog.Info("pipeline delete called but should not be registered, see NOTE", "name", pipeline.GetName())
 
 	return nil, nil

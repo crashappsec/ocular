@@ -11,6 +11,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"time"
 
@@ -295,13 +296,9 @@ func constructSearchForCronSearch(cronSearch *v1beta1.CronSearch, scheduledTime 
 		},
 		Spec: searchSpec,
 	}
-	for k, v := range cronSearch.Spec.SearchTemplate.Annotations {
-		search.Annotations[k] = v
-	}
+	maps.Copy(search.Annotations, cronSearch.Spec.SearchTemplate.Annotations)
 	search.Annotations[scheduledTimeAnnotation] = scheduledTime.Format(time.RFC3339)
-	for k, v := range cronSearch.Spec.SearchTemplate.Labels {
-		search.Labels[k] = v
-	}
+	maps.Copy(search.Labels, cronSearch.Spec.SearchTemplate.Labels)
 	if err := ctrl.SetControllerReference(cronSearch, search, scheme); err != nil {
 		return nil, err
 	}

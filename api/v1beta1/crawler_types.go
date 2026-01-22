@@ -17,6 +17,8 @@ type CrawlerRunRef = ParameterizedObjectReference
 
 type CrawlerStatus struct {
 	// Conditions is a list of conditions that the crawler is in.
+	// +listType=map
+	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Uploader's current state."`
 }
@@ -66,7 +68,7 @@ type Crawler struct {
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitzero"`
 
 	// spec defines the desired state of Crawler
 	// +required
@@ -74,7 +76,7 @@ type Crawler struct {
 
 	// status defines the observed state of Crawler
 	// +optional
-	Status CrawlerStatus `json:"status,omitempty,omitzero"`
+	Status CrawlerStatus `json:"status,omitzero"`
 }
 
 type CrawlerObjectReference = ParameterizedObjectReference
@@ -84,7 +86,7 @@ type CrawlerObjectReference = ParameterizedObjectReference
 // CrawlerList contains a list of Crawler
 type CrawlerList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Crawler `json:"items"`
 }
 

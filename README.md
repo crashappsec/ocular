@@ -19,8 +19,6 @@
 [![GitHub Release](https://img.shields.io/github/v/release/crashappsec/ocular)](https://github.com/crashappsec/ocular/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-
-
 ## Overview
 
 Ocular is a Kubernetes API extension that allows you to perform security scans on static software assets.
@@ -54,5 +52,4 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for instructions on how to run the app
 
 We are constantly learning about emerging use cases and are always interested in hearing about how you use Ocular.
 If you would like to talk, [please get in touch](https://ocularproject.io/contact).
-
 

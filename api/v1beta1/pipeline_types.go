@@ -169,10 +169,9 @@ type PipelineStatus struct {
 	// [CompleteConditionType] or [FailedConditionType]. A Search cannot have both the [CompleteConditionType]  and FailedConditionType] conditions.
 	//
 	// More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
+	// +listType=map
+	// +listMapKey=type
 	// +optional
-	// +patchMergeKey=type
-	// +patchStrategy=merge
-	// +listType=atomic
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
 	// ScanPodOnly indicates if the pipeline is configured to run only the scan job without uploading results.
@@ -208,7 +207,7 @@ type Pipeline struct {
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitzero"`
 
 	// spec defines the desired state of Pipeline
 	// +required
@@ -216,7 +215,7 @@ type Pipeline struct {
 
 	// status defines the observed state of Pipeline
 	// +optional
-	Status PipelineStatus `json:"status,omitempty"`
+	Status PipelineStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
@@ -224,7 +223,7 @@ type Pipeline struct {
 // PipelineList contains a list of Pipeline
 type PipelineList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Pipeline `json:"items"`
 }
 

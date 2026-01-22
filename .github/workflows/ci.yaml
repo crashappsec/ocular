@@ -29,7 +29,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v8
         with:
-          version: v2.5
+          version: v2.8
       - name: check license headers
         uses: apache/skywalking-eyes/header@61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1 # v0.7
   test:

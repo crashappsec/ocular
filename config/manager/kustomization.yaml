@@ -12,3 +12,5 @@ configMapGenerator:
       - OCULAR_EXTRACTOR_PULLPOLICY=IfNotPresent
       - OCULAR_EXTRACTOR_IMG=ghcr.io/crashappsec/ocular-extractor:latest
       - OCULAR_SEARCH_CLUSTER_ROLE=ocular-search-cluster-role
+    options:
+      disableNameSuffixHash: true

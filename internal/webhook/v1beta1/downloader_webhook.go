@@ -13,13 +13,11 @@ import (
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -31,7 +29,7 @@ var downloaderlog = logf.Log.WithName("downloader-resource")
 
 // SetupDownloaderWebhookWithManager registers the webhook for Downloader in the manager.
 func SetupDownloaderWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&ocularcrashoverriderunv1beta1.Downloader{}).
+	return ctrl.NewWebhookManagedBy(mgr, &ocularcrashoverriderunv1beta1.Downloader{}).
 		WithValidator(&DownloaderCustomValidator{
 			c: mgr.GetClient(),
 		}).
@@ -54,34 +52,22 @@ type DownloaderCustomValidator struct {
 	c client.Client
 }
 
-var _ webhook.CustomValidator = &DownloaderCustomValidator{}
-
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Downloader.
-func (v *DownloaderCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	downloader, ok := obj.(*ocularcrashoverriderunv1beta1.Downloader)
-	if !ok {
-		return nil, fmt.Errorf("expected a Downloader object but got %T", obj)
-	}
-
+func (v *DownloaderCustomValidator) ValidateCreate(_ context.Context, downloader *ocularcrashoverriderunv1beta1.Downloader) (admission.Warnings, error) {
 	downloaderlog.Info("downloader validate create should not be registered, see NOTE in webhook/v1beta1/downloader_webhook.go", "name", downloader.GetName())
 
 	return nil, nil
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Downloader.
-func (v *DownloaderCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	downloader, ok := newObj.(*ocularcrashoverriderunv1beta1.Downloader)
-	if !ok {
-		return nil, fmt.Errorf("expected a Downloader object for the newObj but got %T", newObj)
-	}
-
-	downloaderlog.Info("downloader validate update should not be registered, see NOTE in webhook/v1beta1/downloader_webhook.go", "name", downloader.GetName())
+func (v *DownloaderCustomValidator) ValidateUpdate(_ context.Context, _, newDownloader *ocularcrashoverriderunv1beta1.Downloader) (admission.Warnings, error) {
+	downloaderlog.Info("downloader validate update should not be registered, see NOTE in webhook/v1beta1/downloader_webhook.go", "name", newDownloader.GetName())
 
 	return nil, nil
 }
 
 func (v *DownloaderCustomValidator) checkForPipelinesReferencingDownloader(ctx context.Context, downloader *ocularcrashoverriderunv1beta1.Downloader) error {
-	var pipelines ocularcrashoverriderunv1beta1.PipelineList
+	pipelines := ocularcrashoverriderunv1beta1.PipelineList{}
 	if err := v.c.List(ctx, &pipelines); err != nil {
 		return fmt.Errorf("failed to list pipelines: %w", err)
 	}
@@ -107,11 +93,8 @@ func (v *DownloaderCustomValidator) checkForPipelinesReferencingDownloader(ctx c
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Downloader.
-func (v *DownloaderCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	downloader, ok := obj.(*ocularcrashoverriderunv1beta1.Downloader)
-	if !ok {
-		return nil, fmt.Errorf("expected a Downloader object but got %T", obj)
-	}
+func (v *DownloaderCustomValidator) ValidateDelete(ctx context.Context, downloader *ocularcrashoverriderunv1beta1.Downloader) (admission.Warnings, error) {
+	downloaderlog.Info("validation for downloader upon deletion", "name", downloader.GetName())
 
 	return nil, v.checkForPipelinesReferencingDownloader(ctx, downloader)
 }

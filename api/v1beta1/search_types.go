@@ -47,10 +47,9 @@ type SearchStatus struct {
 	// [CompleteConditionType] or [FailedConditionType]. A Search cannot have both the [CompleteConditionType]  and FailedConditionType] conditions.
 	//
 	// More info: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
+	// +listType=map
+	// +listMapKey=type
 	// +optional
-	// +patchMergeKey=type
-	// +patchStrategy=merge
-	// +listType=atomic
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
 	// StartTime is the time when the search started.
@@ -77,7 +76,7 @@ type Search struct {
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitzero"`
 
 	// spec defines the desired state of Search
 	// +required
@@ -85,7 +84,7 @@ type Search struct {
 
 	// status defines the observed state of Search
 	// +optional
-	Status SearchStatus `json:"status,omitempty,omitzero"`
+	Status SearchStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
@@ -93,7 +92,7 @@ type Search struct {
 // SearchList contains a list of Search
 type SearchList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Search `json:"items"`
 }
 

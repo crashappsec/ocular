@@ -14,7 +14,7 @@ import "os"
 // It converts the name to uppercase, replaces invalid characters with underscores,
 // and prefixes it with "OCULAR_PARAM_".
 func ParameterToEnvironmentVariable(name string) string {
-	result := make([]rune, 0)
+	result := make([]rune, 0, len(name))
 	for _, char := range name {
 		nextChar := '_'
 		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '_' {

@@ -12,10 +12,10 @@ For a more in-depth guide on how to get started with the project and what the di
 are, please refer to the [documentation site](https://ocularproject.io/docs/)
 
 ### Prerequisites
-- go
-- docker
-- kubectl
-- Access to a Kubernetes v1.28.0+ cluster.
+- go version v1.24.6+
+- docker version 17.03+.
+- kubectl version v1.11.3+.
+- Access to a Kubernetes v1.11.3+ cluster.
 
 *NOTE*: Any environment variable mentioned in the following commands can be set in the
 `.env` file (or whatever file you set `OCULAR_ENV_FILE` to), which is loaded automatically by the `make` command.
