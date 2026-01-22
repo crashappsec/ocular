@@ -104,9 +104,7 @@ func reconcilePodFromLabel[T client.Object](
 func generateChildLabels(parents ...client.Object) map[string]string {
 	childLabels := make(map[string]string)
 	for _, parent := range parents {
-		for k, v := range parent.GetLabels() {
-			childLabels[k] = v
-		}
+		maps.Copy(childLabels, parent.GetLabels())
 	}
 	// we want to remove any existing ocular controller labels to avoid conflicts
 	// or incorrect labeling

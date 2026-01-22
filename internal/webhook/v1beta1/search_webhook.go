@@ -10,17 +10,16 @@ package v1beta1
 
 import (
 	"context"
+
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -32,10 +31,11 @@ var searchlog = logf.Log.WithName("search-resource")
 
 // SetupSearchWebhookWithManager registers the webhook for Search in the manager.
 func SetupSearchWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&ocularcrashoverriderunv1beta1.Search{}).
+	return ctrl.NewWebhookManagedBy(mgr, &ocularcrashoverriderunv1beta1.Search{}).
 		WithValidator(&SearchCustomValidator{
 			c: mgr.GetClient(),
 		}).
+		// WithDefaulter(&SearchCustomDefaulter{}).
 		Complete()
 }
 
@@ -55,49 +55,31 @@ type SearchCustomValidator struct {
 	c client.Client
 }
 
-var _ webhook.CustomValidator = &SearchCustomValidator{}
-
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *SearchCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	search, ok := obj.(*ocularcrashoverriderunv1beta1.Search)
-	if !ok {
-		return nil, fmt.Errorf("expected a Search object but got %T", obj)
-	}
+func (v *SearchCustomValidator) ValidateCreate(ctx context.Context, search *ocularcrashoverriderunv1beta1.Search) (admission.Warnings, error) {
 	searchlog.Info("validating Search resource creation", "name", search.GetName())
 
 	return nil, validateSearch(ctx, v.c, search)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	search, ok := newObj.(*ocularcrashoverriderunv1beta1.Search)
-	if !ok {
-		return nil, fmt.Errorf("expected a Search object for the newObj but got %T", newObj)
-	}
-	oldSearch, ok := oldObj.(*ocularcrashoverriderunv1beta1.Search)
-	if !ok {
-		return nil, fmt.Errorf("expected a Search object for the oldObj but got %T", oldObj)
-	}
-	searchlog.Info("validating Search resource update", "name", search.GetName())
+func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldSearch, newSearch *ocularcrashoverriderunv1beta1.Search) (admission.Warnings, error) {
+	searchlog.Info("validating Search resource update", "name", newSearch.GetName())
 
-	if oldSearch.Spec.ServiceAccountNameOverride != "" && oldSearch.Spec.ServiceAccountNameOverride != search.Spec.ServiceAccountNameOverride {
+	if oldSearch.Spec.ServiceAccountNameOverride != "" && oldSearch.Spec.ServiceAccountNameOverride != newSearch.Spec.ServiceAccountNameOverride {
 		return nil, apierrors.NewInvalid(
 			schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
-			search.Name,
+			newSearch.Name,
 			field.ErrorList{
-				field.Invalid(field.NewPath("spec").Child("serviceAccountNameOverride"), search.Spec.ServiceAccountNameOverride, "serviceAccountNameOverride cannot be changed once set"),
+				field.Invalid(field.NewPath("spec").Child("serviceAccountNameOverride"), newSearch.Spec.ServiceAccountNameOverride, "serviceAccountNameOverride cannot be changed once set"),
 			})
 	}
 
-	return nil, validateSearch(ctx, v.c, search)
+	return nil, validateSearch(ctx, v.c, newSearch)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *SearchCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	search, ok := obj.(*ocularcrashoverriderunv1beta1.Search)
-	if !ok {
-		return nil, fmt.Errorf("expected a Search object but got %T", obj)
-	}
+func (v *SearchCustomValidator) ValidateDelete(ctx context.Context, search *ocularcrashoverriderunv1beta1.Search) (admission.Warnings, error) {
 	searchlog.Info("crawler validate delete should not be registered, see NOTE in webhook/v1beta1/search_webhook.go", "name", search.GetName())
 
 	return nil, nil

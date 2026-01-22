@@ -10,17 +10,14 @@ package v1beta1
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/robfig/cron/v3"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	validationutils "k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -32,7 +29,7 @@ var cronsearchlog = logf.Log.WithName("cronsearch-resource")
 
 // SetupCronSearchWebhookWithManager registers the webhook for CronSearch in the manager.
 func SetupCronSearchWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&v1beta1.CronSearch{}).
+	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.CronSearch{}).
 		WithValidator(&CronSearchCustomValidator{}).
 		WithDefaulter(&CronSearchCustomDefaulter{
 			DefaultConcurrencyPolicy:          v1beta1.AllowConcurrent,
@@ -60,21 +57,17 @@ type CronSearchCustomDefaulter struct {
 	DefaultFailedJobsHistoryLimit     int32
 }
 
-var _ webhook.CustomDefaulter = &CronSearchCustomDefaulter{}
-
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Search.
-func (d *CronSearchCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	cronSearch, ok := obj.(*v1beta1.CronSearch)
-
-	if !ok {
-		return fmt.Errorf("expected an CronSearch object but got %T", obj)
-	}
-	cronsearchlog.Info("Defaulting for CronSearch", "name", cronSearch.GetName())
+func (d *CronSearchCustomDefaulter) Default(_ context.Context, cronSearch *v1beta1.CronSearch) error {
+	cronsearchlog.Info("defaulting for CronSearch", "name", cronSearch.GetName())
 
 	d.applyDefaults(cronSearch)
 	return nil
 }
 
+// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
+// NOTE: If you want to customise the 'path', use the flags '--defaulting-path' or '--validation-path'.
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-cronsearch,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=cronsearches,verbs=create;update,versions=v1beta1,name=vcronsearch-v1beta1.kb.io,admissionReviewVersions=v1
 func (d *CronSearchCustomDefaulter) applyDefaults(cronJob *v1beta1.CronSearch) {
 	if cronJob.Spec.ConcurrencyPolicy == "" {
 		cronJob.Spec.ConcurrencyPolicy = d.DefaultConcurrencyPolicy
@@ -107,36 +100,22 @@ func (d *CronSearchCustomDefaulter) applyDefaults(cronJob *v1beta1.CronSearch) {
 // when it is created, updated, or deleted.
 type CronSearchCustomValidator struct{}
 
-var _ webhook.CustomValidator = &CronSearchCustomValidator{}
-
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type CronSearch.
-func (v *CronSearchCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cronSearch, ok := obj.(*v1beta1.CronSearch)
-	if !ok {
-		return nil, fmt.Errorf("expected a CronSearch object but got %T", obj)
-	}
+func (v *CronSearchCustomValidator) ValidateCreate(_ context.Context, cronSearch *v1beta1.CronSearch) (admission.Warnings, error) {
 	cronsearchlog.Info("validating CronSearch creation", "name", cronSearch.GetName())
 
 	return nil, validateCronSearch(cronSearch)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *CronSearchCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	cronSearch, ok := newObj.(*v1beta1.CronSearch)
-	if !ok {
-		return nil, fmt.Errorf("expected a CronSearch object for the newObj but got %T", newObj)
-	}
-	cronsearchlog.Info("validating CronSearch update", "name", cronSearch.GetName())
+// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type CronSearch.
+func (v *CronSearchCustomValidator) ValidateUpdate(_ context.Context, _, newCronSearch *v1beta1.CronSearch) (admission.Warnings, error) {
+	cronsearchlog.Info("validating CronSearch update", "name", newCronSearch.GetName())
 
-	return nil, validateCronSearch(cronSearch)
+	return nil, validateCronSearch(newCronSearch)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *CronSearchCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cronSearch, ok := obj.(*v1beta1.CronSearch)
-	if !ok {
-		return nil, fmt.Errorf("expected a CronSearch object but got %T", obj)
-	}
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type CronSearch.
+func (v *CronSearchCustomValidator) ValidateDelete(_ context.Context, cronSearch *v1beta1.CronSearch) (admission.Warnings, error) {
 
 	cronsearchlog.Info("cronsearch validate update should not be registered, see NOTE in webhook/v1beta1/cronsearch_webhook.go", "name", cronSearch.GetName())
 

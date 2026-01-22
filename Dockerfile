@@ -7,6 +7,7 @@
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
 FROM golang:1.25@sha256:31c1e53dfc1cc2d269deec9c83f58729fa3c53dc9a576f6426109d1e319e9e9a AS builder
+
 ARG TARGETOS
 ARG TARGETARCH
 ARG LDFLAGS="-w -s"
@@ -26,7 +27,6 @@ COPY cmd/$COMMAND cmd/$COMMAND
 COPY api/ api/
 COPY internal/ internal/
 COPY pkg/ pkg/
-
 
 RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -ldflags="${LDFLAGS}" -o entrypoint cmd/$COMMAND/main.go

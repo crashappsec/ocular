@@ -14,13 +14,11 @@ import (
 
 	"github.com/crashappsec/ocular/internal/validators"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -32,7 +30,7 @@ var uploaderlog = logf.Log.WithName("uploader-resource")
 
 // SetupUploaderWebhookWithManager registers the webhook for Uploader in the manager.
 func SetupUploaderWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&ocularcrashoverriderunv1beta1.Uploader{}).
+	return ctrl.NewWebhookManagedBy(mgr, &ocularcrashoverriderunv1beta1.Uploader{}).
 		WithValidator(&UploaderCustomValidator{
 			c: mgr.GetClient(),
 		}).
@@ -56,15 +54,8 @@ type UploaderCustomValidator struct {
 	c client.Client
 }
 
-var _ webhook.CustomValidator = &UploaderCustomValidator{}
-
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
-func (v *UploaderCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	uploader, ok := obj.(*ocularcrashoverriderunv1beta1.Uploader)
-	if !ok {
-		return nil, fmt.Errorf("expected a Uploader object but got %T", obj)
-	}
-
+func (v *UploaderCustomValidator) ValidateCreate(_ context.Context, uploader *ocularcrashoverriderunv1beta1.Uploader) (admission.Warnings, error) {
 	uploaderlog.Info("uploader validate update should not be registered, see NOTE in webhook/v1beta1/uploader_webhook.go", "name", uploader.GetName())
 
 	return nil, nil
@@ -104,20 +95,11 @@ func (v *UploaderCustomValidator) validateNewRequiredParameters(ctx context.Cont
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
-func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	uploader, ok := newObj.(*ocularcrashoverriderunv1beta1.Uploader)
-	if !ok {
-		return nil, fmt.Errorf("expected a Uploader object for the newObj but got %T", newObj)
-	}
+func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldUploader, newUploader *ocularcrashoverriderunv1beta1.Uploader) (admission.Warnings, error) {
 
-	oldUploader, ok := oldObj.(*ocularcrashoverriderunv1beta1.Uploader)
-	if !ok {
-		return nil, fmt.Errorf("expected a Uploader object for the oldObj but got %T", oldObj)
-	}
+	uploaderlog.Info("validating new parameters for uploader", "name", newUploader.GetName())
 
-	uploaderlog.Info("validating new parameters for uploader", "name", uploader.GetName())
-
-	return nil, v.validateNewRequiredParameters(ctx, oldUploader, uploader)
+	return nil, v.validateNewRequiredParameters(ctx, oldUploader, newUploader)
 }
 
 func (v *UploaderCustomValidator) validateNoUploaderReferences(ctx context.Context, uploader *ocularcrashoverriderunv1beta1.Uploader) error {
@@ -150,11 +132,7 @@ func (v *UploaderCustomValidator) validateNoUploaderReferences(ctx context.Conte
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
-func (v *UploaderCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	uploader, ok := obj.(*ocularcrashoverriderunv1beta1.Uploader)
-	if !ok {
-		return nil, fmt.Errorf("expected a Uploader object but got %T", obj)
-	}
+func (v *UploaderCustomValidator) ValidateDelete(ctx context.Context, uploader *ocularcrashoverriderunv1beta1.Uploader) (admission.Warnings, error) {
 
 	uploaderlog.Info("validating no profile references deleted uploader", "name", uploader.GetName())
 

@@ -14,13 +14,11 @@ import (
 
 	"github.com/crashappsec/ocular/internal/validators"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -32,23 +30,14 @@ var crawlerlog = logf.Log.WithName("crawler-resource")
 
 // SetupCrawlerWebhookWithManager registers the webhook for Crawler in the manager.
 func SetupCrawlerWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&ocularcrashoverriderunv1beta1.Crawler{}).
+	return ctrl.NewWebhookManagedBy(mgr, &ocularcrashoverriderunv1beta1.Crawler{}).
 		WithValidator(&CrawlerCustomValidator{
 			c: mgr.GetClient(),
 		}).
 		Complete()
 }
 
-// NOTE: currently the crawler is only configured to run as a validating webhook
-// during the update and/or deletion of a Crawler resource to validate that
-// 1) no new required parameters have been added that are not defined in
-//    existing Search or CronSearch resources that reference it (on update), and
-// 2) no Search or CronSearch resources referring to it exist (on delete).
-// Creation is currently not needed since most of the work is handled by the
-// k8s OpenAPI schema validation. If in the future there is a need to validate
-// Crawler resources on creation, the ValidateCreate method below can be implemented and 'create'
-// can be added to the verbs in the kubebuilder marker below.
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-crawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=crawlers,verbs=delete;update,versions=v1beta1,name=vcrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-crawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=crawlers,verbs=create;delete;update,versions=v1beta1,name=vcrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // CrawlerCustomValidator struct is responsible for validating the Crawler resource
 // when it is created, updated, or deleted.
@@ -56,15 +45,9 @@ type CrawlerCustomValidator struct {
 	c client.Client
 }
 
-var _ webhook.CustomValidator = &CrawlerCustomValidator{}
-
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	crawler, ok := obj.(*ocularcrashoverriderunv1beta1.Crawler)
-	if !ok {
-		return nil, fmt.Errorf("expected a Crawler object but got %T", obj)
-	}
-	crawlerlog.Info("crawler validate create should not be registered, see NOTE in webhook/v1beta1/crawler_webhook.go", "name", crawler.GetName())
+func (v *CrawlerCustomValidator) ValidateCreate(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
+	crawlerlog.Info("validating crawler", "name", crawler.GetName())
 
 	return nil, v.validateCrawler(ctx, crawler)
 }
@@ -131,23 +114,20 @@ func (v *CrawlerCustomValidator) validateNewRequiredParameters(ctx context.Conte
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	crawler, ok := newObj.(*ocularcrashoverriderunv1beta1.Crawler)
-	if !ok {
-		return nil, fmt.Errorf("expected a Crawler object for the newObj but got %T", newObj)
-	}
+func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler, newCrawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
+	crawlerlog.Info("validation for crawler upon update", "name", newCrawler.GetName())
 
-	oldCrawler, ok := oldObj.(*ocularcrashoverriderunv1beta1.Crawler)
-	if !ok {
-		return nil, fmt.Errorf("expected a Uploader object for the oldObj but got %T", oldObj)
-	}
+	// oldCrawler, ok := oldObj.(*ocularcrashoverriderunv1beta1.Crawler)
+	// if !ok {
+	// 	return nil, fmt.Errorf("expected a Uploader object for the oldObj but got %T", oldObj)
+	// }
 
-	crawlerlog.Info("validating crawler update", "name", crawler.GetName())
-	if err := v.validateCrawler(ctx, crawler); err != nil {
+	crawlerlog.Info("validating crawler update", "name", newCrawler.GetName())
+	if err := v.validateCrawler(ctx, newCrawler); err != nil {
 		return nil, err
 	}
 
-	return nil, v.validateNewRequiredParameters(ctx, oldCrawler, crawler)
+	return nil, v.validateNewRequiredParameters(ctx, oldCrawler, newCrawler)
 }
 
 func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) error {
@@ -191,11 +171,7 @@ func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	crawler, ok := obj.(*ocularcrashoverriderunv1beta1.Crawler)
-	if !ok {
-		return nil, fmt.Errorf("expected a Crawler object but got %T", obj)
-	}
+func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
 	crawlerlog.Info("validating crawler is no longer referenced by any Search or CronSearch resource", "name", crawler.GetName())
 
 	return nil, v.validateNoCrawlerReferences(ctx, crawler)

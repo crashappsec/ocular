@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -92,9 +93,19 @@ var _ = Describe("Downloader Webhook", func() {
 	})
 
 	AfterEach(func() {
-		_ = k8sClient.Delete(ctx, pipeline)
-		_ = k8sClient.Delete(ctx, profile)
-		_ = k8sClient.Delete(ctx, obj)
+		var err error
+		if pipeline != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, pipeline))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if profile != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, profile))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if obj != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, obj))
+			Expect(err).ToNot(HaveOccurred())
+		}
 	})
 
 	Context("When deleting a Downloader under Validating Webhook", func() {

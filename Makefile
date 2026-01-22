@@ -72,40 +72,40 @@ endif
 
 .PHONY: install
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/crd | $(KUBECTL) apply -f -
+	"$(KUSTOMIZE)" build config/crd | "$(KUBECTL)" apply -f -
 
 .PHONY: uninstall
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+	"$(KUSTOMIZE)" build config/crd | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" apply -f -
 
 deploy-%: manifests kustomize ## Specify which config folder (%) to deploy to the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/$(@:deploy-%=%) | $(KUBECTL) apply -f -
+	"$(KUSTOMIZE)" build config/$(@:deploy-%=%) | "$(KUBECTL)" apply -f -
 
 .PHONY: refresh-deployment
 refresh-deployment: ## Refresh the controller deployment in the K8s cluster specified in ~/.kube/config.
-	$(KUBECTL) rollout restart deployment/ocular-controller-manager -n ocular-system
+	"$(KUBECTL)" rollout restart deployment/ocular-controller-manager -n ocular-system
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 undeploy-%: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/$(@:deploy-%=%) | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+	"$(KUSTOMIZE)" build config/$(@:deploy-%=%) | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 
 ##@ Development
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
 	$(MAKE) generate-clientset
 
 .PHONY: generate-clientset
@@ -128,7 +128,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # CertManager is installed by default; skip with:
@@ -151,7 +151,7 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 
 .PHONY: test-e2e
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND_CLUSTER=$(KIND_CLUSTER) go test ./test/e2e/ -v -ginkgo.v
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e
@@ -160,27 +160,27 @@ cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 
 .PHONY: lint
 lint: golangci-lint license-eye ## Run golangci-lint linter
-	$(GOLANGCI_LINT) run
-	$(LICENSE_EYE) header check
+	"$(GOLANGCI_LINT)" run
+	"$(LICENSE_EYE)" header check
 
 .PHONY: lint-fix
-lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --fix
-	$(LICENSE_EYE) header fix
+lint-fix: golangci-lint license-eye ## Run golangci-lint linter and perform fixes
+	"$(GOLANGCI_LINT)" run --fix
+	"$(LICENSE_EYE)" header fix
 
 .PHONY: lint-config
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
-	$(GOLANGCI_LINT) config verify
+	"$(GOLANGCI_LINT)" config verify
 
 CURRENT_DIR := $(shell pwd)
 
 license-fix: ## Fix license headers
 	@echo "Formatting license headers ..."
-	@$(LICENSE_EYE) header fix
+	@"$(LICENSE_EYE)" header fix
 
 update-github-actions: frizbee ## Update GitHub action versions in workflows
 	@echo "Updating GitHub workflows ..."
-	@$(FRIZBEEE) actions .github/workflows
+	@"$(FRIZBEEE)" actions .github/workflows
 
 
 ##@ Build
@@ -251,11 +251,11 @@ docker-buildx-img-%: ## Build and push docker image for the manager for cross-pl
 .PHONY: build-installer
 build-installer: manifests generate kustomize yq ## Generate a consolidated YAML with CRDs and deployment.
 	@mkdir -p dist
-	$(KUSTOMIZE) build config/default > dist/install.yaml
+	"$(KUSTOMIZE)" build config/default > dist/install.yaml
 
 build-installer-%: manifests generate kustomize yq ## Generate a consolidated YAML with CRDs and deployment from a specific config folder.
 	@mkdir -p dist
-	$(KUSTOMIZE) build config/$(@:build-installer-%=%) > dist/install-$(@:build-installer-%=%).yaml
+	"$(KUSTOMIZE)" build config/$(@:build-installer-%=%) > dist/install-$(@:build-installer-%=%).yaml
 
 # The build-helm chart is a bit hacky right now since kubebuilder doesn't support
 # adding really any customizations to the 'helm/v2-alpha' plugin. So we do some
@@ -276,15 +276,15 @@ build-installer-%: manifests generate kustomize yq ## Generate a consolidated YA
 .PHONY: build-helm
 build-helm: kubebuilder ## Generate a helm-chart using kubebuilder
 	@mkdir -p dist
-	@$(KUBEBUILDER) edit --plugins=helm/v2-alpha
+	@"$(KUBEBUILDER)" edit --plugins=helm/v2-alpha
 	@# update manfiests with any templating or customizations TODO(bryce): have this be one script
 	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.manager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)annotations:/\1annotations:\n\1    {{- range $$key, $$val := .Values.manager.annotations }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.manager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.manager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+OCULAR_EXTRACTOR_IMG:)[^\n]+/\1 "{{ .Values.extractor.image.repository }}:{{ .Values.extractor.image.tag }}"/g' dist/chart/templates/other/other.yaml
+	@sed -i.bak -r 's/^([ ]+OCULAR_EXTRACTOR_IMG:)[^\n]+/\1 "{{ .Values.extractor.image.repository }}:{{ .Values.extractor.image.tag }}"/g' dist/chart/templates/extras/controller-manager-config.yaml
 	@sed -i.bak -r 's/^([ ]+value:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.extractor.image.pullPolicy }}"/g' dist/chart/templates/manager/manager.yaml
-	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/other/other.yaml.bak  # cleanup backup file from sed
+	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/extras/controller-manager-config.yaml.bak # cleanup backup file from sed
 	@yq -ie '.manager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
 	@yq -ie '.extractor.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
 	@yq -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
@@ -298,7 +298,7 @@ clean-helm: ## Clean up the helm chart generated files
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
-	mkdir -p $(LOCALBIN)
+	mkdir -p "$(LOCALBIN)"
 
 ## Tool Binaries
 KUBECTL ?= kubectl
@@ -314,19 +314,30 @@ FRIZBEEE ?= $(LOCALBIN)/frizbee
 KUBEBUILDER ?= $(LOCALBIN)/kubebuilder
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.6.0
-CONTROLLER_TOOLS_VERSION ?= v0.18.0
+KUSTOMIZE_VERSION ?= v5.7.1
+CONTROLLER_TOOLS_VERSION ?= v0.20.0
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.8.0
 YQ_VERSION ?= v4.47.1
 CODE_GENERATOR_VERSION ?= v0.34.0
-LICENSE_EYE_VERSION ?= v0.7.0
+LICENSE_EYE_VERSION ?= v0.8.0
 FRIZBEEE_VERSION ?=  v0.1.7
-KUBEBUILDER_VERSION ?= v4.10.1
+KUBEBUILDER_VERSION ?= v4.11.0
 
+#ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
+ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
+  [ -n "$$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }; \
+  printf '%s\n' "$$v" | sed -E 's/^v?([0-9]+)\.([0-9]+).*/release-\1.\2/')
+
+#ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
+ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
+  [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
+  printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
+
+GOLANGCI_LINT_VERSION ?= v2.7.2
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
@@ -340,7 +351,7 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 .PHONY: setup-envtest
 setup-envtest: envtest ## Download the binaries required for ENVTEST in the local bin directory.
 	@echo "Setting up envtest binaries for Kubernetes version $(ENVTEST_K8S_VERSION)..."
-	@$(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path || { \
+	@"$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path || { \
 		echo "Error: Failed to set up envtest binaries for version $(ENVTEST_K8S_VERSION)."; \
 		exit 1; \
 	}
@@ -380,13 +391,17 @@ $(KUBEBUILDER): $(LOCALBIN)
 # $2 - package url which can be installed
 # $3 - specific version of package
 define go-install-tool
-@[ -f "$(1)-$(3)" ] || { \
+@[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
 set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\
-rm -f $(1) || true ;\
-GOBIN=$(LOCALBIN) go install $${package} ;\
-mv $(1) $(1)-$(3) ;\
+rm -f "$(1)" ;\
+GOBIN="$(LOCALBIN)" go install $${package} ;\
+mv "$(LOCALBIN)/$$(basename "$(1)")" "$(1)-$(3)" ;\
 } ;\
-ln -sf $(1)-$(3) $(1)
+ln -sf "$$(realpath "$(1)-$(3)")" "$(1)"
+endef
+
+define gomodver
+$(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef

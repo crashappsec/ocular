@@ -17,6 +17,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -136,13 +137,31 @@ var _ = Describe("Profile Webhook", func() {
 	})
 
 	AfterEach(func() {
-		// don't care if this fails, just a failsafe cleanup
-		_ = k8sClient.Delete(ctx, uploader1)
-		_ = k8sClient.Delete(ctx, uploader2)
-		_ = k8sClient.Delete(ctx, downloader)
-		_ = k8sClient.Delete(ctx, pipeline)
-		_ = k8sClient.Delete(ctx, defaultSVCAccount)
-		_ = k8sClient.Delete(ctx, obj)
+		var err error
+		if pipeline != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, pipeline))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if uploader1 != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, uploader1))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if uploader2 != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, uploader2))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if downloader != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, downloader))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if defaultSVCAccount != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, defaultSVCAccount))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if obj != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, obj))
+			Expect(err).ToNot(HaveOccurred())
+		}
 	})
 
 	Context("When creating a new profile under validating webhook", func() {

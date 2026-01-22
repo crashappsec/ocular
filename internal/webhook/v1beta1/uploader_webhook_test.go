@@ -14,6 +14,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -82,8 +83,15 @@ var _ = Describe("Uploader Webhook", func() {
 	})
 
 	AfterEach(func() {
-		_ = k8sClient.Delete(ctx, profile)
-		_ = k8sClient.Delete(ctx, obj)
+		var err error
+		if profile != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, profile))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if obj != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, obj))
+			Expect(err).ToNot(HaveOccurred())
+		}
 	})
 
 	Context("When creating or updating Uploader under Validating Webhook", func() {

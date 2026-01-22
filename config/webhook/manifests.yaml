@@ -65,6 +65,7 @@ webhooks:
     apiVersions:
     - v1beta1
     operations:
+    - CREATE
     - DELETE
     - UPDATE
     resources:

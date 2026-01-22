@@ -17,6 +17,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 
@@ -68,12 +69,19 @@ var _ = Describe("Crawler Webhook", func() {
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")
-		Expect(search).NotTo(BeNil(), "Expected search to be initialized")
 	})
 
-	AfterEach(func() {
-		_ = k8sClient.Delete(ctx, search)
-		_ = k8sClient.Delete(ctx, obj)
+	JustAfterEach(func() {
+		var err error
+		if search != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, search))
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		if obj != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, obj))
+			Expect(err).ToNot(HaveOccurred())
+		}
 	})
 
 	Context("When updating Crawler under Validating Webhook", func() {

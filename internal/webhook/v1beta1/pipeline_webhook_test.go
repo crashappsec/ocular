@@ -17,6 +17,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Pipeline Webhook", func() {
@@ -91,10 +92,20 @@ var _ = Describe("Pipeline Webhook", func() {
 		Expect(downloader).NotTo(BeNil(), "Expected downloader to be initialized")
 	})
 
-	AfterEach(func() {
-		_ = k8sClient.Delete(ctx, profile)
-		_ = k8sClient.Delete(ctx, downloader)
-		_ = k8sClient.Delete(ctx, svcAccount)
+	JustAfterEach(func() {
+		var err error
+		if profile != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, profile))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if downloader != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, downloader))
+			Expect(err).ToNot(HaveOccurred())
+		}
+		if svcAccount != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, svcAccount))
+			Expect(err).ToNot(HaveOccurred())
+		}
 	})
 
 	Context("When creating Pipeline under Defaulting Webhook", func() {

@@ -48,6 +48,8 @@ type UploaderObjectReference = ParameterizedObjectReference
 type UploaderStatus struct {
 	// Conditions is a list of conditions that the uploader is in.
 	// +optional
+	// +listType=map
+	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" description:"The latest available observations of a Uploader's current state."`
 }
 
@@ -61,7 +63,7 @@ type Uploader struct {
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitzero"`
 
 	// spec defines the desired state of Uploader
 	// +required
@@ -69,7 +71,7 @@ type Uploader struct {
 
 	// status defines the observed state of Uploader
 	// +optional
-	Status UploaderStatus `json:"status,omitempty,omitzero"`
+	Status UploaderStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
@@ -77,7 +79,7 @@ type Uploader struct {
 // UploaderList contains a list of Uploader
 type UploaderList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Uploader `json:"items"`
 }
 
