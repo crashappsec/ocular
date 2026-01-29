@@ -56,6 +56,65 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-ocular-crashoverride-run-v1beta1-clustercrawler
+  failurePolicy: Fail
+  name: vclustercrawler-v1beta1.ocular.crashoverride.run
+  rules:
+  - apiGroups:
+    - ocular.crashoverride.run
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clustercrawlers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-ocular-crashoverride-run-v1beta1-clusterdownloader
+  failurePolicy: Fail
+  name: vclusterdownloader-v1beta1.ocular.crashoverride.run
+  rules:
+  - apiGroups:
+    - ocular.crashoverride.run
+    apiVersions:
+    - v1beta1
+    operations:
+    - DELETE
+    resources:
+    - clusterdownloaders
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-ocular-crashoverride-run-v1beta1-clusteruploader
+  failurePolicy: Fail
+  name: vclusteruploader-v1beta1.ocular.crashoverride.run
+  rules:
+  - apiGroups:
+    - ocular.crashoverride.run
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clusteruploaders
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-ocular-crashoverride-run-v1beta1-crawler
   failurePolicy: Fail
   name: vcrawler-v1beta1.ocular.crashoverride.run

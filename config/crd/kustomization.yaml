@@ -9,6 +9,9 @@ resources:
 - bases/ocular.crashoverride.run_crawlers.yaml
 - bases/ocular.crashoverride.run_searches.yaml
 - bases/ocular.crashoverride.run_cronsearches.yaml
+- bases/ocular.crashoverride.run_clusterdownloaders.yaml
+- bases/ocular.crashoverride.run_clustercrawlers.yaml
+- bases/ocular.crashoverride.run_clusteruploaders.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

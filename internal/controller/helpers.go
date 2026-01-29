@@ -15,11 +15,13 @@ import (
 	"strings"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
-	"github.com/crashappsec/ocular/internal/resources"
+	"github.com/crashappsec/ocular/internal/containers"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -36,10 +38,10 @@ func updateStatus(ctx context.Context, c client.Client, obj client.Object, error
 	return nil
 }
 
-func generateBaseContainerOptions(envVars []corev1.EnvVar) []resources.ContainerOption {
-	return []resources.ContainerOption{
-		resources.ContainerWithAdditionalEnvVars(envVars...),
-		resources.ContainerWithPodSecurityStandardRestricted(),
+func generateBaseContainerOptions(envVars []corev1.EnvVar) []containers.Option {
+	return []containers.Option{
+		containers.WithAdditionalEnvVars(envVars...),
+		containers.WithPodSecurityStandardRestricted(),
 	}
 }
 
@@ -57,7 +59,7 @@ func reconcilePodFromLabel[T client.Object](
 	}
 
 	l := logf.FromContext(ctx)
-	l.Info("reconciling pod", "name", pod.GetName(), "labels", selectorLabels)
+	l.Info("reconciling pod", "labels", selectorLabels)
 
 	var podList corev1.PodList
 
@@ -114,4 +116,34 @@ func generateChildLabels(parents ...client.Object) map[string]string {
 
 	childLabels["app.kubernetes.io/managed-by"] = "ocular-controller"
 	return childLabels
+}
+
+type reconcileFunc[T client.Object] func(ctx context.Context, c client.Client, actual, desired T) error
+
+func reconcileChildResource[T client.Object](ctx context.Context, c client.Client, desired, owner client.Object, scheme *runtime.Scheme, reconciler reconcileFunc[T]) error {
+	if desired == nil {
+		return nil
+	}
+
+	if owner != nil {
+		if err := ctrl.SetControllerReference(owner, desired, scheme); err != nil {
+			return err
+		}
+	}
+
+	found := desired.DeepCopyObject().(client.Object)
+
+	// Check if the child resource already exists.
+	err := c.Get(ctx, types.NamespacedName{Name: desired.GetName(), Namespace: desired.GetNamespace()}, found)
+	if err != nil && errors.IsNotFound(err) {
+		return c.Create(ctx, desired)
+	} else if err != nil {
+		return err
+	}
+
+	if reconciler != nil {
+		return reconciler(ctx, c, found.(T), desired.(T))
+	}
+
+	return nil
 }

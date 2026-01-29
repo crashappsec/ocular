@@ -6,48 +6,42 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-package resources
+package containers
 
 import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 )
 
-type ContainerRunRequest struct {
-	Spec corev1.Container `json:"spec,omitempty" description:"Container specification"`
-	// Volumes is a list of volumes to add to the pod.
-	Volumes []corev1.Volume `json:"volumes,omitempty" description:"A list of volumes to add to the pod."`
-}
+type Option = func(*corev1.Container)
 
-type ContainerOption = func(*corev1.Container)
-
-func ContainerWithAdditionalEnvVars(envs ...corev1.EnvVar) ContainerOption {
+func WithAdditionalEnvVars(envs ...corev1.EnvVar) Option {
 	return func(c *corev1.Container) {
 		c.Env = append(c.Env, envs...)
 	}
 }
 
-func ContainerWithAdditionalArgs(args ...string) ContainerOption {
+func WithAdditionalArgs(args ...string) Option {
 	return func(c *corev1.Container) {
 		c.Args = append(c.Args, args...)
 	}
 }
 
-func ContainerWithAdditionalVolumeMounts(mounts ...corev1.VolumeMount) ContainerOption {
+func WithAdditionalVolumeMounts(mounts ...corev1.VolumeMount) Option {
 	return func(c *corev1.Container) {
 		c.VolumeMounts = append(c.VolumeMounts, mounts...)
 	}
 }
 
-func ContainerWithWorkingDir(dir string) ContainerOption {
+func WithWorkingDir(dir string) Option {
 	return func(c *corev1.Container) {
 		c.WorkingDir = dir
 	}
 }
 
-func ApplyOptionsToContainers(
+func ApplyOptions(
 	containers []corev1.Container,
-	options ...ContainerOption,
+	options ...Option,
 ) []corev1.Container {
 	for i := range containers {
 		for _, option := range options {
@@ -57,7 +51,7 @@ func ApplyOptionsToContainers(
 	return containers
 }
 
-func ContainerWithPodSecurityStandardRestricted() ContainerOption {
+func WithPodSecurityStandardRestricted() Option {
 	return func(c *corev1.Container) {
 		if c.SecurityContext == nil {
 			c.SecurityContext = &corev1.SecurityContext{}
