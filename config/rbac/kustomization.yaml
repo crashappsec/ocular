@@ -22,6 +22,15 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the ocular itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- clusteruploader_admin_role.yaml
+- clusteruploader_editor_role.yaml
+- clusteruploader_viewer_role.yaml
+- clustercrawler_admin_role.yaml
+- clustercrawler_editor_role.yaml
+- clustercrawler_viewer_role.yaml
+- clusterdownloader_admin_role.yaml
+- clusterdownloader_editor_role.yaml
+- clusterdownloader_viewer_role.yaml
 - cronsearch_admin_role.yaml
 - cronsearch_editor_role.yaml
 - cronsearch_viewer_role.yaml

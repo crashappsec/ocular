@@ -10,6 +10,7 @@ package v1beta1
 
 import (
 	"context"
+	"errors"
 
 	"fmt"
 
@@ -23,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/internal/resources"
 )
 
 // nolint:unused
@@ -95,16 +97,14 @@ func validateSearch(ctx context.Context, c client.Client, search *ocularcrashove
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef").Child("namespace"), search.Spec.CrawlerRef.Namespace, "crawlerRef namespace must be empty or match the Search namespace"))
 	}
 
-	var crawler ocularcrashoverriderunv1beta1.Crawler
-	err := c.Get(ctx, client.ObjectKey{
-		Name:      search.Spec.CrawlerRef.Name,
-		Namespace: search.Namespace,
-	}, &crawler)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return fmt.Errorf("error fetching crawler %s/%s: %w", namespace, search.Namespace, err)
-		}
-		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("crawlerRef").Child("name"), fmt.Sprintf("%s/%s", search.Spec.CrawlerRef.Namespace, search.Spec.CrawlerRef.Name)))
+	var refErr resources.InvalidObjectReference
+	crawlerSpec, err := resources.CrawlerSpecFromReference(ctx, c, search.Namespace, search.Spec.CrawlerRef.ObjectReference)
+	if errors.As(err, &refErr) {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef"), search.Spec.CrawlerRef, refErr.Message))
+	} else if apierrors.IsNotFound(err) {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef"), search.Spec.CrawlerRef, "referenced crawler could not be found"))
+	} else if err != nil {
+		return err
 	}
 
 	if search.Spec.ServiceAccountNameOverride != "" {
@@ -122,9 +122,9 @@ func validateSearch(ctx context.Context, c client.Client, search *ocularcrashove
 		}
 	}
 
-	paramErrs := validateSetParameters(crawler.Name,
+	paramErrs := validateSetParameters(search.Spec.CrawlerRef.Name,
 		field.NewPath("spec").Child("crawlerRef").Child("parameters"),
-		crawler.Spec.Parameters, search.Spec.CrawlerRef.Parameters)
+		crawlerSpec.Parameters, search.Spec.CrawlerRef.Parameters)
 
 	if len(paramErrs) > 0 {
 		allErrs = append(allErrs, paramErrs...)

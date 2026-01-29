@@ -11,6 +11,7 @@ package v1beta1
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -36,14 +37,8 @@ func SetupDownloaderWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// NOTE: currently the downloader is only configured to run as a validating webhook
-// during the deletion of a Downloader resource to validate that no Pipeline resources
-// are still referencing it. Creation and update validation is not currently needed
-// because the controller reconciles the Downloader references in the Pipeline resources
-// and will set the status to indicate if a reference is invalid. If in the future
-// there is a need to validate Downloader resources on creation or update, the
-// ValidateCreate and ValidateUpdate methods below can be implemented and 'create;update'
-// can be added to the verbs in the kubebuilder marker below.
+// NOTE: this validator is currently only enabled for 'delete'.
+// additional options can be specified in the 'verbs' parameter
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-downloader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=downloaders,verbs=delete,versions=v1beta1,name=vdownloader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // DownloaderCustomValidator struct is responsible for validating the Downloader resource
@@ -66,18 +61,21 @@ func (v *DownloaderCustomValidator) ValidateUpdate(_ context.Context, _, newDown
 	return nil, nil
 }
 
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Downloader.
+func (v *DownloaderCustomValidator) ValidateDelete(ctx context.Context, downloader *ocularcrashoverriderunv1beta1.Downloader) (admission.Warnings, error) {
+	downloaderlog.Info("validation for downloader upon deletion", "name", downloader.GetName())
+
+	return nil, v.checkForPipelinesReferencingDownloader(ctx, downloader)
+}
+
 func (v *DownloaderCustomValidator) checkForPipelinesReferencingDownloader(ctx context.Context, downloader *ocularcrashoverriderunv1beta1.Downloader) error {
 	pipelines := ocularcrashoverriderunv1beta1.PipelineList{}
-	if err := v.c.List(ctx, &pipelines); err != nil {
+	if err := v.c.List(ctx, &pipelines, client.InNamespace(downloader.Namespace)); err != nil {
 		return fmt.Errorf("failed to list pipelines: %w", err)
 	}
 	var allErrs field.ErrorList
 	for _, pipeline := range pipelines.Items {
-		namespace := pipeline.Spec.DownloaderRef.Namespace
-		if namespace == "" {
-			namespace = pipeline.Namespace
-		}
-		if pipeline.Spec.DownloaderRef.Name == downloader.Name && namespace == downloader.Namespace {
+		if pipeline.Spec.DownloaderRef.Name == downloader.Name && slices.Contains([]string{"", "Downloader"}, pipeline.Spec.DownloaderRef.Kind) {
 			downloaderlog.Info("found pipeline reference to downloader", "pipeline", pipeline.GetName(), "name", downloader.GetName())
 			allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), downloader.Name, "cannot be deleted because it is still referenced by a Pipeline resource"))
 		}
@@ -90,11 +88,4 @@ func (v *DownloaderCustomValidator) checkForPipelinesReferencingDownloader(ctx c
 	return apierrors.NewInvalid(
 		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Downloader"},
 		downloader.Name, allErrs)
-}
-
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Downloader.
-func (v *DownloaderCustomValidator) ValidateDelete(ctx context.Context, downloader *ocularcrashoverriderunv1beta1.Downloader) (admission.Warnings, error) {
-	downloaderlog.Info("validation for downloader upon deletion", "name", downloader.GetName())
-
-	return nil, v.checkForPipelinesReferencingDownloader(ctx, downloader)
 }

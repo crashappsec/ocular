@@ -6,4 +6,7 @@ resources:
 - v1beta1_crawler.yaml
 - v1beta1_search.yaml
 - v1beta1_cronsearch.yaml
+- v1beta1_clusterdownloader.yaml
+- v1beta1_clustercrawler.yaml
+- v1beta1_clusteruploader.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
