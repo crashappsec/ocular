@@ -30,7 +30,10 @@ var _ = Describe("Pipeline Controller", func() {
 	var (
 		namespace      = "default"
 		extractorImage = testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet) + ":latest"
-		downloader     = &ocularcrashoverriderunv1beta1.Downloader{
+		downloader     *ocularcrashoverriderunv1beta1.Downloader
+	)
+	BeforeEach(func() {
+		downloader = &ocularcrashoverriderunv1beta1.Downloader{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-downloader",
 				Namespace: namespace,
@@ -44,21 +47,21 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 			},
 		}
-	)
-	BeforeEach(func() {
 		Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+		Expect(downloader).ToNot(BeNil())
 	})
 
 	AfterEach(func() {
 		Expect(k8sClient.Delete(ctx, downloader)).To(Succeed())
-		downloader.ObjectMeta = metav1.ObjectMeta{
-			Name:      "test-downloader",
-			Namespace: namespace,
-		}
 	})
 
 	When("a pipeline uses a profile with no uploaders", func() {
 		var (
+			profile  *ocularcrashoverriderunv1beta1.Profile
+			pipeline *ocularcrashoverriderunv1beta1.Pipeline
+		)
+
+		BeforeEach(func() {
 			profile = &ocularcrashoverriderunv1beta1.Profile{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-profile",
@@ -95,9 +98,6 @@ var _ = Describe("Pipeline Controller", func() {
 					ScanServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
 				},
 			}
-		)
-
-		BeforeEach(func() {
 			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
 			Expect(k8sClient.Create(ctx, pipeline)).To(Succeed())
 		})
@@ -156,6 +156,12 @@ var _ = Describe("Pipeline Controller", func() {
 	When("a pipeline uses a profile with at least one uploader", func() {
 		var (
 			suffix   = testutils.GenerateRandomString(rnd, 5, testutils.LowercaseAlphabeticLetterSet)
+			uploader *ocularcrashoverriderunv1beta1.Uploader
+			profile  *ocularcrashoverriderunv1beta1.Profile
+			pipeline *ocularcrashoverriderunv1beta1.Pipeline
+		)
+
+		BeforeEach(func() {
 			uploader = &ocularcrashoverriderunv1beta1.Uploader{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-uploader-" + suffix,
@@ -227,9 +233,6 @@ var _ = Describe("Pipeline Controller", func() {
 					UploadServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
 				},
 			}
-		)
-
-		BeforeEach(func() {
 			Expect(k8sClient.Create(ctx, uploader)).To(Succeed())
 			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
 			Expect(k8sClient.Create(ctx, pipeline)).To(Succeed())

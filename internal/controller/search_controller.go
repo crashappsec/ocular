@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
-	"github.com/crashappsec/ocular/internal/resources"
-	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
+	"github.com/crashappsec/ocular/internal/containers"
+	ocularRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -123,7 +123,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	} else {
 		searchServiceAccount = r.newSearchServiceAccount(search)
 
-		if err = resources.ReconcileChildResource(ctx, r.Client, searchServiceAccount, search, r.Scheme, copyOwnership); err != nil {
+		if err = reconcileChildResource(ctx, r.Client, searchServiceAccount, search, r.Scheme, copyOwnership); err != nil {
 			l.Error(err, "error reconciling service account for search", "name", search.GetName())
 			return ctrl.Result{}, err
 		}
@@ -136,7 +136,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	searchRoleBinding := r.newSearchRoleBinding(search, searchServiceAccount)
 
-	if err = resources.ReconcileChildResource[*rbacv1.RoleBinding](ctx, r.Client, searchRoleBinding, search, r.Scheme, nil); err != nil {
+	if err = reconcileChildResource[*rbacv1.RoleBinding](ctx, r.Client, searchRoleBinding, search, r.Scheme, nil); err != nil {
 		l.Error(err, "error reconciling upload pod for pipeline", "name", search.GetName())
 		return ctrl.Result{}, err
 	}
@@ -228,7 +228,7 @@ func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *core
 	}
 }
 
-func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1.Crawler, sa *corev1.ServiceAccount, containerOpts ...resources.ContainerOption) *corev1.Pod {
+func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1.Crawler, sa *corev1.ServiceAccount, containerOpts ...containers.Option) *corev1.Pod {
 	envVars := make([]corev1.EnvVar, 0, len(crawler.Spec.Parameters))
 
 	// this loop does not check for duplicate parameters NOR
@@ -237,7 +237,7 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 	var setParams = map[string]struct{}{}
 	for _, paramDef := range search.Spec.CrawlerRef.Parameters {
 		setParams[paramDef.Name] = struct{}{}
-		envVarName := ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name)
+		envVarName := ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name)
 		envVars = append(envVars, corev1.EnvVar{
 			Name:  envVarName,
 			Value: paramDef.Value,
@@ -248,7 +248,7 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 		if _, exists := setParams[paramDef.Name]; !exists {
 			if paramDef.Default != nil {
 				envVars = append(envVars, corev1.EnvVar{
-					Name:  ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name),
+					Name:  ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name),
 					Value: *paramDef.Default,
 				})
 			}
@@ -269,9 +269,9 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler *v1beta1
 		Spec: corev1.PodSpec{
 			ServiceAccountName: sa.GetName(),
 			RestartPolicy:      corev1.RestartPolicyNever,
-			Containers: resources.ApplyOptionsToContainers(
+			Containers: containers.ApplyOptions(
 				[]corev1.Container{crawler.Spec.Container},
-				append(containerOpts, resources.ContainerWithAdditionalEnvVars(envVars...))...),
+				append(containerOpts, containers.WithAdditionalEnvVars(envVars...))...),
 			Volumes: crawler.Spec.Volumes,
 		},
 	}
@@ -344,24 +344,26 @@ func generateBaseSearchEnvironment(_ *v1beta1.Search, crawler *v1beta1.Crawler) 
 }
 
 func (r *SearchReconciler) handlePostCompletion(ctx context.Context, search *v1beta1.Search) (ctrl.Result, error) {
-	l := logf.FromContext(ctx)
+	l := logf.FromContext(ctx).WithValues("search", search.GetName())
 	if search.Spec.TTLSecondsAfterFinished != nil {
 		// check if we need to delete the search
 		finishTime := search.Status.CompletionTime.Time
 		ttl := time.Duration(*search.Spec.TTLSecondsAfterFinished) * time.Second
 		deleteTime := finishTime.Add(ttl)
 		if time.Now().After(deleteTime) {
-			l.Info("search has exceeded its TTL, deleting", "name", search.GetName(), "completionTime", search.Status.CompletionTime, "ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
+			l.Info("search has exceeded its TTL, deleting",
+				"completionTime", search.Status.CompletionTime, "ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
 			if err := r.Delete(ctx, search); err != nil {
-				l.Error(err, "error deleting search after TTL exceeded", "name", search.GetName())
+				l.Error(err, "error deleting search after TTL exceeded")
 				return ctrl.Result{}, err
 			}
 			return ctrl.Result{}, nil
 		} else {
-			l.Info("search has completed, checking TTL before next reconciliation", "name", search.GetName(), "completionTime", search.Status.CompletionTime, "ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
+			l.Info("search has completed, checking TTL before next reconciliation",
+				"completionTime", search.Status.CompletionTime, "ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
 			return ctrl.Result{RequeueAfter: time.Until(deleteTime)}, nil
 		}
 	}
-	l.Info("search has completed, skipping reconciliation", "name", search.GetName(), "completionTime", search.Status.CompletionTime)
+	l.Info("search has completed, skipping reconciliation", "completionTime", search.Status.CompletionTime)
 	return ctrl.Result{}, nil
 }
