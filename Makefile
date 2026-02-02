@@ -94,7 +94,7 @@ undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 undeploy-%: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	"$(KUSTOMIZE)" build config/$(@:deploy-%=%) | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+	"$(KUSTOMIZE)" build config/$(@:undeploy-%=%) | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 
 ##@ Development

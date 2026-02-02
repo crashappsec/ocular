@@ -10,8 +10,10 @@ package v1beta1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/crashappsec/ocular/internal/validators"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -48,11 +50,17 @@ type ProfileCustomValidator struct {
 func (v *ProfileCustomValidator) validateProfile(ctx context.Context, profile *ocularcrashoverriderunv1beta1.Profile) error {
 	var allErrs field.ErrorList
 
-	allErrs = append(allErrs, validateUploaderReferences(ctx, v.c, profile)...)
+	if fieldErrs, err := v.validateUploaderReferences(ctx, profile); err != nil {
+		return err
+	} else {
+		allErrs = append(allErrs, fieldErrs...)
+	}
 
-	allErrs = append(allErrs, validators.ValidateAdditionalLabels(profile.Spec.AdditionalPodMetadata.Labels, field.NewPath("spec").Child("additionalPodMetadata").Child("labels"))...)
+	allErrs = append(allErrs, validators.ValidateAdditionalLabels(profile.Spec.AdditionalPodMetadata.Labels,
+		field.NewPath("spec").Child("additionalPodMetadata").Child("labels"))...)
 
-	allErrs = append(allErrs, validators.ValidateAdditionalAnnotations(profile.Spec.AdditionalPodMetadata.Annotations, field.NewPath("spec").Child("additionalPodMetadata").Child("annotations"))...)
+	allErrs = append(allErrs, validators.ValidateAdditionalAnnotations(profile.Spec.AdditionalPodMetadata.Annotations,
+		field.NewPath("spec").Child("additionalPodMetadata").Child("annotations"))...)
 
 	if len(allErrs) == 0 {
 		return nil
@@ -61,39 +69,42 @@ func (v *ProfileCustomValidator) validateProfile(ctx context.Context, profile *o
 	return apierrors.NewInvalid(schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Profile"}, profile.Name, allErrs)
 }
 
-func validateUploaderReferences(ctx context.Context, c client.Client, profile *ocularcrashoverriderunv1beta1.Profile) field.ErrorList {
+func (v *ProfileCustomValidator) validateUploaderReferences(ctx context.Context, profile *ocularcrashoverriderunv1beta1.Profile) (field.ErrorList, error) {
 	var (
 		allErrs     field.ErrorList
 		volumeNames = map[string]struct{}{}
 	)
-	for _, uploaderRef := range profile.Spec.UploaderRefs {
-		if uploaderRef.Namespace != "" && uploaderRef.Namespace != profile.Namespace {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("uploaderRefs").Child("namespace"), uploaderRef.Namespace, "must be empty or match the Profile namespace"))
+	for i, uploaderRef := range profile.Spec.UploaderRefs {
+		var (
+			refErr   resources.InvalidObjectReference
+			refField = field.NewPath("spec").Child("uploaderRefs").Index(i)
+		)
+
+		uploaderSpec, err := resources.UploaderSpecFromReference(ctx, v.c, profile.Namespace, uploaderRef.ObjectReference)
+		if errors.As(err, &refErr) {
+			allErrs = append(allErrs, field.Invalid(refField, uploaderRef, refErr.Message))
 			continue
-		}
-		var uploader ocularcrashoverriderunv1beta1.Uploader
-		if err := c.Get(ctx, client.ObjectKey{Name: uploaderRef.Name, Namespace: profile.Namespace}, &uploader); err != nil {
-			if apierrors.IsNotFound(err) {
-				allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("uploaderRefs").Child("name"), fmt.Sprintf("%s/%s", profile.Namespace, uploaderRef.Name)))
-				continue
-			}
-			return field.ErrorList{field.InternalError(field.NewPath("spec").Child("uploaderRefs").Child("name"), fmt.Errorf("error fetching uploader %s/%s: %w", profile.Namespace, uploaderRef.Name, err))}
+		} else if apierrors.IsNotFound(err) {
+			allErrs = append(allErrs, field.Invalid(refField, uploaderRef, "referenced uploader could not be found"))
+			continue
+		} else if err != nil {
+			return allErrs, err
 		}
 
-		if paramErrs := validateSetParameters(uploaderRef.Name, field.NewPath("spec").Child("uploaderRefs").Child("parameters"), uploader.Spec.Parameters, uploaderRef.Parameters); len(paramErrs) > 0 {
+		if paramErrs := validateSetParameters(uploaderRef.Name, refField.Child("parameters"), uploaderSpec.Parameters, uploaderRef.Parameters); len(paramErrs) > 0 {
 			allErrs = append(allErrs, paramErrs...)
 		}
 
-		for _, vol := range uploader.Spec.Volumes {
+		for _, vol := range uploaderSpec.Volumes {
 			if _, exists := volumeNames[vol.Name]; exists {
-				allErrs = append(allErrs, field.Duplicate(field.NewPath("spec").Child("uploaderRefs").Child("volumes").Child("name"), vol.Name))
+				allErrs = append(allErrs, field.Duplicate(refField.Child("volumes").Child("name"), vol.Name))
 			} else {
 				volumeNames[vol.Name] = struct{}{}
 			}
 		}
 	}
 
-	return allErrs
+	return allErrs, nil
 }
 
 func validateSetParameters(name string, fieldPath *field.Path, params []ocularcrashoverriderunv1beta1.ParameterDefinition, parameterSettings []ocularcrashoverriderunv1beta1.ParameterSetting) field.ErrorList {
@@ -104,7 +115,7 @@ func validateSetParameters(name string, fieldPath *field.Path, params []ocularcr
 	}
 	for _, param := range params {
 		if _, ok := setParams[param.Name]; !ok && param.Required {
-			allErrs = append(allErrs, field.Required(fieldPath, fmt.Sprintf("parameter %s is required for uploader %s", param.Name, name)))
+			allErrs = append(allErrs, field.Required(fieldPath, fmt.Sprintf("parameter %s is required for %s", param.Name, name)))
 		}
 	}
 	return allErrs

@@ -21,6 +21,10 @@ rules:
 - apiGroups:
   - ocular.crashoverride.run
   resources:
+  - clustercrawlers
+  - clusterdownloaders
+  - clusterprofiles
+  - clusteruploaders
   - crawlers
   - downloaders
   - profiles
