@@ -15,9 +15,11 @@ import (
 	"slices"
 	"time"
 
+	"github.com/crashappsec/ocular/internal/containers"
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/crashappsec/ocular/internal/utils"
 	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
+	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -100,6 +102,7 @@ func (r *PipelineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=profiles;downloaders;uploaders,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=clusterprofiles;clusterdownloaders;clusteruploaders,verbs=get;list;watch
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines/finalizers,verbs=update
 // +kubebuilder:rbac:groups=core,resources=services;pods,verbs=watch;create;get;list;update;patch;delete
@@ -143,11 +146,8 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	downloader := &v1beta1.Downloader{}
-	if err = r.Get(ctx, client.ObjectKey{
-		Namespace: pipeline.GetNamespace(),
-		Name:      pipeline.Spec.DownloaderRef.Name,
-	}, downloader); err != nil {
+	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, r.Client, pipeline.GetNamespace(), pipeline.Spec.DownloaderRef)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -164,22 +164,22 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageSkipped
 	}
 
-	envVars := generateBasePipelineEnvironment(pipeline, profile, downloader)
+	envVars := generateBasePipelineEnvironment(pipeline)
 	containerOpts := generateBaseContainerOptions(envVars)
 	// extractorArgs are the arguments passed to the extractor
 	// & uploaders to specify which artifacts to extract
-	extractorArgs := generateExtractorArguments(downloader.Spec.MetadataFiles, profile.Spec.Artifacts)
+	extractorArgs := generateExtractorArguments(downloaderSpec.MetadataFiles, profile.Spec.Artifacts)
 
 	// generate desired upload pod, service, and scan pod
 	uploadPod := r.newUploaderPod(pipeline, profile, uploaders,
 		append(containerOpts,
-			resources.ContainerWithAdditionalArgs(extractorArgs...),
-			resources.ContainerWithWorkingDir(v1beta1.PipelineResultsDirectory),
-			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
+			containers.WithAdditionalArgs(extractorArgs...),
+			containers.WithWorkingDir(v1beta1.PipelineResultsDirectory),
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
 				Name:      pipelineResultsVolumeName,
 				MountPath: v1beta1.PipelineResultsDirectory,
 			}),
-			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
 				Name:      pipelineMetadataVolumeName,
 				MountPath: v1beta1.PipelineMetadataDirectory,
 			}),
@@ -187,24 +187,25 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	uploadService := r.newUploadService(pipeline, uploadPod)
 
-	scanPod := r.newScanPod(pipeline, profile, downloader,
+	scanPod := r.newScanPod(pipeline, profile.Spec, downloaderSpec,
 		r.createScanExtractorContainer(pipeline, uploadService, extractorArgs),
 		append(containerOpts,
-			resources.ContainerWithWorkingDir(v1beta1.PipelineTargetDirectory),
-			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
+			containers.WithWorkingDir(v1beta1.PipelineTargetDirectory),
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
 				Name:      pipelineTargetVolumeName,
 				MountPath: v1beta1.PipelineTargetDirectory,
 			}),
-			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
 				Name:      pipelineMetadataVolumeName,
 				MountPath: v1beta1.PipelineMetadataDirectory,
 			}),
-			resources.ContainerWithAdditionalVolumeMounts(corev1.VolumeMount{
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
 				Name:      pipelineResultsVolumeName,
 				MountPath: v1beta1.PipelineResultsDirectory,
 			}))...)
 
-	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace, "downloader": downloader.Name, "profile": profile.Name}
+	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace,
+		"downloader": pipeline.Spec.DownloaderRef.Name, "profile": pipeline.Spec.ProfileRef.Name}
 	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, []string{
 		v1beta1.PipelineLabelKey,
 		v1beta1.TypeLabelKey,
@@ -215,7 +216,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	if uploadService != nil {
-		if err = resources.ReconcileChildResource[*corev1.Service](ctx, r.Client, uploadService, pipeline, r.Scheme, nil); err != nil {
+		if err = reconcileChildResource[*corev1.Service](ctx, r.Client, uploadService, pipeline, r.Scheme, nil); err != nil {
 			l.Error(err, "error reconciling upload service for pipeline", "name", pipeline.GetName())
 			return ctrl.Result{}, err
 		}
@@ -449,24 +450,30 @@ func (r *PipelineReconciler) failPod(ctx context.Context, pod *corev1.Pod) error
 	return r.Update(ctx, pod)
 }
 
-func (r *PipelineReconciler) getUploaders(ctx context.Context, profile *v1beta1.Profile) (map[string]*v1beta1.Uploader, error) {
-	uploaders := make(map[string]*v1beta1.Uploader, len(profile.Spec.UploaderRefs))
+type uploaderInvocation struct {
+	spec       v1beta1.UploaderSpec
+	name       string
+	parameters []v1beta1.ParameterSetting
+}
 
+func (r *PipelineReconciler) getUploaders(ctx context.Context, profile *v1beta1.Profile) ([]uploaderInvocation, error) {
+	uploaders := make([]uploaderInvocation, 0, len(profile.Spec.UploaderRefs))
+
+	var errs *multierror.Error
 	for _, uploaderRef := range profile.Spec.UploaderRefs {
-		var uploader v1beta1.Uploader
-		err := r.Get(ctx, client.ObjectKey{
-			Namespace: profile.GetNamespace(),
-			Name:      uploaderRef.Name,
-		}, &uploader)
+		spec, err := resources.UploaderSpecFromReference(ctx, r.Client, profile.Namespace, uploaderRef.ObjectReference)
 		if err != nil {
-			return nil, err
+			errs = multierror.Append(errs, err)
+			continue
 		}
 
-		if _, exists := uploaders[uploader.Name]; !exists {
-			uploaders[uploader.GetName()] = &uploader
-		}
+		uploaders = append(uploaders, uploaderInvocation{
+			spec:       spec,
+			name:       uploaderRef.Name,
+			parameters: uploaderRef.Parameters,
+		})
 	}
-	return uploaders, nil
+	return uploaders, errs.ErrorOrNil()
 }
 
 func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, uploadPod *corev1.Pod) *corev1.Service {
@@ -502,20 +509,19 @@ func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, upload
 	}
 }
 
-func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile *v1beta1.Profile, uploaders map[string]*v1beta1.Uploader, containerOpts ...resources.ContainerOption) *corev1.Pod {
+func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile *v1beta1.Profile, uploaders []uploaderInvocation, containerOpts ...containers.Option) *corev1.Pod {
 	if pipeline.Status.ScanPodOnly {
 		return nil
 	}
 	var (
-		uploaderContainers = make([]corev1.Container, 0, len(profile.Spec.UploaderRefs))
+		uploaderContainers = make([]corev1.Container, 0, len(uploaders))
 		volumes            []corev1.Volume
 	)
-	for _, uploaderInvocation := range profile.Spec.UploaderRefs {
-		uploader := uploaders[uploaderInvocation.Name] // should always exist since we validated during reconcile
-		baseContainer := uploader.Spec.Container
+	for _, invocation := range uploaders {
+		baseContainer := invocation.spec.Container
 		baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
 			Name:  v1beta1.EnvVarUploaderName,
-			Value: uploader.GetName(),
+			Value: invocation.name,
 		})
 
 		// this loop does not check for duplicate parameters NOR
@@ -523,7 +529,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 		// profile admission validation.
 
 		var setParams = map[string]struct{}{}
-		for _, paramDef := range uploaderInvocation.Parameters {
+		for _, paramDef := range invocation.parameters {
 			setParams[paramDef.Name] = struct{}{}
 			envVarName := ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name)
 			baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
@@ -532,7 +538,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 			})
 		}
 
-		for _, paramDef := range uploader.Spec.Parameters {
+		for _, paramDef := range invocation.spec.Parameters {
 			if _, exists := setParams[paramDef.Name]; !exists {
 				if paramDef.Default != nil {
 					baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
@@ -543,7 +549,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 			}
 		}
 
-		volumes = append(volumes, uploader.Spec.Volumes...)
+		volumes = append(volumes, invocation.spec.Volumes...)
 
 		uploaderContainers = append(uploaderContainers, baseContainer)
 	}
@@ -564,8 +570,8 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 		Spec: corev1.PodSpec{
 			ServiceAccountName: pipeline.Spec.UploadServiceAccountName,
 			RestartPolicy:      corev1.RestartPolicyNever,
-			Containers:         resources.ApplyOptionsToContainers(uploaderContainers, containerOpts...),
-			InitContainers: resources.ApplyOptionsToContainers([]corev1.Container{
+			Containers:         containers.ApplyOptions(uploaderContainers, containerOpts...),
+			InitContainers: containers.ApplyOptions([]corev1.Container{
 				// Add the extractor as an init container running in receive mode
 				{
 					Name:  receiverPodName,
@@ -601,10 +607,10 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 	return uploadPod
 }
 
-func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profile *v1beta1.Profile, downloader *v1beta1.Downloader,
-	extractorContainer corev1.Container, containerOpts ...resources.ContainerOption) *corev1.Pod {
+func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profileSpec v1beta1.ProfileSpec, downloaderSpec v1beta1.DownloaderSpec,
+	extractorContainer corev1.Container, containerOpts ...containers.Option) *corev1.Pod {
 
-	volumes := append(profile.Spec.Volumes, downloader.Spec.Volumes...)
+	volumes := append(profileSpec.Volumes, downloaderSpec.Volumes...)
 
 	standardLabels := map[string]string{
 		v1beta1.TypeLabelKey:       v1beta1.PodTypeScan,
@@ -612,7 +618,7 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profile *v1b
 		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
 		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
 	}
-	labels := utils.MergeMaps(profile.Spec.AdditionalPodMetadata.Labels, standardLabels)
+	labels := utils.MergeMaps(profileSpec.AdditionalPodMetadata.Labels, standardLabels)
 
 	scanPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -623,10 +629,10 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profile *v1b
 		Spec: corev1.PodSpec{
 			ServiceAccountName: pipeline.Spec.ScanServiceAccountName,
 			RestartPolicy:      corev1.RestartPolicyNever,
-			Containers:         resources.ApplyOptionsToContainers(profile.Spec.Containers, containerOpts...),
-			InitContainers: resources.ApplyOptionsToContainers([]corev1.Container{
+			Containers:         containers.ApplyOptions(profileSpec.Containers, containerOpts...),
+			InitContainers: containers.ApplyOptions([]corev1.Container{
 				// Add the downloader as an init container
-				downloader.Spec.Container,
+				downloaderSpec.Container,
 				// Add the extractor as a sidecar container running in extract mode
 				extractorContainer,
 			}, containerOpts...),
@@ -672,7 +678,7 @@ func generateExtractorArguments(metadataFiles []string, artifacts []string) []st
 	return args
 }
 
-func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline, profile *v1beta1.Profile, downloader *v1beta1.Downloader) []corev1.EnvVar {
+func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline) []corev1.EnvVar {
 	return []corev1.EnvVar{
 		{
 			Name:  v1beta1.EnvVarTargetIdentifier,
@@ -684,11 +690,11 @@ func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline, profile *v1beta
 		},
 		{
 			Name:  v1beta1.EnvVarDownloaderName,
-			Value: downloader.Name,
+			Value: pipeline.Spec.DownloaderRef.Name,
 		},
 		{
 			Name:  v1beta1.EnvVarProfileName,
-			Value: profile.Name,
+			Value: pipeline.Spec.ProfileRef.Name,
 		},
 		{
 			Name:      v1beta1.EnvVarPipelineName,

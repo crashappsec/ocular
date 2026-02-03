@@ -109,7 +109,6 @@ var _ = Describe("Downloader Webhook", func() {
 	})
 
 	Context("When deleting a Downloader under Validating Webhook", func() {
-
 		It("Should deny deletion if referenced by a Pipeline", func() {
 			By("Creating a profile for the pipeline")
 			Expect(k8sClient.Create(ctx, profile)).Should(Succeed())

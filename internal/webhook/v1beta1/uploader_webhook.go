@@ -11,6 +11,7 @@ package v1beta1
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/crashappsec/ocular/internal/validators"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -111,6 +112,11 @@ func (v *UploaderCustomValidator) validateNoUploaderReferences(ctx context.Conte
 	var allErrs field.ErrorList
 	for _, profile := range profiles.Items {
 		for _, uploaderRef := range profile.Spec.UploaderRefs {
+			// ignore cluster downloaders
+			if !slices.Contains([]string{"", "Uploader"}, uploaderRef.Kind) {
+				continue
+			}
+
 			var namespace = uploaderRef.Namespace
 			if namespace == "" {
 				namespace = profile.Namespace

@@ -11,6 +11,7 @@ package v1beta1
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/crashappsec/ocular/internal/validators"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -117,11 +118,6 @@ func (v *CrawlerCustomValidator) validateNewRequiredParameters(ctx context.Conte
 func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler, newCrawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
 	crawlerlog.Info("validation for crawler upon update", "name", newCrawler.GetName())
 
-	// oldCrawler, ok := oldObj.(*ocularcrashoverriderunv1beta1.Crawler)
-	// if !ok {
-	// 	return nil, fmt.Errorf("expected a Uploader object for the oldObj but got %T", oldObj)
-	// }
-
 	crawlerlog.Info("validating crawler update", "name", newCrawler.GetName())
 	if err := v.validateCrawler(ctx, newCrawler); err != nil {
 		return nil, err
@@ -141,6 +137,10 @@ func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context
 		if namespace == "" {
 			namespace = search.Namespace
 		}
+		// ignore cluster crawlers
+		if !slices.Contains([]string{"", "Crawler"}, search.Spec.CrawlerRef.Kind) {
+			continue
+		}
 		if search.Spec.CrawlerRef.Name == crawler.Name && namespace == crawler.Namespace {
 			allErrs = append(allErrs, field.Required(field.NewPath("spec").Child("crawlerRef"), fmt.Sprintf("crawler %s is still referenced by search %s", crawler.Name, search.Name)))
 		}
@@ -152,6 +152,10 @@ func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context
 	}
 
 	for _, cSearch := range cronSearches.Items {
+		// ignore cluster crawler
+		if !slices.Contains([]string{"", "Crawler"}, cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Kind) {
+			continue
+		}
 		var namespace = cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Namespace
 		if namespace == "" {
 			namespace = cSearch.Namespace
