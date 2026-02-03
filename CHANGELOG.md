@@ -1,6 +1,11 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
 
+# [v0.2.5](https://github.com/crashappsec/ocular/releases/tag/v0.2.5) - **Feburary 3rd, 2026**
+
+### Added
+
+- New Cluster wide resources for downloaders, uploaders, and crawlers
 
 # [v0.2.4](https://github.com/crashappsec/ocular/releases/tag/v0.2.4) - **January 15, 2026**
 

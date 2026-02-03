@@ -10,6 +10,7 @@ package v1beta1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -24,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/internal/resources"
 )
 
 // nolint:unused
@@ -72,6 +74,8 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, pipeline *ocularcra
 	return nil
 }
 
+// NOTE: this validator is currently only enabled for 'create' and 'update'.
+// additional options can be specified in the 'verbs' parameter
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-pipeline,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=pipelines,verbs=create;update,versions=v1beta1,name=vpipeline-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // PipelineCustomValidator struct is responsible for validating the Pipeline resource
@@ -82,53 +86,55 @@ type PipelineCustomValidator struct {
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
 func (v *PipelineCustomValidator) ValidateCreate(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
-
-	return nil, validatePipeline(ctx, v.c, pipeline)
+	pipelinelog.Info("validation for Pipeline upon create", "name", pipeline.GetName(), "validator", "create")
+	return nil, v.validatePipeline(ctx, pipeline)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
 func (v *PipelineCustomValidator) ValidateUpdate(ctx context.Context, _, newPipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
-	pipelinelog.Info("validation for Pipeline upon update", "name", newPipeline.GetName())
+	pipelinelog.Info("validation for Pipeline upon update", "name", newPipeline.GetName(), "validator", "update")
 
-	return nil, validatePipeline(ctx, v.c, newPipeline)
+	return nil, v.validatePipeline(ctx, newPipeline)
 }
 
-func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcrashoverriderunv1beta1.Pipeline) error {
+func (v *PipelineCustomValidator) validatePipeline(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) error {
 	var allErrs field.ErrorList
 	if err := validatePipelineName(pipeline); err != nil {
 		allErrs = append(allErrs, err)
 	}
 
-	// Validate Profile exists
+	var pipelineVolumes []corev1.Volume
+
+	// validate profile
 	profileNamespace := pipeline.Spec.ProfileRef.Namespace
 	if profileNamespace != "" && pipeline.Spec.ProfileRef.Namespace != pipeline.Namespace {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("profileRef").Child("namespace"), pipeline.Spec.ProfileRef.Namespace, "profileRef namespace must be empty or match the pipeline namespace"))
 	}
 	var profile ocularcrashoverriderunv1beta1.Profile
-	err := c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ProfileRef.Name, Namespace: pipeline.Namespace}, &profile)
+	err := v.c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ProfileRef.Name, Namespace: pipeline.Namespace}, &profile)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return fmt.Errorf("error fetching profile %s/%s: %w", pipeline.Spec.ProfileRef.Namespace, pipeline.Spec.ProfileRef.Name, err)
 		}
 		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("profileRef").Child("name"), fmt.Sprintf("%s/%s", pipeline.Spec.ProfileRef.Namespace, pipeline.Spec.ProfileRef.Name)))
 	}
+	pipelineVolumes = append(pipelineVolumes, profile.Spec.Volumes...)
 
-	// Validate Downloader exists
-	downloaderNamespace := pipeline.Spec.DownloaderRef.Namespace
-	if downloaderNamespace != "" && pipeline.Spec.DownloaderRef.Namespace != pipeline.Namespace {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("downloaderRef").Child("namespace"), pipeline.Spec.DownloaderRef.Namespace, "downloaderRef namespace must be empty or match the pipeline namespace"))
-	}
-	var downloader ocularcrashoverriderunv1beta1.Downloader
-	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.DownloaderRef.Name, Namespace: pipeline.Namespace}, &downloader)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("error fetching dwonloader %s/%s: %w", pipeline.Spec.DownloaderRef.Namespace, pipeline.Spec.DownloaderRef.Name, err)
-		}
-		allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("downloaderRef").Child("name"), fmt.Sprintf("%s/%s", pipeline.Spec.DownloaderRef.Namespace, pipeline.Spec.DownloaderRef.Name)))
+	// validate downloader
+	var refErr resources.InvalidObjectReference
+	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, v.c, pipeline.Namespace, pipeline.Spec.DownloaderRef)
+	if errors.As(err, &refErr) {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("downloaderRef"), pipeline.Spec.DownloaderRef, refErr.Message))
+	} else if apierrors.IsNotFound(err) {
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("downloaderRef"), pipeline.Spec.DownloaderRef, "referenced downloader could not be found"))
+	} else if err != nil {
+		return err
+	} else {
+		pipelineVolumes = append(pipelineVolumes, downloaderSpec.Volumes...)
 	}
 
 	var serviceAccount corev1.ServiceAccount
-	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ScanServiceAccountName, Namespace: pipeline.Namespace}, &serviceAccount)
+	err = v.c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ScanServiceAccountName, Namespace: pipeline.Namespace}, &serviceAccount)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return fmt.Errorf("error fetching scan service account %s: %w", pipeline.Spec.ScanServiceAccountName, err)
@@ -138,7 +144,7 @@ func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcras
 
 	if len(profile.Spec.UploaderRefs) > 0 {
 		var uploaderServiceAccount corev1.ServiceAccount
-		err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.UploadServiceAccountName, Namespace: pipeline.Namespace}, &uploaderServiceAccount)
+		err = v.c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.UploadServiceAccountName, Namespace: pipeline.Namespace}, &uploaderServiceAccount)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				return fmt.Errorf("error fetching uploader service account %s: %w", pipeline.Spec.UploadServiceAccountName, err)
@@ -155,12 +161,12 @@ func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcras
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("ttlSecondsMax"), pipeline.Spec.TTLSecondsMaxLifetime, "must be non-negative"))
 	}
 
-	volumes := map[string]struct{}{}
-	for _, vol := range append(downloader.Spec.Volumes, profile.Spec.Volumes...) {
-		if _, exists := volumes[vol.Name]; exists {
+	volumeNames := map[string]struct{}{}
+	for _, vol := range pipelineVolumes {
+		if _, exists := volumeNames[vol.Name]; exists {
 			allErrs = append(allErrs, field.Duplicate(field.NewPath("spec").Child("volumes").Child("name"), vol.Name))
 		}
-		volumes[vol.Name] = struct{}{}
+		volumeNames[vol.Name] = struct{}{}
 	}
 
 	if len(allErrs) == 0 {
@@ -170,13 +176,6 @@ func validatePipeline(ctx context.Context, c client.Client, pipeline *ocularcras
 	return apierrors.NewInvalid(
 		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Pipeline"},
 		pipeline.Name, allErrs)
-}
-
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateDelete(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
-	pipelinelog.Info("pipeline delete called but should not be registered, see NOTE", "name", pipeline.GetName())
-
-	return nil, nil
 }
 
 func validatePipelineName(pipeline *ocularcrashoverriderunv1beta1.Pipeline) *field.Error {
@@ -190,4 +189,11 @@ func validatePipelineName(pipeline *ocularcrashoverriderunv1beta1.Pipeline) *fie
 		return field.Invalid(field.NewPath("metadata").Child("name"), pipeline.Name, "must be no more than 52 characters")
 	}
 	return nil
+}
+
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
+func (v *PipelineCustomValidator) ValidateDelete(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
+	pipelinelog.Info("pipeline delete called but should not be registered, see NOTE in webhook/v1beta1/pipeline_webhook.go", "name", pipeline.GetName())
+
+	return nil, nil
 }
