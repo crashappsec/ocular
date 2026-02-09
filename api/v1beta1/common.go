@@ -55,12 +55,13 @@ type Target struct {
 	// This could be a URL, a file path, or any other string that uniquely identifies the target, it
 	// is up to the Downloader to interpret this string.
 	// +required
-	Identifier string `json:"identifier,omitempty" yaml:"identifier,omitempty" description:"A unique identifier for the target. This could be a URL, a file path, or any other string that uniquely identifies the target."`
+	Identifier string `json:"identifier" yaml:"identifier" description:"A unique identifier for the target. This could be a URL, a file path, or any other string that uniquely identifies the target."`
+
 	// Version is an optional version string for the target.
 	// This could be a version number, a commit hash, or any other string that represents the version of the target.
 	// It is up to the Downloader to interpret this string.
 	// +optional
-	Version string `json:"version,omitempty" yaml:"version,omitempty" description:"An optional version string for the target. This could be a version number, a commit hash, or any other string that represents the version of the target."`
+	Version string `json:"version" yaml:"version" description:"An optional version string for the target. This could be a version number, a commit hash, or any other string that represents the version of the target."`
 }
 
 type ParameterSetting struct {
