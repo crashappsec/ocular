@@ -57,11 +57,13 @@ spec:
       - args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-#        command:
-#          - /entrypoint
+        command:
+          - /entrypoint
         image: controller
+        imagePullPolicy: IfNotPresent
         name: manager
         ports: []
+        env: []
         securityContext:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
