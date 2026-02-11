@@ -40,7 +40,7 @@ type PipelineSpec struct {
 	// DownloaderRef is a reference to the downloader that will be used in this pipeline.
 	// It should point to a valid Downloader resource in the same namespace.
 	// +required
-	DownloaderRef v1.ObjectReference `json:"downloaderRef" protobuf:"bytes,1,opt,name=downloaderRef"`
+	DownloaderRef ParameterizedObjectReference `json:"downloaderRef" protobuf:"bytes,1,opt,name=downloaderRef"`
 
 	// ProfileRef is a reference to the profile that will be used in this pipeline.
 	// It should point to a valid Profile resource in the same namespace.

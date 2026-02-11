@@ -25,7 +25,7 @@ type SearchSpec struct {
 	// CrawlerRef is a reference to the crawler that will be run in this search.
 	// It should point to a valid Crawler resource in the same namespace.
 	// +required
-	CrawlerRef CrawlerObjectReference `json:"crawlerRef,omitempty" protobuf:"bytes,1,opt,name=crawlerRef"`
+	CrawlerRef ParameterizedObjectReference `json:"crawlerRef,omitempty" protobuf:"bytes,1,opt,name=crawlerRef"`
 
 	// TTLSecondsAfterFinished is the number of seconds to retain the search after it has finished.
 	// +optional

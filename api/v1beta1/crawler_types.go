@@ -13,8 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type CrawlerRunRef = ParameterizedObjectReference
-
 type CrawlerStatus struct {
 	// Conditions is a list of conditions that the crawler is in.
 	// +listType=map
@@ -41,10 +39,8 @@ type CrawlerSpec struct {
 	// +listMapKey=name
 	Volumes []v1.Volume `json:"volumes,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,2,rep,name=volumes"`
 
-	// Parameters is a list of ParameterDefinition that can be used to define user enter "parameters"
-	// that the crawler can use to configure how to crawl targets. The crawler can use these parameters
-	// to customize its behavior. The parameters can be used in the crawler's command line
-	// arguments, environment variables, or any other way that the crawler supports.
+	// Parameters is a list of ParameterDefinition that can be used to define "parameters"
+	// that the user can specify in a downloader reference that can configure how to download targets.
 	// +optional
 	// +patchMergeKey=name
 	// +patchStrategy=merge,retainKeys
