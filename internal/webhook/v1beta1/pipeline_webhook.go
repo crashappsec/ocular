@@ -122,7 +122,7 @@ func (v *PipelineCustomValidator) validatePipeline(ctx context.Context, pipeline
 
 	// validate downloader
 	var refErr resources.InvalidObjectReference
-	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, v.c, pipeline.Namespace, pipeline.Spec.DownloaderRef)
+	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, v.c, pipeline.Namespace, pipeline.Spec.DownloaderRef.ObjectReference)
 	if errors.As(err, &refErr) {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("downloaderRef"), pipeline.Spec.DownloaderRef, refErr.Message))
 	} else if apierrors.IsNotFound(err) {
@@ -131,6 +131,13 @@ func (v *PipelineCustomValidator) validatePipeline(ctx context.Context, pipeline
 		return err
 	} else {
 		pipelineVolumes = append(pipelineVolumes, downloaderSpec.Volumes...)
+	}
+
+	paramErrs := validateSetParameters(pipeline.Spec.DownloaderRef.Name,
+		field.NewPath("spec").Child("downloaderRef").Child("parameters"),
+		downloaderSpec.Parameters, pipeline.Spec.DownloaderRef.Parameters)
+	if len(paramErrs) > 0 {
+		allErrs = append(allErrs, paramErrs...)
 	}
 
 	var serviceAccount corev1.ServiceAccount

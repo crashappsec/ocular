@@ -15,13 +15,13 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/hashicorp/go-multierror"
 )
 
 // nolint:unused
@@ -73,7 +73,7 @@ func (v *DownloaderCustomValidator) checkForPipelinesReferencingDownloader(ctx c
 	if err := v.c.List(ctx, &pipelines, client.InNamespace(downloader.Namespace)); err != nil {
 		return fmt.Errorf("failed to list pipelines: %w", err)
 	}
-	var allErrs field.ErrorList
+	var allErrs error
 	for _, pipeline := range pipelines.Items {
 		// ignore cluster downloaders
 		if !slices.Contains([]string{"", "Downloader"}, pipeline.Spec.DownloaderRef.Kind) {
@@ -85,15 +85,16 @@ func (v *DownloaderCustomValidator) checkForPipelinesReferencingDownloader(ctx c
 		}
 		if pipeline.Spec.DownloaderRef.Name == downloader.Name && namespace == downloader.Namespace {
 			downloaderlog.Info("found pipeline reference to downloader", "pipeline", pipeline.GetName(), "name", downloader.GetName())
-			allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), downloader.Name, "cannot be deleted because it is still referenced by a Pipeline resource"))
+			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'Pipleine/%s' in namespace '%s'",
+				pipeline.Name, pipeline.Namespace))
 		}
 	}
 
-	if len(allErrs) == 0 {
+	if allErrs == nil {
 		return nil
 	}
 
-	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Downloader"},
+	return apierrors.NewForbidden(
+		schema.GroupResource{Group: "ocular.crashoverride.run", Resource: downloader.Name},
 		downloader.Name, allErrs)
 }

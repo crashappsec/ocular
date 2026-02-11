@@ -103,7 +103,7 @@ func (v *ClusterUploaderCustomValidator) validateNoUploaderReferences(ctx contex
 		return fmt.Errorf("failed to list profiles: %w", err)
 	}
 
-	var allErrs *multierror.Error
+	var allErrs error
 	for _, profile := range profiles.Items {
 		for _, uploaderRef := range profile.Spec.UploaderRefs {
 			if uploaderRef.Name == uploader.Name && uploaderRef.Kind == "ClusterUploader" {
@@ -113,11 +113,11 @@ func (v *ClusterUploaderCustomValidator) validateNoUploaderReferences(ctx contex
 		}
 	}
 
-	if allErrs.Len() == 0 {
+	if allErrs == nil {
 		return nil
 	}
 
 	return apierrors.NewForbidden(
 		schema.GroupResource{Group: "ocular.crashoverride.run", Resource: uploader.Name},
-		uploader.Name, allErrs.ErrorOrNil())
+		uploader.Name, allErrs)
 }

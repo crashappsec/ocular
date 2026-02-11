@@ -18,7 +18,7 @@ import (
 	"github.com/crashappsec/ocular/internal/containers"
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/crashappsec/ocular/internal/utils"
-	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
+	ocularRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
@@ -146,7 +146,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, r.Client, pipeline.GetNamespace(), pipeline.Spec.DownloaderRef)
+	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, r.Client, pipeline.GetNamespace(), pipeline.Spec.DownloaderRef.ObjectReference)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -531,7 +531,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 		var setParams = map[string]struct{}{}
 		for _, paramDef := range invocation.parameters {
 			setParams[paramDef.Name] = struct{}{}
-			envVarName := ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name)
+			envVarName := ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name)
 			baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
 				Name:  envVarName,
 				Value: paramDef.Value,
@@ -542,7 +542,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 			if _, exists := setParams[paramDef.Name]; !exists {
 				if paramDef.Default != nil {
 					baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
-						Name:  ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name),
+						Name:  ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name),
 						Value: *paramDef.Default,
 					})
 				}
@@ -620,6 +620,30 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profileSpec 
 	}
 	labels := utils.MergeMaps(profileSpec.AdditionalPodMetadata.Labels, standardLabels)
 
+	downloaderContainer := downloaderSpec.Container
+	var setParams = map[string]struct{}{}
+	// Set parameters
+	for _, paramDef := range pipeline.Spec.DownloaderRef.Parameters {
+		setParams[paramDef.Name] = struct{}{}
+		envVarName := ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name)
+		downloaderContainer.Env = append(downloaderContainer.Env, corev1.EnvVar{
+			Name:  envVarName,
+			Value: paramDef.Value,
+		})
+	}
+
+	// Set defaults for missing
+	for _, paramDef := range downloaderSpec.Parameters {
+		if _, exists := setParams[paramDef.Name]; !exists {
+			if paramDef.Default != nil {
+				downloaderContainer.Env = append(downloaderContainer.Env, corev1.EnvVar{
+					Name:  ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name),
+					Value: *paramDef.Default,
+				})
+			}
+		}
+	}
+
 	scanPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: pipeline.GetName() + scanPodSuffix + "-",
@@ -632,7 +656,7 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profileSpec 
 			Containers:         containers.ApplyOptions(profileSpec.Containers, containerOpts...),
 			InitContainers: containers.ApplyOptions([]corev1.Container{
 				// Add the downloader as an init container
-				downloaderSpec.Container,
+				downloaderContainer,
 				// Add the extractor as a sidecar container running in extract mode
 				extractorContainer,
 			}, containerOpts...),

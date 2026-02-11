@@ -69,7 +69,7 @@ func (v *ClusterDownloaderCustomValidator) checkForPipelinesReferencingClusterDo
 	if err := v.c.List(ctx, &pipelines); err != nil {
 		return fmt.Errorf("failed to list pipelines: %w", err)
 	}
-	var allErrs *multierror.Error
+	var allErrs error
 	for _, pipeline := range pipelines.Items {
 		downloaderRef := pipeline.Spec.DownloaderRef
 		if downloaderRef.Name == downloader.Name && downloaderRef.Kind == "ClusterDownloader" {
@@ -77,12 +77,12 @@ func (v *ClusterDownloaderCustomValidator) checkForPipelinesReferencingClusterDo
 		}
 	}
 
-	if allErrs.Len() == 0 {
+	if allErrs == nil {
 		return nil
 	}
 
-	downloaderlog.Info("forbidden delete on cluster downloader", "name", downloader.Name, "count", allErrs.Len(), "errors", allErrs.Error())
+	downloaderlog.Info("forbidden delete on cluster downloader", "name", downloader.Name, "error", allErrs)
 	return apierrors.NewForbidden(
 		schema.GroupResource{Group: "ocular.crashoverride.run", Resource: downloader.Name},
-		downloader.Name, allErrs.ErrorOrNil())
+		downloader.Name, allErrs)
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/crashappsec/ocular/internal/validators"
+	"github.com/hashicorp/go-multierror"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -139,7 +140,7 @@ func (v *ProfileCustomValidator) checkForPipelinesReferencingProfile(ctx context
 		return fmt.Errorf("failed to list pipelines: %w", err)
 	}
 
-	var allErrs field.ErrorList
+	var allErrs error
 
 	for _, pipeline := range pipelines.Items {
 		namespace := pipeline.Spec.ProfileRef.Namespace
@@ -147,16 +148,17 @@ func (v *ProfileCustomValidator) checkForPipelinesReferencingProfile(ctx context
 			namespace = pipeline.Namespace
 		}
 		if pipeline.Spec.ProfileRef.Name == profile.Name && namespace == profile.Namespace {
-			allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), profile.Name, "cannot be deleted because it is still referenced by a Pipeline resource"))
+			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'Pipeline/%s' in namespace '%s'",
+				pipeline.Name, pipeline.Namespace))
 		}
 	}
 
-	if len(allErrs) == 0 {
+	if allErrs == nil {
 		return nil
 	}
 
-	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Profile"},
+	return apierrors.NewForbidden(
+		schema.GroupResource{Group: "ocular.crashoverride.run", Resource: profile.Name},
 		profile.Name, allErrs)
 }
 

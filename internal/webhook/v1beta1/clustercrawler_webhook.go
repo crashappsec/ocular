@@ -71,31 +71,33 @@ func (v *ClusterCrawlerCustomValidator) validateNoClusterCrawlerReferences(ctx c
 	if err := v.c.List(ctx, &searches); err != nil {
 		return fmt.Errorf("failed to list searches: %w", err)
 	}
-	var allErrs *multierror.Error
-	for _, search := range searches.Items {
-		crawlerRef := search.Spec.CrawlerRef
-		if crawlerRef.Name == crawler.Name && crawlerRef.Kind == "ClusterCrawler" {
-			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'Search/%s in namespace %s'", search.Name, search.Namespace))
-		}
-	}
 
 	var cronSearches ocularcrashoverriderunv1beta1.CronSearchList
 	if err := v.c.List(ctx, &cronSearches); err != nil {
 		return fmt.Errorf("failed to list cron searches: %w", err)
 	}
+	var allErrs error
+	for _, search := range searches.Items {
+		crawlerRef := search.Spec.CrawlerRef
+		if crawlerRef.Name == crawler.Name && crawlerRef.Kind == "ClusterCrawler" {
+			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'Search/%s' in namespace '%s'",
+				search.Name, search.Namespace))
+		}
+	}
 
 	for _, cSearch := range cronSearches.Items {
 		crawlerRef := cSearch.Spec.SearchTemplate.Spec.CrawlerRef
 		if crawlerRef.Name == crawler.Name && crawlerRef.Kind == "ClusterCrawler" {
-			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'CronSearch/%s in namespace %s'", cSearch.Name, cSearch.Namespace))
+			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'CronSearch/%s' in namespace '%s'",
+				cSearch.Name, cSearch.Namespace))
 		}
 	}
 
-	if allErrs.Len() == 0 {
+	if allErrs == nil {
 		return nil
 	}
 
 	return apierrors.NewForbidden(
 		schema.GroupResource{Group: "ocular.crashoverride.run", Resource: crawler.Name},
-		crawler.Name, allErrs.ErrorOrNil())
+		crawler.Name, allErrs)
 }
