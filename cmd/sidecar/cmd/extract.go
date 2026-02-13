@@ -28,8 +28,10 @@ import (
 
 func Extract(ctx context.Context, files []string) error {
 	l := log.FromContext(ctx)
+	l.Info("awaiting sigterm")
+	<-ctx.Done()
 	l.Info("beginning file extraction", "file_count", len(files))
-	uploaderURL := os.Getenv(v1beta1.EnvVarExtractorHost)
+	uploaderURL := os.Getenv(v1beta1.EnvVarSidecarExtractorHost)
 	err := uploadFiles(ctx, uploaderURL, files)
 	if err != nil {
 		l.Error(err, "error uploading files, failing receiver")

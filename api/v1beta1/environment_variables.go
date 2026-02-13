@@ -63,11 +63,34 @@ const (
 	// EnvVarCrawlerName is the environment variable name for the crawler name.
 	EnvVarCrawlerName EnvironmentVariableName = "OCULAR_CRAWLER_NAME"
 
+	// EnvVarPipelineFIFO is the environment variable that contains the path
+	// to a named pipe (or FIFO) that will read JSON targets and automatically start pipelines
+	// with the spec from the pipeline template in the search spec.
+	EnvVarPipelineFIFO EnvironmentVariableName = "OCULAR_PIPELINE_FIFO"
+
+	// EnvVarSearchFIFO is the environment variable that contains the path
+	// to a named pipe (or FIFO) that will read JSON crawler references and automatically start
+	// searches with the same scheduler configuration (pipeline template and interval)
+	EnvVarSearchFIFO EnvironmentVariableName = "OCULAR_SEARCH_FIFO"
+
+	// EnvVarPipelineTemplatePath is the name of the environment variable that contains
+	// the path to the JSON data of the pipeline template to use when creating pipelines
+	// from a search
+	EnvVarPipelineTemplatePath EnvironmentVariableName = "OCULAR_PIPELINE_TEMPLATE"
+
+	// EnvVarPipelineSchedulerIntervalSeconds is how long the scheduler should sleep between
+	// creating pipelines
+	EnvVarPipelineSchedulerIntervalSeconds EnvironmentVariableName = "OCULAR_PIPELINE_SCHEDULER_INTERVAL_SEC"
+
 	// internal environment variables  //
 
 	// EnvVarExtractorPort is the environment variable name for the extractor port.
-	EnvVarExtractorPort EnvironmentVariableName = "EXTRACTOR_PORT"
+	EnvVarSidecarExtractorPort EnvironmentVariableName = "OCULAR_SIDECAR_EXTRACTOR_PORT"
 
 	// EnvVarExtractorHost is the environment variable name for the extractor host.
-	EnvVarExtractorHost EnvironmentVariableName = "EXTRACTOR_HOST"
+	EnvVarSidecarExtractorHost EnvironmentVariableName = "OCULAR_SIDECAR_EXTRACTOR_HOST"
+
+	// EnvVarSidecarSchedulerCompletePath is the environment variable name for the path to
+	// the file that is created when the crawler has completed
+	EnvVarSidecarSchedulerCompletePath EnvironmentVariableName = "OCULAR_SIDECAR_SCHEDULER_COMPLETE_PATH"
 )

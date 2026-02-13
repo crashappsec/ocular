@@ -75,8 +75,6 @@ type Crawler struct {
 	Status CrawlerStatus `json:"status,omitzero"`
 }
 
-type CrawlerObjectReference = ParameterizedObjectReference
-
 // +kubebuilder:object:root=true
 
 // CrawlerList contains a list of Crawler

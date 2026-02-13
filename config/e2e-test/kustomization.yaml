@@ -10,4 +10,4 @@ configMapGenerator:
   - name: controller-manager-config
     behavior: merge
     literals:
-      - OCULAR_EXTRACTOR_IMG=ocular-extractor:e2e-test
+      - OCULAR_SIDECAR_IMG=ocular-sidecar:e2e-test

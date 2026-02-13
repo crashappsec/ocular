@@ -10,7 +10,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -58,6 +60,8 @@ type SearchReconciler struct {
 	client.Client
 	Scheme            *runtime.Scheme
 	SearchClusterRole string
+	SidecarImage      string
+	SidecarPullPolicy corev1.PullPolicy
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -68,6 +72,19 @@ func (r *SearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Pod{}).
 		Complete(r)
 }
+
+const (
+	pipelineTemplateFile = "template.json"
+	pipelineTemplateDir  = "/etc/ocular"
+	pipelineTemplatePath = pipelineTemplateDir + "/" + pipelineTemplateFile
+
+	ocularFIFODir       = "/run/ocular"
+	pipelineFIFOFile    = "targets.fifo"
+	pipelineFIFOPath    = ocularFIFODir + "/" + pipelineFIFOFile
+	searchFIFOFile      = "crawlers.fifo"
+	searchFIFOPath      = ocularFIFODir + "/" + searchFIFOFile
+	sidecarCompletePath = ocularFIFODir + "/" + "complete"
+)
 
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches/status,verbs=get;update;patch
@@ -119,7 +136,6 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	} else {
 		searchServiceAccount = r.newSearchServiceAccount(search)
-
 		if err = reconcileChildResource(ctx, r.Client, searchServiceAccount, search, r.Scheme, copyOwnership); err != nil {
 			l.Error(err, "error reconciling service account for search", "name", search.GetName())
 			return ctrl.Result{}, err
@@ -138,7 +154,11 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	searchPod := r.newSearchPod(search, crawlerSpec, searchServiceAccount, containerOpts...)
+	searchPod, err := r.newSearchPod(search, crawlerSpec, searchServiceAccount, containerOpts...)
+	if err != nil {
+		l.Error(err, "failed to generate search pod", "search", search.Name, "crawler", crawlerName)
+		return ctrl.Result{}, err
+	}
 
 	searchPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, search, searchPod, []string{
 		v1beta1.SearchLabelKey,
@@ -225,7 +245,7 @@ func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *core
 	}
 }
 
-func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1beta1.CrawlerSpec, sa *corev1.ServiceAccount, containerOpts ...containers.Option) *corev1.Pod {
+func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1beta1.CrawlerSpec, sa *corev1.ServiceAccount, containerOpts ...containers.Option) (*corev1.Pod, error) {
 	envVars := make([]corev1.EnvVar, 0, len(crawlerSpec.Parameters))
 
 	// this loop does not check for duplicate parameters NOR
@@ -252,28 +272,76 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1be
 		}
 	}
 
+	templateVolume := corev1.Volume{
+		Name: "pipeline-template",
+		VolumeSource: corev1.VolumeSource{
+			DownwardAPI: &corev1.DownwardAPIVolumeSource{
+				Items: []corev1.DownwardAPIVolumeFile{
+					{
+						Path: pipelineTemplateFile,
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "metadata.annotations['" + v1beta1.PipelineTemplateAnnotation + "']",
+						},
+					},
+				},
+			},
+		},
+	}
+	socketVolume := corev1.Volume{
+		Name: "pipeline-socket",
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{
+				Medium: corev1.StorageMediumMemory,
+			},
+		},
+	}
+
+	pipelineTemplateJSON, err := json.Marshal(search.Spec.Scheduler.PipelineTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("unable to marshal pipeline template: %w", err)
+	}
+
 	labels := generateChildLabels(search)
 	labels[v1beta1.SearchLabelKey] = search.GetName()
 	labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeSearch
 	labels[v1beta1.CrawlerLabelKey] = search.Spec.CrawlerRef.Name
+	annotations := make(map[string]string)
+	annotations[v1beta1.PipelineTemplateAnnotation] = string(pipelineTemplateJSON)
+
+	schedulerSidecarContainer := r.generateSchedulerSidecarContainer(search)
+	keepaliveSidecarContainer := r.generateKeepaliveSidecarContainer(search)
+	initSidecarContainer := r.generateInitSidecarContainer(search)
+
+	containerOpts = append(containerOpts,
+		containers.WithAdditionalEnvVars(envVars...),
+		containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+			Name:      templateVolume.Name,
+			MountPath: pipelineTemplateDir,
+		}, corev1.VolumeMount{
+			Name:      socketVolume.Name,
+			MountPath: ocularFIFODir,
+		}))
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: search.GetName() + "-",
 			Namespace:    search.GetNamespace(),
 			Labels:       labels,
+			Annotations:  annotations,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: sa.GetName(),
 			RestartPolicy:      corev1.RestartPolicyNever,
-			Containers: containers.ApplyOptions(
-				[]corev1.Container{crawlerSpec.Container},
-				append(containerOpts, containers.WithAdditionalEnvVars(envVars...))...),
-			Volumes: crawlerSpec.Volumes,
+			InitContainers:     containers.ApplyOptions([]corev1.Container{schedulerSidecarContainer, initSidecarContainer, crawlerSpec.Container}, containerOpts...),
+			Containers:         containers.ApplyOptions([]corev1.Container{keepaliveSidecarContainer}, containerOpts...),
+			Volumes:            append(crawlerSpec.Volumes, templateVolume, socketVolume),
+			SecurityContext: &corev1.PodSecurityContext{
+				RunAsUser: ptr.To(int64(0)),
+			},
 		},
 	}
 
-	return pod
+	return pod, nil
 }
 
 func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1.Search, pod *corev1.Pod) (ctrl.Result, error) {
@@ -323,7 +391,11 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 	return ctrl.Result{}, nil
 }
 
-func generateBaseSearchEnvironment(_ *v1beta1.Search, crawlerName string) []corev1.EnvVar {
+func generateBaseSearchEnvironment(search *v1beta1.Search, crawlerName string) []corev1.EnvVar {
+	var schedulerInterval = 60
+	if search.Spec.Scheduler.IntervalSeconds != nil {
+		schedulerInterval = int(*search.Spec.Scheduler.IntervalSeconds)
+	}
 	return []corev1.EnvVar{
 		{
 			Name:      v1beta1.EnvVarSearchName,
@@ -337,6 +409,71 @@ func generateBaseSearchEnvironment(_ *v1beta1.Search, crawlerName string) []core
 			Name:      v1beta1.EnvVarNamespaceName,
 			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 		},
+		{
+			Name:  v1beta1.EnvVarPipelineTemplatePath,
+			Value: pipelineTemplatePath,
+		},
+		{
+			Name:  v1beta1.EnvVarPipelineFIFO,
+			Value: pipelineFIFOPath,
+		},
+		{
+			Name:  v1beta1.EnvVarSearchFIFO,
+			Value: searchFIFOPath,
+		},
+		{
+			Name:  v1beta1.EnvVarPipelineSchedulerIntervalSeconds,
+			Value: strconv.Itoa(schedulerInterval),
+		},
+		{
+			Name:  v1beta1.EnvVarSidecarSchedulerCompletePath,
+			Value: sidecarCompletePath,
+		},
+	}
+}
+
+const (
+	// sidecarSchedulerContainerName is the name of the container
+	// that runs the sidecar in scheduler mode
+	sidecarSchedulerContainerName = "scheduler"
+	// sidecarKeepaliveContainerName is the name of the container
+	// that keeps the pod alive until the scheduler is complete
+	sidecarKeepaliveContainerName = "scheduler-keepalive"
+	// sidecarInitContainerName is the name of the container
+	// that awaits the sidecar to be running
+	sidecarInitContainerName = "scheulder-init"
+)
+
+func (r *SearchReconciler) generateSchedulerSidecarContainer(_ *v1beta1.Search) corev1.Container {
+	var sidecarEnvVars []corev1.EnvVar
+
+	return corev1.Container{
+		Name:            sidecarExtractorPodName,
+		Image:           r.SidecarImage,
+		ImagePullPolicy: r.SidecarPullPolicy,
+		Args:            []string{"scheduler"},
+		Env:             sidecarEnvVars,
+		RestartPolicy:   ptr.To(corev1.ContainerRestartPolicyAlways),
+	}
+}
+
+func (r *SearchReconciler) generateKeepaliveSidecarContainer(_ *v1beta1.Search) corev1.Container {
+
+	return corev1.Container{
+		Name:            sidecarKeepaliveContainerName,
+		Image:           r.SidecarImage,
+		ImagePullPolicy: r.SidecarPullPolicy,
+		Args:            []string{"scheduler-keepalive"},
+	}
+}
+
+func (r *SearchReconciler) generateInitSidecarContainer(_ *v1beta1.Search) corev1.Container {
+
+	return corev1.Container{
+		Name:            sidecarInitContainerName,
+		Image:           r.SidecarImage,
+		ImagePullPolicy: r.SidecarPullPolicy,
+		Args:            []string{"scheduler-init"},
 	}
 }
 

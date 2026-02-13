@@ -29,8 +29,9 @@ import (
 var _ = Describe("Search Controller", func() {
 	Context("When reconciling a resource", func() {
 		const (
-			resourceName = "test-resource"
-			crawlerName  = "test-crawler"
+			resourceName         = "test-resource"
+			crawlerName          = "test-crawler"
+			crawlerContainerName = "crawler-container"
 		)
 
 		ctx := context.Background()
@@ -59,7 +60,7 @@ var _ = Describe("Search Controller", func() {
 					},
 					Spec: ocularcrashoverriderunv1beta1.CrawlerSpec{
 						Container: corev1.Container{
-							Name:    "crawler-container",
+							Name:    crawlerContainerName,
 							Image:   "alpine:latest",
 							Command: []string{"/bin/sh", "-c"},
 							Args:    []string{"echo crawling $CRAWL_TARGET ...; sleep 10; echo done."},
@@ -84,7 +85,7 @@ var _ = Describe("Search Controller", func() {
 						Namespace: "default",
 					},
 					Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-						CrawlerRef: ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+						CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
 							ObjectReference: corev1.ObjectReference{
 								Name: crawlerName,
 							},
@@ -121,6 +122,8 @@ var _ = Describe("Search Controller", func() {
 				Client:            k8sClient,
 				Scheme:            k8sClient.Scheme(),
 				SearchClusterRole: "test-search-cluster-role",
+				SidecarImage:      "ocular-sidecar:test",
+				SidecarPullPolicy: corev1.PullNever,
 			}
 
 			// First run will create the ServiceAccount since one is not specified
@@ -152,6 +155,13 @@ var _ = Describe("Search Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(searchPods.Items).To(HaveLen(1))
+			searchPod := searchPods.Items[0]
+			Expect(searchPod.Spec.InitContainers).To(HaveLen(3)) // sidecar, sidecar-init and crawler
+			Expect(searchPod.Spec.InitContainers[0].Name).To(Equal(sidecarSchedulerContainerName))
+			Expect(searchPod.Spec.InitContainers[1].Name).To(Equal(sidecarInitContainerName))
+			Expect(searchPod.Spec.InitContainers[2].Name).To(Equal(crawlerContainerName))
+			Expect(searchPod.Spec.Containers).To(HaveLen(1)) // sidecar-keepalive
+			Expect(searchPod.Spec.Containers[0].Name).To(Equal(sidecarKeepaliveContainerName))
 
 			searchRB := &rbacv1.RoleBinding{}
 			searchRBName := types.NamespacedName{
