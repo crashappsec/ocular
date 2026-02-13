@@ -63,11 +63,25 @@ const (
 	// EnvVarCrawlerName is the environment variable name for the crawler name.
 	EnvVarCrawlerName EnvironmentVariableName = "OCULAR_CRAWLER_NAME"
 
+	// EnvVarPipelineSocker is the environment variable that contains the path
+	// to a named pipe (or FIFO) that will read JSON targets and automatically start pipelines
+	// with the spec from the pipeline template in the search spec.
+	EnvVarPipelineFifo EnvironmentVariableName = "OCULAR_PIPELINE_FIFO"
+
+	// EnvVarPipelineTemplatePath is the name of the environment variable that contains
+	// the path to the JSON data of the pipeline template to use when creating pipelines
+	// from a search
+	EnvVarPipelineTemplatePath EnvironmentVariableName = "OCULAR_PIPELINE_TEMPLATE"
+
+	// EnvVarPipelineSchedulerIntervalSeconds is how long the scheduler should sleep between
+	// creating pipelines
+	EnvVarPipelineSchedulerIntervalSeconds EnvironmentVariableName = "OCULAR_PIPELINE_SCHEDULER_INTERVAL_SEC"
+
 	// internal environment variables  //
 
 	// EnvVarExtractorPort is the environment variable name for the extractor port.
-	EnvVarExtractorPort EnvironmentVariableName = "EXTRACTOR_PORT"
+	EnvVarSidecarExtractorPort EnvironmentVariableName = "OCULAR_SIDECAR_EXTRACTOR_PORT"
 
 	// EnvVarExtractorHost is the environment variable name for the extractor host.
-	EnvVarExtractorHost EnvironmentVariableName = "EXTRACTOR_HOST"
+	EnvVarSidecarExtractorHost EnvironmentVariableName = "OCULAR_SIDECAR_EXTRACTOR_HOST"
 )

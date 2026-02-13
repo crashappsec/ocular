@@ -104,6 +104,198 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              scheduler:
+                description: Scheduler represents the configuration of the scheduler
+                  sidecar
+                properties:
+                  intervalSeconds:
+                    description: |-
+                      IntervalSeconds represents the amount of time to wait
+                      between creating pipelines. If not set, scheduler defaults to
+                      60 (1 minute).
+                    format: int32
+                    type: integer
+                  pipelineTemplate:
+                    description: |-
+                      PipelineTemplate is the template for pipelines that will be created from this search.
+                      The pipeline template will be read by the ocular sidecar container, and when it receives
+                      targets via the unix socket [EnvVarPipelineSocket], it will create a pipeline from the template
+                      with the received target set. If omitted, sidecar container will be disabled
+                    properties:
+                      metadata:
+                        description: |-
+                          Standard object's metadata of the jobs created from this template.
+                          More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+                          Since this is a template, only generateName, labels and annotations will be used.
+                        type: object
+                      spec:
+                        description: |-
+                          Spec is the template for created pipelines.
+                          The "target" field will be overrwritten
+                        properties:
+                          downloaderRef:
+                            description: |-
+                              DownloaderRef is a reference to the downloader that will be used in this pipeline.
+                              It should point to a valid Downloader resource in the same namespace.
+                            properties:
+                              apiVersion:
+                                description: API version of the referent.
+                                type: string
+                              fieldPath:
+                                description: |-
+                                  If referring to a piece of an object instead of an entire object, this string
+                                  should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                                  For example, if the object reference is to a container within a pod, this would take on a value like:
+                                  "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                                  the event) or if no container name is specified "spec.containers[2]" (container with
+                                  index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                                  referencing a part of an object.
+                                type: string
+                              kind:
+                                description: |-
+                                  Kind of the referent.
+                                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                                type: string
+                              name:
+                                description: |-
+                                  Name of the referent.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              namespace:
+                                description: |-
+                                  Namespace of the referent.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                                type: string
+                              parameters:
+                                description: |-
+                                  Parameters is a list of parameters to pass to the referenced resource.
+                                  as environment variables.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name is the name of the parameter
+                                        to set.
+                                      type: string
+                                    value:
+                                      description: Value is the value to set the parameter
+                                        to.
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - name
+                                x-kubernetes-list-type: map
+                              resourceVersion:
+                                description: |-
+                                  Specific resourceVersion to which this reference is made, if any.
+                                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                                type: string
+                              uid:
+                                description: |-
+                                  UID of the referent.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                                type: string
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          profileRef:
+                            description: |-
+                              ProfileRef is a reference to the profile that will be used in this pipeline.
+                              It should point to a valid Profile resource in the same namespace.
+                            properties:
+                              apiVersion:
+                                description: API version of the referent.
+                                type: string
+                              fieldPath:
+                                description: |-
+                                  If referring to a piece of an object instead of an entire object, this string
+                                  should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                                  For example, if the object reference is to a container within a pod, this would take on a value like:
+                                  "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                                  the event) or if no container name is specified "spec.containers[2]" (container with
+                                  index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                                  referencing a part of an object.
+                                type: string
+                              kind:
+                                description: |-
+                                  Kind of the referent.
+                                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                                type: string
+                              name:
+                                description: |-
+                                  Name of the referent.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              namespace:
+                                description: |-
+                                  Namespace of the referent.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                                type: string
+                              resourceVersion:
+                                description: |-
+                                  Specific resourceVersion to which this reference is made, if any.
+                                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                                type: string
+                              uid:
+                                description: |-
+                                  UID of the referent.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                                type: string
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          scanServiceAccountName:
+                            description: |-
+                              ScanServiceAccountName is the name of the service account that will be used to run the scan job.
+                              If not set, the default service account of the namespace will be used.
+                            type: string
+                          target:
+                            description: |-
+                              Target is the actual software asset that will be processed by this pipeline.
+                              It is up to the Downloader to interpret the target correctly.
+                            properties:
+                              identifier:
+                                description: |-
+                                  Identifier is a unique identifier for the target.
+                                  This could be a URL, a file path, or any other string that uniquely identifies the target, it
+                                  is up to the Downloader to interpret this string.
+                                type: string
+                              version:
+                                description: |-
+                                  Version is an optional version string for the target.
+                                  This could be a version number, a commit hash, or any other string that represents the version of the target.
+                                  It is up to the Downloader to interpret this string.
+                                type: string
+                            required:
+                            - identifier
+                            type: object
+                          ttlSecondsAfterFinished:
+                            description: |-
+                              TTLSecondsAfterFinished
+                              If set, the pipeline and its associated resources will be automatically deleted
+                              after the specified number of seconds have passed since the pipeline finished.
+                            format: int32
+                            type: integer
+                          ttlSecondsMaxLifetime:
+                            description: |-
+                              TTLSecondsMaxLifetime
+                              If set, the pipeline and its associated resources will be automatically deleted
+                              after the specified number of seconds have passed since the pipeline was created,
+                              regardless of its state.
+                            format: int32
+                            type: integer
+                          uploadServiceAccountName:
+                            description: |-
+                              UploadServiceAccountName is the name of the service account that will be used to run the upload job.
+                              If not set, the default service account of the namespace will be used.
+                            type: string
+                        required:
+                        - downloaderRef
+                        - profileRef
+                        type: object
+                    type: object
+                type: object
               serviceAccountNameOverride:
                 description: |-
                   ServiceAccountNameOverride is the name of the service account that will be used to run the scan job.

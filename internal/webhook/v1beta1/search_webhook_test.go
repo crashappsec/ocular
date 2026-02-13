@@ -64,7 +64,7 @@ var _ = Describe("Search Webhook", func() {
 				Namespace: metav1.NamespaceDefault,
 			},
 			Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-				CrawlerRef: ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+				CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
 					ObjectReference: v1.ObjectReference{
 						Name:      crawler.Name,
 						Namespace: crawler.Namespace,

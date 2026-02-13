@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,7 +60,7 @@ var _ = Describe("Uploader Webhook", func() {
 				Namespace: namespace,
 			},
 			Spec: ocularcrashoverriderunv1beta1.ProfileSpec{
-				UploaderRefs: []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+				UploaderRefs: []ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
 					{ObjectReference: v1.ObjectReference{
 						Name:      obj.Name,
 						Namespace: obj.Namespace,
@@ -107,7 +108,7 @@ var _ = Describe("Uploader Webhook", func() {
 			}
 			Expect(k8sClient.Create(ctx, oldObj)).To(Succeed())
 
-			profile.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+			profile.Spec.UploaderRefs = []ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
 				{ObjectReference: v1.ObjectReference{
 					Name: oldObj.Name,
 				},
@@ -142,7 +143,8 @@ var _ = Describe("Uploader Webhook", func() {
 			By("creating a Profile that references the Uploader, then attempting to delete the Uploader")
 			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
 
-			Expect(validator.ValidateDelete(ctx, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to existing Profile referencing Uploader")
+			_, err := validator.ValidateDelete(ctx, obj)
+			Expect(apierrors.IsForbidden(err)).To(BeTrue(), "Expected validation to fail due to existing Profile referencing Uploader")
 
 			By("deleting the Profile, then attempting to delete the Uploader again")
 			Expect(k8sClient.Delete(ctx, profile)).To(Succeed())
