@@ -105,6 +105,10 @@ func Receive(ctx context.Context, files []string) error {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
 	// start server
 	srv := &http.Server{
 		Addr:              ":" + port,
@@ -119,6 +123,7 @@ func Receive(ctx context.Context, files []string) error {
 			logger.Error(err, "Error shutting down server from fail request")
 		}
 	})
+
 	go func() {
 		logger.Info("starting server", "address", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

@@ -133,6 +133,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace,
+		"downloader": pipeline.Spec.DownloaderRef.Name, "profile": pipeline.Spec.ProfileRef.Name}
+
 	// If the pipeline has a completion time, handle post-completion logic
 	if pipeline.Status.CompletionTime != nil {
 		return r.handlePostCompletion(ctx, pipeline)
@@ -185,7 +188,37 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			}),
 		)...)
 
+	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, []string{
+		v1beta1.PipelineLabelKey,
+		v1beta1.TypeLabelKey,
+	}, uploadPodsCreated.With(metricLabels))
+	if err != nil {
+		l.Error(err, "error reconciling upload pod for pipeline", "name", pipeline.GetName())
+		return ctrl.Result{}, err
+	}
+
 	uploadService := r.newUploadService(pipeline, uploadPod)
+
+	if uploadService != nil {
+		if err = reconcileChildResource[*corev1.Service](ctx, r.Client, uploadService, pipeline, r.Scheme, nil); err != nil {
+			l.Error(err, "error reconciling upload service for pipeline", "name", pipeline.GetName())
+			return ctrl.Result{}, err
+		}
+	}
+
+	if !pipeline.Status.ScanPodOnly {
+		// check if uploader is running & can accept sc
+		uploaderReady := false
+		for _, status := range uploadPod.Status.InitContainerStatuses {
+			if status.Name == sidecarReceiverContainerName && status.Started != nil {
+				uploaderReady = *status.Started
+				break
+			}
+		}
+		if !uploaderReady {
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+		}
+	}
 
 	scanPod := r.newScanPod(pipeline, profile.Spec, downloaderSpec,
 		r.createSidecarExtractorContainer(pipeline, uploadService, artifactArgs),
@@ -203,24 +236,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				Name:      pipelineResultsVolumeName,
 				MountPath: v1beta1.PipelineResultsDirectory,
 			}))...)
-
-	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace,
-		"downloader": pipeline.Spec.DownloaderRef.Name, "profile": pipeline.Spec.ProfileRef.Name}
-	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, []string{
-		v1beta1.PipelineLabelKey,
-		v1beta1.TypeLabelKey,
-	}, uploadPodsCreated.With(metricLabels))
-	if err != nil {
-		l.Error(err, "error reconciling upload pod for pipeline", "name", pipeline.GetName())
-		return ctrl.Result{}, err
-	}
-
-	if uploadService != nil {
-		if err = reconcileChildResource[*corev1.Service](ctx, r.Client, uploadService, pipeline, r.Scheme, nil); err != nil {
-			l.Error(err, "error reconciling upload service for pipeline", "name", pipeline.GetName())
-			return ctrl.Result{}, err
-		}
-	}
 
 	scanPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, scanPod, []string{
 		v1beta1.PipelineLabelKey,
@@ -268,13 +283,13 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 const (
-	// sidecarExtractorPodName is the name of the sidecar container in the scan pod
+	// sidecarExtractorContainerName is the name of the sidecar container in the scan pod
 	// that handles extracting artifacts and uploading them to the upload pod
-	sidecarExtractorPodName = "extract-artifacts"
+	sidecarExtractorContainerName = "extract-artifacts"
 
-	// sidecarReceiverPodName is the name of the receiver
+	// sidecarReceiverContainerName is the name of the receiver
 	// sidecar container in the upload pod
-	sidecarReceiverPodName = "receive-artifacts"
+	sidecarReceiverContainerName = "receive-artifacts"
 )
 
 func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.Pipeline, uploadService *corev1.Service, artifactsArgs []string) corev1.Container {
@@ -294,7 +309,7 @@ func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.P
 	}
 
 	return corev1.Container{
-		Name:            sidecarExtractorPodName,
+		Name:            sidecarExtractorContainerName,
 		Image:           r.SidecarImage,
 		ImagePullPolicy: r.SidecarPullPolicy,
 		Args:            append([]string{sidecarCommand}, artifactsArgs...),
@@ -562,6 +577,26 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 	}
 	labels := utils.MergeMaps(profile.Spec.AdditionalPodMetadata.Labels, standardLabels)
 
+	sidecarContainer := corev1.Container{
+		Name:  sidecarReceiverContainerName,
+		Image: r.SidecarImage,
+		Args:  []string{"receive"},
+		Env: []corev1.EnvVar{
+			{
+				Name:  v1beta1.EnvVarSidecarExtractorPort,
+				Value: fmt.Sprintf("%d", extractorPort),
+			},
+		},
+		// ReadinessProbe: &corev1.Probe{
+		// 	ProbeHandler: corev1.ProbeHandler{
+		// 		HTTPGet: &corev1.HTTPGetAction{
+		// 			Path: "/healthz",
+		// 			Port: intstr.FromInt(extractorPort),
+		// 		},
+		// 	},
+		// },
+	}
+
 	uploadPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: pipeline.GetName() + uploadPodSuffix + "-",
@@ -574,17 +609,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 			Containers:         containers.ApplyOptions(uploaderContainers, containerOpts...),
 			InitContainers: containers.ApplyOptions([]corev1.Container{
 				// Add the extractor as an init container running in receive mode
-				{
-					Name:  sidecarReceiverPodName,
-					Image: r.SidecarImage,
-					Args:  []string{"receive"},
-					Env: []corev1.EnvVar{
-						{
-							Name:  v1beta1.EnvVarSidecarExtractorPort,
-							Value: fmt.Sprintf("%d", extractorPort),
-						},
-					},
-				},
+				sidecarContainer,
 			}, containerOpts...),
 			Volumes: append(volumes,
 				// add shared volume for target and results
@@ -771,7 +796,7 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 func determineScanPodStageStatuses(scanPod *corev1.Pod) (dlStatus v1beta1.PipelineStageStatus, scanStatus v1beta1.PipelineStageStatus) {
 	completed, failed := true, false
 	for _, cs := range scanPod.Status.InitContainerStatuses {
-		if cs.Name != sidecarExtractorPodName {
+		if cs.Name != sidecarExtractorContainerName {
 			completed = completed && cs.State.Terminated != nil
 			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
 				failed = true

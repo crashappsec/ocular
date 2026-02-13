@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -264,7 +265,6 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 			})
 			Expect(err).NotTo(HaveOccurred())
-
 			updatedResource := &ocularcrashoverriderunv1beta1.Pipeline{}
 			err = k8sClient.Get(ctx, types.NamespacedName{
 				Name:      pipeline.Name,
@@ -273,6 +273,35 @@ var _ = Describe("Pipeline Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedResource.Status.ScanPodOnly).To(BeFalse())
 
+			// upload pod will be created, need to be ready for scan pod
+			uploadPods := &corev1.PodList{}
+			err = k8sClient.List(ctx, uploadPods, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					ocularcrashoverriderunv1beta1.TypeLabelKey:     ocularcrashoverriderunv1beta1.PodTypeUpload,
+					ocularcrashoverriderunv1beta1.PipelineLabelKey: pipeline.Name,
+				}),
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(uploadPods.Items).To(HaveLen(1))
+			uploadPod := uploadPods.Items[0]
+			ValidatePipelineUploadPodSpec(uploadPod.Spec, sidecarImage, pipeline, profile)
+
+			uploadPod.Status.InitContainerStatuses = append(uploadPod.Status.InitContainerStatuses,
+				corev1.ContainerStatus{
+					Name:    sidecarReceiverContainerName,
+					Started: ptr.To(true),
+				})
+			err = k8sClient.Status().Update(ctx, &uploadPod)
+			Expect(err).NotTo(HaveOccurred())
+
+			// now that uploader is ready run again
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      pipeline.Name,
+					Namespace: pipeline.Namespace,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
 			scanPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
@@ -283,18 +312,8 @@ var _ = Describe("Pipeline Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(scanPods.Items).To(HaveLen(1))
 			ValidatePipelineScanPodSpec(scanPods.Items[0].Spec, sidecarImage, pipeline, profile, downloader)
-
-			uploadPods := &corev1.PodList{}
-			err = k8sClient.List(ctx, uploadPods, &client.ListOptions{
-				LabelSelector: labels.SelectorFromSet(map[string]string{
-					ocularcrashoverriderunv1beta1.TypeLabelKey:     ocularcrashoverriderunv1beta1.PodTypeUpload,
-					ocularcrashoverriderunv1beta1.PipelineLabelKey: pipeline.Name,
-				}),
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(uploadPods.Items).To(HaveLen(1))
-			ValidatePipelineUploadPodSpec(uploadPods.Items[0].Spec, sidecarImage, pipeline, profile)
 		})
+
 	})
 })
 
@@ -357,7 +376,7 @@ func ValidatePipelineUploadPodSpec(podSpec corev1.PodSpec,
 	Expect(podSpec.InitContainers).To(HaveLen(1)) // sidecar only
 	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.UploaderRefs)))
 	// sidecar
-	Expect(podSpec.InitContainers[0].Name).To(Equal(sidecarReceiverPodName))
+	Expect(podSpec.InitContainers[0].Name).To(Equal(sidecarReceiverContainerName))
 	Expect(podSpec.InitContainers[0].Image).To(Equal(sidecarImage))
 	Expect(podSpec.InitContainers[0].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
 
