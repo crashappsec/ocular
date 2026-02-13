@@ -443,7 +443,7 @@ func (r *SearchReconciler) generateSchedulerSidecarContainer(_ *v1beta1.Search) 
 	var sidecarEnvVars []corev1.EnvVar
 
 	return corev1.Container{
-		Name:            sidecarExtractorPodName,
+		Name:            sidecarSchedulerContainerName,
 		Image:           r.SidecarImage,
 		ImagePullPolicy: r.SidecarPullPolicy,
 		Args:            []string{"scheduler"},
