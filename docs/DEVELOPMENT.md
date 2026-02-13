@@ -24,7 +24,7 @@ An example `.env` file is provided in the repository as [`example.env`](/example
 There are two images required inorder to run 'ocular':
 - `OCULAR_CONTROLLER_IMG`: The image for the controller manager. This is a webserver that
   will act as a kubernetes controller and will manage the lifecycle of all Ocular resources.
-- `OCULAR_EXTRACTOR_IMG`: The image for the extractor. This is a program that facilities
+- `OCULAR_SIDECAR_IMG`: The image for the sidecar container. This is a program that facilities
   the extraction of artifacts from the scanners to uploaders in a pipeline.
 
 ### To Deploy on the cluster
@@ -63,7 +63,7 @@ make undeploy
 
 ### To Deploy with custom images
 
-**Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG` and `OCULAR_EXTRACTOR_IMG`:**
+**Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG` and `OCULAR_SIDECAR_IMG`:**
 
 ```sh
 # Controller image
@@ -71,13 +71,13 @@ make docker-build-controller docker-push-controller \
   OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag
 
 # Extractor image
-make docker-build-extractor docker-push-extractor \
-  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
+make docker-build-sidecar docker-push-sidecar \
+  OCULAR_SIDECAR_IMG=<some-registry>/ocular-sidecar:tag
   
 # Or both at once
 make docker-build-all docker-push-all \
   OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
-  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
+  OCULAR_SIDECAR_IMG=<some-registry>/ocular-sidecar:tag
 
 ```
 
@@ -96,7 +96,7 @@ make install
 ```sh
 export DEPLOYMENT_NAME=dev \
        OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
-       OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
+       OCULAR_SIDECAR_IMG=<some-registry>/ocular-sidecar:tag
 # NOTE you should make this folder will be ignored by git
 # you can check the .gitignore file for which config folders are ignored
 # and use one of those names to avoid committing custom configs by mistake
@@ -106,7 +106,7 @@ cd config/${DEPLOYMENT_NAME}
 kustomize create
 kustomize edit add resource ../default
 kustomize edit set image ghcr.io/crashappsec/ocular-controller=${OCULAR_CONTROLLER_IMG}
-kustomize edit set configmap controller-manager-config --from-literal=OCULAR_EXTRACTOR_IMG=${OCULAR_EXTRACTOR_IMG}
+kustomize edit set configmap controller-manager-config --from-literal=OCULAR_SIDECAR_IMG=${OCULAR_SIDECAR_IMG}
 ```
 
 
@@ -127,9 +127,6 @@ privileges or be logged in as admin.
 make undeploy-${DEPLOYMENT_NAME}
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
-
-
 ## Project Distribution
 
 Following the options to release and provide this solution to the users.
@@ -139,9 +136,7 @@ Following the options to release and provide this solution to the users.
 1. Build the installer for the image built and published in the registry:
 
 ```sh
-make build-installer \
-  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
-  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
+make build-installer
 ```
 
 **NOTE:** The makefile target mentioned above generates an 'install.yaml'
@@ -167,7 +162,7 @@ kubectl apply -f ./dist/install.yaml
 ```sh
 make build-helm \
   OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
-  OCULAR_EXTRACTOR_IMG=<some-registry>/ocular-extractor:tag
+  OCULAR_SIDECAR_IMG=<some-registry>/ocular-sidecar:tag
 ```
 
 2. See that a chart was generated under 'dist/chart', and users

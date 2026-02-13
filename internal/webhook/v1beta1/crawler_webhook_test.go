@@ -56,7 +56,7 @@ var _ = Describe("Crawler Webhook", func() {
 				Namespace: namespace,
 			},
 			Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-				CrawlerRef: ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+				CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
 					ObjectReference: v1.ObjectReference{
 						Name: obj.Name,
 					},
@@ -93,7 +93,7 @@ var _ = Describe("Crawler Webhook", func() {
 			}
 			Expect(k8sClient.Create(ctx, oldObj)).To(Succeed())
 
-			search.Spec.CrawlerRef = ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+			search.Spec.CrawlerRef = ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
 				ObjectReference: v1.ObjectReference{
 					Name: oldObj.Name,
 				},
@@ -128,7 +128,8 @@ var _ = Describe("Crawler Webhook", func() {
 			Expect(k8sClient.Create(ctx, search)).Should(Succeed())
 			By("simulating a deletion scenario")
 			_, err := validator.ValidateDelete(ctx, obj)
-			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsForbidden(err)).To(BeTrue())
 		})
 	})
 

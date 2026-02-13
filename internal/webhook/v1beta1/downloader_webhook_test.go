@@ -71,8 +71,10 @@ var _ = Describe("Downloader Webhook", func() {
 				ProfileRef: corev1.ObjectReference{
 					Name: profile.Name,
 				},
-				DownloaderRef: corev1.ObjectReference{
-					Name: obj.Name,
+				DownloaderRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
+					ObjectReference: corev1.ObjectReference{
+						Name: obj.Name,
+					},
 				},
 				Target: ocularcrashoverriderunv1beta1.Target{
 					Identifier: "some-identifier",
@@ -120,7 +122,7 @@ var _ = Describe("Downloader Webhook", func() {
 			Expect(k8sClient.Create(ctx, pipeline)).Should(Succeed())
 			By("simulating a deletion scenario")
 			_, err := validator.ValidateDelete(ctx, obj)
-			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+			Expect(apierrors.IsForbidden(err)).To(BeTrue())
 		})
 
 		It("Should allow deletion if not referenced by any Pipeline", func() {

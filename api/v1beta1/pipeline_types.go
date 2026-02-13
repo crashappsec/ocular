@@ -49,7 +49,7 @@ type PipelineSpec struct {
 
 	// Target is the actual software asset that will be processed by this pipeline.
 	// It is up to the Downloader to interpret the target correctly.
-	// +required
+	// +optional
 	Target Target `json:"target" protobuf:"bytes,3,opt,name=target"`
 
 	// ScanServiceAccountName is the name of the service account that will be used to run the scan job.

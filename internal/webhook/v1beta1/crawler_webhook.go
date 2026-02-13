@@ -127,6 +127,13 @@ func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler,
 	return nil, v.validateNewRequiredParameters(ctx, oldCrawler, newCrawler)
 }
 
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
+func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
+	crawlerlog.Info("validating crawler is no longer referenced by any Search or CronSearch resource", "name", crawler.GetName())
+
+	return nil, v.validateNoCrawlerReferences(ctx, crawler)
+}
+
 func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) error {
 	var searches ocularcrashoverriderunv1beta1.SearchList
 	if err := v.c.List(ctx, &searches, client.InNamespace(crawler.Namespace)); err != nil {
@@ -139,23 +146,31 @@ func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context
 	}
 	var allErrs error
 	for _, search := range searches.Items {
+		crawlerRef := search.Spec.CrawlerRef
+		refNamespace := crawlerRef.Namespace
+		if refNamespace == "" {
+			refNamespace = search.Namespace
+		}
 		// ignore cluster crawler
 		if !slices.Contains([]string{"", "Crawler"}, search.Spec.CrawlerRef.Kind) {
 			continue
 		}
-		crawlerRef := search.Spec.CrawlerRef
-		if crawlerRef.Name == crawler.Name && crawlerRef.Namespace == crawler.Namespace {
+		if crawlerRef.Name == crawler.Name && refNamespace == crawler.Namespace {
 			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'Search/%s in namespace %s'", search.Name, search.Namespace))
 		}
 	}
 
 	for _, cSearch := range cronSearches.Items {
+		crawlerRef := cSearch.Spec.SearchTemplate.Spec.CrawlerRef
+		refNamespace := crawlerRef.Namespace
+		if refNamespace == "" {
+			refNamespace = cSearch.Namespace
+		}
 		// ignore cluster crawlers
 		if !slices.Contains([]string{"", "Crawler"}, cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Kind) {
 			continue
 		}
-		crawlerRef := cSearch.Spec.SearchTemplate.Spec.CrawlerRef
-		if crawlerRef.Name == crawler.Name && crawlerRef.Namespace == crawler.Namespace {
+		if crawlerRef.Name == crawler.Name && refNamespace == crawler.Namespace {
 			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'CronSearch/%s in namespace %s'", cSearch.Name, cSearch.Namespace))
 		}
 	}
@@ -167,11 +182,4 @@ func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context
 	return apierrors.NewForbidden(
 		schema.GroupResource{Group: "ocular.crashoverride.run", Resource: crawler.Name},
 		crawler.Name, allErrs)
-}
-
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
-	crawlerlog.Info("validating crawler is no longer referenced by any Search or CronSearch resource", "name", crawler.GetName())
-
-	return nil, v.validateNoCrawlerReferences(ctx, crawler)
 }

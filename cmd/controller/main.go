@@ -185,18 +185,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	extractorPullPolicy := corev1.PullPolicy(os.Getenv("OCULAR_EXTRACTOR_PULLPOLICY"))
+	sidecarPullPolicy := corev1.PullPolicy(os.Getenv("OCULAR_SIDECAR_PULLPOLICY"))
 	if !slices.Contains([]corev1.PullPolicy{
 		corev1.PullAlways, corev1.PullIfNotPresent, corev1.PullNever,
-	}, extractorPullPolicy) {
-		extractorPullPolicy = corev1.PullIfNotPresent
+	}, sidecarPullPolicy) {
+		sidecarPullPolicy = corev1.PullIfNotPresent
 	}
 
 	if err := (&controller.PipelineReconciler{
-		Client:              mgr.GetClient(),
-		Scheme:              mgr.GetScheme(),
-		ExtractorImage:      os.Getenv("OCULAR_EXTRACTOR_IMG"),
-		ExtractorPullPolicy: extractorPullPolicy,
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		SidecarImage:      os.Getenv("OCULAR_SIDECAR_IMG"),
+		SidecarPullPolicy: sidecarPullPolicy,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Pipeline")
 		os.Exit(1)
@@ -205,6 +205,8 @@ func main() {
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
 		SearchClusterRole: os.Getenv("OCULAR_SEARCH_CLUSTER_ROLE"),
+		SidecarImage:      os.Getenv("OCULAR_SIDECAR_IMG"),
+		SidecarPullPolicy: sidecarPullPolicy,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Search")
 		os.Exit(1)
