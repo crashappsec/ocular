@@ -28,9 +28,9 @@ var (
 	// with the code source changes to be tested.
 	projectImage = "ocular-controller:e2e-test"
 
-	// extractorImage is the name of the ocular extractor image used during tests.
+	// sidecarImage is the name of the ocular sidecar image used during tests.
 	// It can be built and loaded together with the projectImage.
-	extractorImage = "ocular-extractor:e2e-test"
+	sidecarImage = "ocular-sidecar:e2e-test"
 )
 
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.
@@ -46,17 +46,17 @@ func TestE2E(t *testing.T) {
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
 	projectImageTagArg := fmt.Sprintf("OCULAR_CONTROLLER_IMG=%s", projectImage)
-	extractorImageTagArg := fmt.Sprintf("OCULAR_EXTRACTOR_IMG=%s", extractorImage)
-	cmd := exec.Command("make", "docker-build-all", projectImageTagArg, extractorImageTagArg)
+	sidecarImageTagArg := fmt.Sprintf("OCULAR_SIDECAR_IMG=%s", sidecarImage)
+	cmd := exec.Command("make", "docker-build-all", projectImageTagArg, sidecarImageTagArg)
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 	By("loading the manager(Operator) image on Kind")
 	err = utils.LoadImageToKindClusterWithName(projectImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
 
-	By("loading the extractor image on Kind")
-	err = utils.LoadImageToKindClusterWithName(extractorImage)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the extractor image into Kind")
+	By("loading the sidecar image on Kind")
+	err = utils.LoadImageToKindClusterWithName(sidecarImage)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the sidecar image into Kind")
 
 	setupCertManager()
 })

@@ -38,7 +38,7 @@ Docker images will be tagged using the same versioning scheme as the application
 Releases are managed via GitHub releases.
 Each release will be tagged with the corresponding version number and will include release notes detailing the changes made in that version.
 
-Each GitHub release will publish both the controller and extractor images to GitHub Container Registry (GHCR) with the appropriate tags,
+Each GitHub release will publish both the controller and sidecar images to GitHub Container Registry (GHCR) with the appropriate tags,
 and upload a manifest file to the release (named `ocular.yaml`) that can be installed via `kubectl apply -f <URL>`.
 
 Latest releases will be tagged from the `main` branch, while pre-releases (alpha, beta, rc) will be tagged from a development branch,

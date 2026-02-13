@@ -1567,6 +1567,44 @@ spec:
                 minItems: 0
                 type: array
                 x-kubernetes-list-type: set
+              parameters:
+                description: |-
+                  Parameters is a list of ParameterDefinition that can be used to define "parameters"
+                  that the user can specify in a downloader reference that can configure how to download targets.
+                items:
+                  description: |-
+                    ParameterDefinition is a definition of a parameter that can be passed to a container.
+                    It defines the name of the parameter, a description of the parameter,
+                    whether the parameter is required, and a default value for the parameter (when not required).
+                  properties:
+                    default:
+                      description: |-
+                        Default is the default value for the parameter.
+                        It is only valid if Required is false.
+                        A null value indicates that if there is no value provided, the environment variable will be unset.
+                      type: string
+                    description:
+                      description: Description is the description of the parameter.
+                      type: string
+                    name:
+                      description: Name is the name of the parameter.
+                      maxLength: 64
+                      minLength: 1
+                      pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
+                      type: string
+                    required:
+                      description: |-
+                        Required is true if the parameter is required.
+                        If true, the execution will fail to start if the parameter is not provided.
+                      type: boolean
+                  required:
+                  - name
+                  - required
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               volumes:
                 description: |-
                   List of volumes that can be mounted by containers belonging to the pod.

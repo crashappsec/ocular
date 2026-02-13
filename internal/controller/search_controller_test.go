@@ -84,7 +84,7 @@ var _ = Describe("Search Controller", func() {
 						Namespace: "default",
 					},
 					Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-						CrawlerRef: ocularcrashoverriderunv1beta1.CrawlerObjectReference{
+						CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
 							ObjectReference: corev1.ObjectReference{
 								Name: crawlerName,
 							},
@@ -121,6 +121,8 @@ var _ = Describe("Search Controller", func() {
 				Client:            k8sClient,
 				Scheme:            k8sClient.Scheme(),
 				SearchClusterRole: "test-search-cluster-role",
+				SidecarImage:      "ocular-sidecar:test",
+				SidecarPullPolicy: corev1.PullNever,
 			}
 
 			// First run will create the ServiceAccount since one is not specified
@@ -152,6 +154,9 @@ var _ = Describe("Search Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(searchPods.Items).To(HaveLen(1))
+			searchPod := searchPods.Items[0]
+			Expect(searchPod.Spec.InitContainers).To(HaveLen(1))
+			Expect(searchPod.Spec.Containers).To(HaveLen(1))
 
 			searchRB := &rbacv1.RoleBinding{}
 			searchRBName := types.NamespacedName{
