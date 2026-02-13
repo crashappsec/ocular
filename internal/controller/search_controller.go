@@ -419,11 +419,17 @@ func generateBaseSearchEnvironment(search *v1beta1.Search, crawlerName string) [
 	}
 }
 
+const (
+	// sidecarSchedulerContainerName is the name of the container
+	// that runs the sidecar in scheduler mode
+	sidecarSchedulerContainerName = "pipeline-scheduler"
+)
+
 func (r *SearchReconciler) generateSidecarContainer(_ *v1beta1.Search) corev1.Container {
 	var sidecarEnvVars []corev1.EnvVar
 
 	return corev1.Container{
-		Name:            sidecarExtractorPodName,
+		Name:            sidecarSchedulerContainerName,
 		Image:           r.SidecarImage,
 		ImagePullPolicy: r.SidecarPullPolicy,
 		Args:            []string{"schedule"},
