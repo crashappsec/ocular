@@ -1556,10 +1556,8 @@ spec:
                 type: object
               parameters:
                 description: |-
-                  Parameters is a list of ParameterDefinition that can be used to define user enter "parameters"
-                  that the crawler can use to configure how to crawl targets. The crawler can use these parameters
-                  to customize its behavior. The parameters can be used in the crawler's command line
-                  arguments, environment variables, or any other way that the crawler supports.
+                  Parameters is a list of ParameterDefinition that can be used to define "parameters"
+                  that the user can specify in a downloader reference that can configure how to download targets.
                 items:
                   description: |-
                     ParameterDefinition is a definition of a parameter that can be passed to a container.

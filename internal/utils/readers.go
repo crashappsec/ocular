@@ -48,3 +48,10 @@ func CloseIgnoreAndLog[I any](ctx context.Context, c CloserIgnore[I]) {
 		l.Error(err, "failed to close")
 	}
 }
+
+func RemoveAndLog(ctx context.Context, path string) {
+	l := logf.FromContext(ctx)
+	if err := os.Remove(path); err != nil {
+		l.Error(err, "unable to remove path", "path", path)
+	}
+}

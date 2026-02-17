@@ -19,8 +19,8 @@ export OCULAR_VERSION
 # Image URL to use all building/pushing image targets
 OCULAR_CONTROLLER_IMG ?= ghcr.io/crashappsec/ocular-controller:$(OCULAR_VERSION)
 export OCULAR_CONTROLLER_IMG
-OCULAR_EXTRACTOR_IMG ?= ghcr.io/crashappsec/ocular-extractor:$(OCULAR_VERSION)
-export OCULAR_EXTRACTOR_IMG
+OCULAR_SIDECAR_IMG ?= ghcr.io/crashappsec/ocular-sidecar:$(OCULAR_VERSION)
+export OCULAR_SIDECAR_IMG
 
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -184,7 +184,7 @@ update-github-actions: frizbee ## Update GitHub action versions in workflows
 
 
 ##@ Build
-COMMANDS := controller extractor
+COMMANDS := controller sidecar
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
@@ -198,25 +198,25 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build-all
-docker-build-all: docker-build-controller docker-build-extractor ## Build docker image with the manager.
+docker-build-all: docker-build-controller docker-build-sidecar ## Build docker image with the manager.
 
 .PHONY: docker-build-controller
 docker-build-controller:  docker-build-img-controller ## Build docker image with the manager.
 
-.PHONY: docker-build-extractor
-docker-build-extractor: docker-build-img-extractor ## Build docker image with the extractor.
+.PHONY: docker-build-sidecar
+docker-build-sidecar: docker-build-img-sidecar ## Build docker image with the sidecar.
 
 docker-build-img-%:
 	$(CONTAINER_TOOL) build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-build-img-%=%) -t $(OCULAR_$(shell echo '$(@:docker-build-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) .
 
 .PHONY: docker-push-all
-docker-push-all: docker-push-controller docker-push-extractor ## Push docker both manager and extractor images.
+docker-push-all: docker-push-controller docker-push-sidecar ## Push docker both manager and sidecar images.
 
 .PHONY: docker-push-controller
 docker-push-controller: docker-push-img-controller ## Push docker image with the manager.
 
-.PHONY: docker-push-extractor
-docker-push-extractor: docker-push-img-extractor ## Push docker image with the extractor.
+.PHONY: docker-push-sidecar
+docker-push-sidecar: docker-push-img-sidecar ## Push docker image with the sidecar.
 
 docker-push-img-%: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push $(OCULAR_$(shell echo '$(@:docker-build-%=%)' | tr '[:lower:]' '[:upper:]')_IMG)
@@ -229,13 +229,13 @@ docker-push-img-%: ## Push docker image with the manager.
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx-all
-docker-buildx-all: docker-buildx-controller  docker-buildx-extractor ## Build and push docker images for both manager and extractor for cross-platform support.
+docker-buildx-all: docker-buildx-controller  docker-buildx-sidecar ## Build and push docker images for both manager and sidecar for cross-platform support.
 
 .PHONY: docker-buildx-controller
 docker-buildx-controller: docker-buildx-img-controller ## Build and push docker image for the manager for cross-platform support
 
-.PHONY: docker-buildx-extractor
-docker-buildx-extractor: docker-buildx-img-extractor ## Build and push docker image for the extractor for cross-platform support
+.PHONY: docker-buildx-sidecar
+docker-buildx-sidecar: docker-buildx-img-sidecar ## Build and push docker image for the sidecar for cross-platform support
 
 docker-buildx-img-%: ## Build and push docker image for the manager for cross-platform support
 	@echo -e "This will build and \e[31m$$(tput bold)push$$(tput sgr0)\e[0m the image $(OCULAR_$(shell echo '$(@:docker-buildx-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) for platforms: ${PLATFORMS}."
@@ -279,14 +279,15 @@ build-helm: kubebuilder ## Generate a helm-chart using kubebuilder
 	@"$(KUBEBUILDER)" edit --plugins=helm/v2-alpha
 	@# update manfiests with any templating or customizations TODO(bryce): have this be one script
 	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.manager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)env: \[\]/\1env:\n\1  {{- with .Values.manager.env }}\n\1  {{- toYaml . | nindent 20 }}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)annotations:/\1annotations:\n\1    {{- range $$key, $$val := .Values.manager.annotations }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.manager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.manager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+OCULAR_EXTRACTOR_IMG:)[^\n]+/\1 "{{ .Values.extractor.image.repository }}:{{ .Values.extractor.image.tag }}"/g' dist/chart/templates/extras/controller-manager-config.yaml
-	@sed -i.bak -r 's/^([ ]+value:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.extractor.image.pullPolicy }}"/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+OCULAR_SIDECAR_IMG:)[^\n]+/\1 "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"/g' dist/chart/templates/extras/controller-manager-config.yaml
+	@sed -i.bak -r 's/^([ ]+value:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.sidecar.image.pullPolicy }}"/g' dist/chart/templates/manager/manager.yaml
 	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/extras/controller-manager-config.yaml.bak # cleanup backup file from sed
 	@yq -ie '.manager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
-	@yq -ie '.extractor.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
+	@yq -ie '.sidecar.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
 	@yq -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
 
 .PHONY: clean-helm

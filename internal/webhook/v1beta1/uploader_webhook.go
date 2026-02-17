@@ -14,6 +14,7 @@ import (
 	"slices"
 
 	"github.com/crashappsec/ocular/internal/validators"
+	"github.com/hashicorp/go-multierror"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -105,11 +106,11 @@ func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldUploade
 
 func (v *UploaderCustomValidator) validateNoUploaderReferences(ctx context.Context, uploader *ocularcrashoverriderunv1beta1.Uploader) error {
 	var profiles ocularcrashoverriderunv1beta1.ProfileList
-	if err := v.c.List(ctx, &profiles); err != nil {
+	if err := v.c.List(ctx, &profiles, client.InNamespace(uploader.Namespace)); err != nil {
 		return fmt.Errorf("failed to list profiles: %w", err)
 	}
 
-	var allErrs field.ErrorList
+	var allErrs error
 	for _, profile := range profiles.Items {
 		for _, uploaderRef := range profile.Spec.UploaderRefs {
 			// ignore cluster downloaders
@@ -123,17 +124,18 @@ func (v *UploaderCustomValidator) validateNoUploaderReferences(ctx context.Conte
 			}
 			if uploaderRef.Name == uploader.Name && namespace == uploader.Namespace {
 				uploaderlog.Info("found profile reference to uploader", "profile", profile.GetName(), "name", uploader.GetName())
-				allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), uploader.Name, "cannot be deleted because it is still referenced by a Profile resource"))
+				allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'Profile/%s' in namespace '%s'",
+					profile.Name, profile.Namespace))
 			}
 		}
 	}
 
-	if len(allErrs) == 0 {
+	if allErrs == nil {
 		return nil
 	}
 
-	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Uploader"},
+	return apierrors.NewForbidden(
+		schema.GroupResource{Group: "ocular.crashoverride.run", Resource: uploader.Name},
 		uploader.Name, allErrs)
 }
 

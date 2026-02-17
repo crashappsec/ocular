@@ -28,7 +28,7 @@ import (
 
 func Receive(ctx context.Context, files []string) error {
 	logger := logf.FromContext(ctx)
-	port := os.Getenv(v1beta1.EnvVarExtractorPort)
+	port := os.Getenv(v1beta1.EnvVarSidecarExtractorPort)
 	var (
 		mux             = http.NewServeMux()
 		downloadedFiles = map[string]bool{}
@@ -105,6 +105,10 @@ func Receive(ctx context.Context, files []string) error {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
 	// start server
 	srv := &http.Server{
 		Addr:              ":" + port,
@@ -119,11 +123,11 @@ func Receive(ctx context.Context, files []string) error {
 			logger.Error(err, "Error shutting down server from fail request")
 		}
 	})
+
 	go func() {
 		logger.Info("starting server", "address", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error(err, "server error")
-			panic(err)
 		}
 	}()
 	logger.Info("awaiting file downloads", "count", len(files))

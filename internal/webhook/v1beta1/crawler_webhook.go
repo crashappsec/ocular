@@ -14,6 +14,7 @@ import (
 	"slices"
 
 	"github.com/crashappsec/ocular/internal/validators"
+	"github.com/hashicorp/go-multierror"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -126,57 +127,59 @@ func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler,
 	return nil, v.validateNewRequiredParameters(ctx, oldCrawler, newCrawler)
 }
 
-func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) error {
-	var searches ocularcrashoverriderunv1beta1.SearchList
-	if err := v.c.List(ctx, &searches); err != nil {
-		return fmt.Errorf("failed to list searches: %w", err)
-	}
-	var allErrs field.ErrorList
-	for _, search := range searches.Items {
-		var namespace = search.Spec.CrawlerRef.Namespace
-		if namespace == "" {
-			namespace = search.Namespace
-		}
-		// ignore cluster crawlers
-		if !slices.Contains([]string{"", "Crawler"}, search.Spec.CrawlerRef.Kind) {
-			continue
-		}
-		if search.Spec.CrawlerRef.Name == crawler.Name && namespace == crawler.Namespace {
-			allErrs = append(allErrs, field.Required(field.NewPath("spec").Child("crawlerRef"), fmt.Sprintf("crawler %s is still referenced by search %s", crawler.Name, search.Name)))
-		}
-	}
-
-	var cronSearches ocularcrashoverriderunv1beta1.CronSearchList
-	if err := v.c.List(ctx, &cronSearches); err != nil {
-		return fmt.Errorf("failed to list cron searches: %w", err)
-	}
-
-	for _, cSearch := range cronSearches.Items {
-		// ignore cluster crawler
-		if !slices.Contains([]string{"", "Crawler"}, cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Kind) {
-			continue
-		}
-		var namespace = cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Namespace
-		if namespace == "" {
-			namespace = cSearch.Namespace
-		}
-		if cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Name == crawler.Name && namespace == crawler.Namespace {
-			allErrs = append(allErrs, field.Required(field.NewPath("spec").Child("crawlerRef"), fmt.Sprintf("crawler %s is still referenced by cron search %s", crawler.Name, cSearch.Name)))
-		}
-	}
-
-	if len(allErrs) == 0 {
-		return nil
-	}
-
-	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Crawler"},
-		crawler.Name, allErrs)
-}
-
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
 func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
 	crawlerlog.Info("validating crawler is no longer referenced by any Search or CronSearch resource", "name", crawler.GetName())
 
 	return nil, v.validateNoCrawlerReferences(ctx, crawler)
+}
+
+func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) error {
+	var searches ocularcrashoverriderunv1beta1.SearchList
+	if err := v.c.List(ctx, &searches, client.InNamespace(crawler.Namespace)); err != nil {
+		return fmt.Errorf("failed to list searches: %w", err)
+	}
+
+	var cronSearches ocularcrashoverriderunv1beta1.CronSearchList
+	if err := v.c.List(ctx, &cronSearches, client.InNamespace(crawler.Namespace)); err != nil {
+		return fmt.Errorf("failed to list cron searches: %w", err)
+	}
+	var allErrs error
+	for _, search := range searches.Items {
+		crawlerRef := search.Spec.CrawlerRef
+		refNamespace := crawlerRef.Namespace
+		if refNamespace == "" {
+			refNamespace = search.Namespace
+		}
+		// ignore cluster crawler
+		if !slices.Contains([]string{"", "Crawler"}, search.Spec.CrawlerRef.Kind) {
+			continue
+		}
+		if crawlerRef.Name == crawler.Name && refNamespace == crawler.Namespace {
+			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'Search/%s in namespace %s'", search.Name, search.Namespace))
+		}
+	}
+
+	for _, cSearch := range cronSearches.Items {
+		crawlerRef := cSearch.Spec.SearchTemplate.Spec.CrawlerRef
+		refNamespace := crawlerRef.Namespace
+		if refNamespace == "" {
+			refNamespace = cSearch.Namespace
+		}
+		// ignore cluster crawlers
+		if !slices.Contains([]string{"", "Crawler"}, cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Kind) {
+			continue
+		}
+		if crawlerRef.Name == crawler.Name && refNamespace == crawler.Namespace {
+			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'CronSearch/%s in namespace %s'", cSearch.Name, cSearch.Namespace))
+		}
+	}
+
+	if allErrs == nil {
+		return nil
+	}
+
+	return apierrors.NewForbidden(
+		schema.GroupResource{Group: "ocular.crashoverride.run", Resource: crawler.Name},
+		crawler.Name, allErrs)
 }

@@ -30,11 +30,8 @@ type UploaderSpec struct {
 	// +listMapKey=name
 	Volumes []v1.Volume `json:"volumes,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,2,rep,name=volumes"`
 
-	// Parameters is a list of ParameterDefinition that can be used to define user enter "parameters"
-	// that the uploader can use to configure how to upload results. T
-	// are the definitions of the parameters. The uploader can use these parameters
-	// to customize its behavior. The parameters can be used in the uploader's command line
-	// arguments, environment variables, or any other way that the uploader supports.
+	// Parameters is a list of ParameterDefinition that can be used to define "parameters"
+	// that the user can specify in an uploader reference that can configure how to uploader results.
 	// +optional
 	// +patchMergeKey=name
 	// +patchStrategy=merge,retainKeys
@@ -42,8 +39,6 @@ type UploaderSpec struct {
 	// +listMapKey=name
 	Parameters []ParameterDefinition `json:"parameters,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,3,rep,name=parameters"`
 }
-
-type UploaderObjectReference = ParameterizedObjectReference
 
 type UploaderStatus struct {
 	// Conditions is a list of conditions that the uploader is in.

@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -28,9 +29,9 @@ import (
 var _ = Describe("Pipeline Controller", func() {
 	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
-		namespace      = "default"
-		extractorImage = testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet) + ":latest"
-		downloader     *ocularcrashoverriderunv1beta1.Downloader
+		namespace    = "default"
+		sidecarImage = testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet) + ":latest"
+		downloader   *ocularcrashoverriderunv1beta1.Downloader
 	)
 	BeforeEach(func() {
 		downloader = &ocularcrashoverriderunv1beta1.Downloader{
@@ -85,8 +86,10 @@ var _ = Describe("Pipeline Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: ocularcrashoverriderunv1beta1.PipelineSpec{
-					DownloaderRef: corev1.ObjectReference{
-						Name: downloader.Name,
+					DownloaderRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
+						ObjectReference: corev1.ObjectReference{
+							Name: downloader.Name,
+						},
 					},
 					ProfileRef: corev1.ObjectReference{
 						Name:      profile.Name,
@@ -110,9 +113,10 @@ var _ = Describe("Pipeline Controller", func() {
 		It("should create the pipeline", func() {
 			By("Creating only a pod for the scanners")
 			controllerReconciler := &PipelineReconciler{
-				Client:         k8sClient,
-				Scheme:         k8sClient.Scheme(),
-				ExtractorImage: extractorImage,
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				SidecarImage:      sidecarImage,
+				SidecarPullPolicy: corev1.PullIfNotPresent,
 			}
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
@@ -139,7 +143,7 @@ var _ = Describe("Pipeline Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(scanPods.Items).To(HaveLen(1))
-			ValidatePipelineScanPodSpec(scanPods.Items[0].Spec, extractorImage, pipeline, profile, downloader)
+			ValidatePipelineScanPodSpec(scanPods.Items[0].Spec, sidecarImage, pipeline, profile, downloader)
 
 			uploadPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
@@ -198,7 +202,7 @@ var _ = Describe("Pipeline Controller", func() {
 						},
 					},
 					Artifacts: []string{"results.txt"},
-					UploaderRefs: []ocularcrashoverriderunv1beta1.UploaderObjectReference{
+					UploaderRefs: []ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
 						{ObjectReference: corev1.ObjectReference{
 							Name:      uploader.Name,
 							Namespace: uploader.Namespace,
@@ -219,8 +223,10 @@ var _ = Describe("Pipeline Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: ocularcrashoverriderunv1beta1.PipelineSpec{
-					DownloaderRef: corev1.ObjectReference{
-						Name: downloader.Name,
+					DownloaderRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
+						ObjectReference: corev1.ObjectReference{
+							Name: downloader.Name,
+						},
 					},
 					ProfileRef: corev1.ObjectReference{
 						Name:      profile.Name,
@@ -247,9 +253,10 @@ var _ = Describe("Pipeline Controller", func() {
 		It("should create the pipeline", func() {
 			By("creating only a scanner job and a uploader job")
 			controllerReconciler := &PipelineReconciler{
-				Client:         k8sClient,
-				Scheme:         k8sClient.Scheme(),
-				ExtractorImage: extractorImage,
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				SidecarImage:      sidecarImage,
+				SidecarPullPolicy: corev1.PullIfNotPresent,
 			}
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
@@ -258,7 +265,6 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 			})
 			Expect(err).NotTo(HaveOccurred())
-
 			updatedResource := &ocularcrashoverriderunv1beta1.Pipeline{}
 			err = k8sClient.Get(ctx, types.NamespacedName{
 				Name:      pipeline.Name,
@@ -267,17 +273,7 @@ var _ = Describe("Pipeline Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(updatedResource.Status.ScanPodOnly).To(BeFalse())
 
-			scanPods := &corev1.PodList{}
-			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
-				LabelSelector: labels.SelectorFromSet(map[string]string{
-					ocularcrashoverriderunv1beta1.TypeLabelKey:     ocularcrashoverriderunv1beta1.PodTypeScan,
-					ocularcrashoverriderunv1beta1.PipelineLabelKey: pipeline.Name,
-				}),
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(scanPods.Items).To(HaveLen(1))
-			ValidatePipelineScanPodSpec(scanPods.Items[0].Spec, extractorImage, pipeline, profile, downloader)
-
+			// upload pod will be created, need to be ready for scan pod
 			uploadPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, uploadPods, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
@@ -287,17 +283,46 @@ var _ = Describe("Pipeline Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(uploadPods.Items).To(HaveLen(1))
-			ValidatePipelineUploadPodSpec(uploadPods.Items[0].Spec, extractorImage, pipeline, profile)
+			uploadPod := uploadPods.Items[0]
+			ValidatePipelineUploadPodSpec(uploadPod.Spec, sidecarImage, pipeline, profile)
+
+			uploadPod.Status.InitContainerStatuses = append(uploadPod.Status.InitContainerStatuses,
+				corev1.ContainerStatus{
+					Name:    sidecarReceiverContainerName,
+					Started: ptr.To(true),
+				})
+			err = k8sClient.Status().Update(ctx, &uploadPod)
+			Expect(err).NotTo(HaveOccurred())
+
+			// now that uploader is ready run again
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      pipeline.Name,
+					Namespace: pipeline.Namespace,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			scanPods := &corev1.PodList{}
+			err = k8sClient.List(ctx, scanPods, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					ocularcrashoverriderunv1beta1.TypeLabelKey:     ocularcrashoverriderunv1beta1.PodTypeScan,
+					ocularcrashoverriderunv1beta1.PipelineLabelKey: pipeline.Name,
+				}),
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(scanPods.Items).To(HaveLen(1))
+			ValidatePipelineScanPodSpec(scanPods.Items[0].Spec, sidecarImage, pipeline, profile, downloader)
 		})
+
 	})
 })
 
 func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
-	extractorImage string,
+	sidecarImage string,
 	pipeline *ocularcrashoverriderunv1beta1.Pipeline,
 	profile *ocularcrashoverriderunv1beta1.Profile,
 	downloader *ocularcrashoverriderunv1beta1.Downloader) {
-	Expect(podSpec.InitContainers).To(HaveLen(2)) // downloader + extractor
+	Expect(podSpec.InitContainers).To(HaveLen(2)) // downloader + sidecar
 	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.Containers)))
 	// Downloader
 	Expect(podSpec.InitContainers[0].Name).To(Equal(downloader.Spec.Container.Name))
@@ -305,9 +330,9 @@ func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
 	Expect(podSpec.InitContainers[0].Command).To(Equal(downloader.Spec.Container.Command))
 	Expect(podSpec.InitContainers[0].Args).To(Equal(downloader.Spec.Container.Args))
 
-	// Extractor
+	// Sidecar
 	Expect(podSpec.InitContainers[1].Name).To(Equal("extract-artifacts"))
-	Expect(podSpec.InitContainers[1].Image).To(Equal(extractorImage))
+	Expect(podSpec.InitContainers[1].Image).To(Equal(sidecarImage))
 	Expect(podSpec.InitContainers[1].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
 	Expect(podSpec.InitContainers[1].RestartPolicy).ToNot(BeNil())
 	Expect(*podSpec.InitContainers[1].RestartPolicy).To(Equal(corev1.ContainerRestartPolicyAlways)) // is a sidecar
@@ -345,14 +370,14 @@ func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
 }
 
 func ValidatePipelineUploadPodSpec(podSpec corev1.PodSpec,
-	extractorImage string,
+	sidecarImage string,
 	pipeline *ocularcrashoverriderunv1beta1.Pipeline,
 	profile *ocularcrashoverriderunv1beta1.Profile) {
-	Expect(podSpec.InitContainers).To(HaveLen(1)) // extractor only
+	Expect(podSpec.InitContainers).To(HaveLen(1)) // sidecar only
 	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.UploaderRefs)))
-	// Extractor
-	Expect(podSpec.InitContainers[0].Name).To(Equal("receive-artifacts"))
-	Expect(podSpec.InitContainers[0].Image).To(Equal(extractorImage))
+	// sidecar
+	Expect(podSpec.InitContainers[0].Name).To(Equal(sidecarReceiverContainerName))
+	Expect(podSpec.InitContainers[0].Image).To(Equal(sidecarImage))
 	Expect(podSpec.InitContainers[0].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
 
 	Expect(podSpec.ServiceAccountName).To(Equal(pipeline.Spec.UploadServiceAccountName))

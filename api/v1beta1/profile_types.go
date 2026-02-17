@@ -46,7 +46,7 @@ type ProfileSpec struct {
 	// as command line arguments, prefixed by the argument '--' . Each [UploaderObjectReference] must specify the
 	// name of the uploader and any parameters that are required.
 	// +optional
-	UploaderRefs []UploaderObjectReference `json:"uploaderRefs" yaml:"uploaderRefs" description:"A list of uploaders that will be used to upload the results of the scanners. An uploader will be passed each of the artifacts as command line arguments, prefixed by the argument '--'. Each UploaderRunRequest must specify the name of the uploader and any parameters that are required."`
+	UploaderRefs []ParameterizedObjectReference `json:"uploaderRefs" yaml:"uploaderRefs" description:"A list of uploaders that will be used to upload the results of the scanners. An uploader will be passed each of the artifacts as command line arguments, prefixed by the argument '--'. Each UploaderRunRequest must specify the name of the uploader and any parameters that are required."`
 
 	// AdditionalPodMetadata defines additional specifications to be added to the pod
 	// running the scanners, such as annotations and labels.

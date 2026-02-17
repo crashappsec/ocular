@@ -18,7 +18,7 @@ import (
 	"github.com/crashappsec/ocular/internal/containers"
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/crashappsec/ocular/internal/utils"
-	ocuarlRuntime "github.com/crashappsec/ocular/pkg/runtime"
+	ocularRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
@@ -85,9 +85,9 @@ func init() {
 // PipelineReconciler reconciles a Pipeline object
 type PipelineReconciler struct {
 	client.Client
-	Scheme              *runtime.Scheme
-	ExtractorImage      string
-	ExtractorPullPolicy corev1.PullPolicy
+	Scheme            *runtime.Scheme
+	SidecarImage      string
+	SidecarPullPolicy corev1.PullPolicy
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -133,6 +133,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace,
+		"downloader": pipeline.Spec.DownloaderRef.Name, "profile": pipeline.Spec.ProfileRef.Name}
+
 	// If the pipeline has a completion time, handle post-completion logic
 	if pipeline.Status.CompletionTime != nil {
 		return r.handlePostCompletion(ctx, pipeline)
@@ -146,7 +149,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, r.Client, pipeline.GetNamespace(), pipeline.Spec.DownloaderRef)
+	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, r.Client, pipeline.GetNamespace(), pipeline.Spec.DownloaderRef.ObjectReference)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -166,14 +169,14 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	envVars := generateBasePipelineEnvironment(pipeline)
 	containerOpts := generateBaseContainerOptions(envVars)
-	// extractorArgs are the arguments passed to the extractor
+	// aritfactArgs are the arguments passed to the sidecar
 	// & uploaders to specify which artifacts to extract
-	extractorArgs := generateExtractorArguments(downloaderSpec.MetadataFiles, profile.Spec.Artifacts)
+	artifactArgs := generateArtifactArguments(downloaderSpec.MetadataFiles, profile.Spec.Artifacts)
 
 	// generate desired upload pod, service, and scan pod
 	uploadPod := r.newUploaderPod(pipeline, profile, uploaders,
 		append(containerOpts,
-			containers.WithAdditionalArgs(extractorArgs...),
+			containers.WithAdditionalArgs(artifactArgs...),
 			containers.WithWorkingDir(v1beta1.PipelineResultsDirectory),
 			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
 				Name:      pipelineResultsVolumeName,
@@ -185,10 +188,40 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			}),
 		)...)
 
+	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, []string{
+		v1beta1.PipelineLabelKey,
+		v1beta1.TypeLabelKey,
+	}, uploadPodsCreated.With(metricLabels))
+	if err != nil {
+		l.Error(err, "error reconciling upload pod for pipeline", "name", pipeline.GetName())
+		return ctrl.Result{}, err
+	}
+
 	uploadService := r.newUploadService(pipeline, uploadPod)
 
+	if uploadService != nil {
+		if err = reconcileChildResource[*corev1.Service](ctx, r.Client, uploadService, pipeline, r.Scheme, nil); err != nil {
+			l.Error(err, "error reconciling upload service for pipeline", "name", pipeline.GetName())
+			return ctrl.Result{}, err
+		}
+	}
+
+	if !pipeline.Status.ScanPodOnly && pipeline.Status.StartTime == nil {
+		// check if uploader is running & can accept sc
+		uploaderReady := false
+		for _, status := range uploadPod.Status.InitContainerStatuses {
+			if status.Name == sidecarReceiverContainerName && status.Started != nil {
+				uploaderReady = *status.Started
+				break
+			}
+		}
+		if !uploaderReady {
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+		}
+	}
+
 	scanPod := r.newScanPod(pipeline, profile.Spec, downloaderSpec,
-		r.createScanExtractorContainer(pipeline, uploadService, extractorArgs),
+		r.createSidecarExtractorContainer(pipeline, uploadService, artifactArgs),
 		append(containerOpts,
 			containers.WithWorkingDir(v1beta1.PipelineTargetDirectory),
 			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
@@ -203,24 +236,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				Name:      pipelineResultsVolumeName,
 				MountPath: v1beta1.PipelineResultsDirectory,
 			}))...)
-
-	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace,
-		"downloader": pipeline.Spec.DownloaderRef.Name, "profile": pipeline.Spec.ProfileRef.Name}
-	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, []string{
-		v1beta1.PipelineLabelKey,
-		v1beta1.TypeLabelKey,
-	}, uploadPodsCreated.With(metricLabels))
-	if err != nil {
-		l.Error(err, "error reconciling upload pod for pipeline", "name", pipeline.GetName())
-		return ctrl.Result{}, err
-	}
-
-	if uploadService != nil {
-		if err = reconcileChildResource[*corev1.Service](ctx, r.Client, uploadService, pipeline, r.Scheme, nil); err != nil {
-			l.Error(err, "error reconciling upload service for pipeline", "name", pipeline.GetName())
-			return ctrl.Result{}, err
-		}
-	}
 
 	scanPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, scanPod, []string{
 		v1beta1.PipelineLabelKey,
@@ -268,36 +283,37 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 const (
-	// extractorPodName is the name of the extractor container in the scan pod
+	// sidecarExtractorContainerName is the name of the sidecar container in the scan pod
 	// that handles extracting artifacts and uploading them to the upload pod
-	extractorPodName = "extract-artifacts"
+	sidecarExtractorContainerName = "extract-artifacts"
 
-	// receiverPodName is the name of the receiver container in the upload pod
-	receiverPodName = "receive-artifacts"
+	// sidecarReceiverContainerName is the name of the receiver
+	// sidecar container in the upload pod
+	sidecarReceiverContainerName = "receive-artifacts"
 )
 
-func (r *PipelineReconciler) createScanExtractorContainer(pipeline *v1beta1.Pipeline, uploadService *corev1.Service, artifactsArgs []string) corev1.Container {
+func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.Pipeline, uploadService *corev1.Service, artifactsArgs []string) corev1.Container {
 	var (
-		extractorEnvVars []corev1.EnvVar
-		extractorCommand = "ignore"
+		sidecarEnvVars []corev1.EnvVar
+		sidecarCommand = "ignore"
 	)
 
 	if !pipeline.Status.ScanPodOnly {
-		extractorCommand = "extract"
+		sidecarCommand = "extract"
 		if uploadService != nil {
-			extractorEnvVars = append(extractorEnvVars, corev1.EnvVar{
-				Name:  v1beta1.EnvVarExtractorHost,
+			sidecarEnvVars = append(sidecarEnvVars, corev1.EnvVar{
+				Name:  v1beta1.EnvVarSidecarExtractorHost,
 				Value: fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", uploadService.Name, uploadService.Namespace, extractorPort),
 			})
 		}
 	}
 
 	return corev1.Container{
-		Name:            extractorPodName,
-		Image:           r.ExtractorImage,
-		ImagePullPolicy: r.ExtractorPullPolicy,
-		Args:            append([]string{extractorCommand}, artifactsArgs...),
-		Env:             extractorEnvVars,
+		Name:            sidecarExtractorContainerName,
+		Image:           r.SidecarImage,
+		ImagePullPolicy: r.SidecarPullPolicy,
+		Args:            append([]string{sidecarCommand}, artifactsArgs...),
+		Env:             sidecarEnvVars,
 		RestartPolicy:   ptr.To(corev1.ContainerRestartPolicyAlways),
 	}
 }
@@ -531,7 +547,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 		var setParams = map[string]struct{}{}
 		for _, paramDef := range invocation.parameters {
 			setParams[paramDef.Name] = struct{}{}
-			envVarName := ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name)
+			envVarName := ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name)
 			baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
 				Name:  envVarName,
 				Value: paramDef.Value,
@@ -542,7 +558,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 			if _, exists := setParams[paramDef.Name]; !exists {
 				if paramDef.Default != nil {
 					baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
-						Name:  ocuarlRuntime.ParameterToEnvironmentVariable(paramDef.Name),
+						Name:  ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name),
 						Value: *paramDef.Default,
 					})
 				}
@@ -561,6 +577,18 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 	}
 	labels := utils.MergeMaps(profile.Spec.AdditionalPodMetadata.Labels, standardLabels)
 
+	sidecarContainer := corev1.Container{
+		Name:  sidecarReceiverContainerName,
+		Image: r.SidecarImage,
+		Args:  []string{"receive"},
+		Env: []corev1.EnvVar{
+			{
+				Name:  v1beta1.EnvVarSidecarExtractorPort,
+				Value: fmt.Sprintf("%d", extractorPort),
+			},
+		},
+	}
+
 	uploadPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: pipeline.GetName() + uploadPodSuffix + "-",
@@ -573,17 +601,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 			Containers:         containers.ApplyOptions(uploaderContainers, containerOpts...),
 			InitContainers: containers.ApplyOptions([]corev1.Container{
 				// Add the extractor as an init container running in receive mode
-				{
-					Name:  receiverPodName,
-					Image: r.ExtractorImage,
-					Args:  []string{"receive"},
-					Env: []corev1.EnvVar{
-						{
-							Name:  v1beta1.EnvVarExtractorPort,
-							Value: fmt.Sprintf("%d", extractorPort),
-						},
-					},
-				},
+				sidecarContainer,
 			}, containerOpts...),
 			Volumes: append(volumes,
 				// add shared volume for target and results
@@ -620,6 +638,30 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profileSpec 
 	}
 	labels := utils.MergeMaps(profileSpec.AdditionalPodMetadata.Labels, standardLabels)
 
+	downloaderContainer := downloaderSpec.Container
+	var setParams = map[string]struct{}{}
+	// Set parameters
+	for _, paramDef := range pipeline.Spec.DownloaderRef.Parameters {
+		setParams[paramDef.Name] = struct{}{}
+		envVarName := ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name)
+		downloaderContainer.Env = append(downloaderContainer.Env, corev1.EnvVar{
+			Name:  envVarName,
+			Value: paramDef.Value,
+		})
+	}
+
+	// Set defaults for missing
+	for _, paramDef := range downloaderSpec.Parameters {
+		if _, exists := setParams[paramDef.Name]; !exists {
+			if paramDef.Default != nil {
+				downloaderContainer.Env = append(downloaderContainer.Env, corev1.EnvVar{
+					Name:  ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name),
+					Value: *paramDef.Default,
+				})
+			}
+		}
+	}
+
 	scanPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: pipeline.GetName() + scanPodSuffix + "-",
@@ -632,7 +674,7 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profileSpec 
 			Containers:         containers.ApplyOptions(profileSpec.Containers, containerOpts...),
 			InitContainers: containers.ApplyOptions([]corev1.Container{
 				// Add the downloader as an init container
-				downloaderSpec.Container,
+				downloaderContainer,
 				// Add the extractor as a sidecar container running in extract mode
 				extractorContainer,
 			}, containerOpts...),
@@ -657,7 +699,7 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profileSpec 
 	return scanPod
 }
 
-func generateExtractorArguments(metadataFiles []string, artifacts []string) []string {
+func generateArtifactArguments(metadataFiles []string, artifacts []string) []string {
 	args := []string{"--"}
 	for _, artifact := range artifacts {
 		artifactPath := path.Clean(artifact)
@@ -746,7 +788,7 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 func determineScanPodStageStatuses(scanPod *corev1.Pod) (dlStatus v1beta1.PipelineStageStatus, scanStatus v1beta1.PipelineStageStatus) {
 	completed, failed := true, false
 	for _, cs := range scanPod.Status.InitContainerStatuses {
-		if cs.Name != extractorPodName {
+		if cs.Name != sidecarExtractorContainerName {
 			completed = completed && cs.State.Terminated != nil
 			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
 				failed = true

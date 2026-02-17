@@ -40,7 +40,7 @@ type PipelineSpec struct {
 	// DownloaderRef is a reference to the downloader that will be used in this pipeline.
 	// It should point to a valid Downloader resource in the same namespace.
 	// +required
-	DownloaderRef v1.ObjectReference `json:"downloaderRef" protobuf:"bytes,1,opt,name=downloaderRef"`
+	DownloaderRef ParameterizedObjectReference `json:"downloaderRef" protobuf:"bytes,1,opt,name=downloaderRef"`
 
 	// ProfileRef is a reference to the profile that will be used in this pipeline.
 	// It should point to a valid Profile resource in the same namespace.
@@ -49,7 +49,7 @@ type PipelineSpec struct {
 
 	// Target is the actual software asset that will be processed by this pipeline.
 	// It is up to the Downloader to interpret the target correctly.
-	// +required
+	// +optional
 	Target Target `json:"target" protobuf:"bytes,3,opt,name=target"`
 
 	// ScanServiceAccountName is the name of the service account that will be used to run the scan job.

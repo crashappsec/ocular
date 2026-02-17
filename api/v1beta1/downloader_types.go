@@ -36,6 +36,15 @@ type DownloaderSpec struct {
 	// +kubebuilder:validation:MaxItems=10
 	// +listType=set
 	MetadataFiles []string `json:"metadataFiles,omitempty" protobuf:"bytes,3,opt,name=metadataFiles" patchStrategy:"merge"`
+
+	// Parameters is a list of ParameterDefinition that can be used to define "parameters"
+	// that the user can specify in a downloader reference that can configure how to download targets.
+	// +optional
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
+	Parameters []ParameterDefinition `json:"parameters,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,3,rep,name=parameters"`
 }
 
 type DownloaderStatus struct {

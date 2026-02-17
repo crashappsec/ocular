@@ -18,6 +18,10 @@ const (
 
 	// CrawlerLabelKey is the label key used to identify searches created from a specific crawler.
 	CrawlerLabelKey = Group + "/crawler"
+
+	// PipelineTemplateAnnoation is the annotation containing the JSON
+	// encoded pipeline template for the search scheduler.
+	PipelineTemplateAnnotation = Group + "/pipeineTemplate.json"
 )
 
 // SearchSpec defines the desired state of Search
@@ -25,7 +29,7 @@ type SearchSpec struct {
 	// CrawlerRef is a reference to the crawler that will be run in this search.
 	// It should point to a valid Crawler resource in the same namespace.
 	// +required
-	CrawlerRef CrawlerObjectReference `json:"crawlerRef,omitempty" protobuf:"bytes,1,opt,name=crawlerRef"`
+	CrawlerRef ParameterizedObjectReference `json:"crawlerRef,omitempty" protobuf:"bytes,1,opt,name=crawlerRef"`
 
 	// TTLSecondsAfterFinished is the number of seconds to retain the search after it has finished.
 	// +optional
@@ -37,6 +41,45 @@ type SearchSpec struct {
 	// NOTE: This ServiceAccount must exist in the same namespace as the Search.
 	// +optional
 	ServiceAccountNameOverride string `json:"serviceAccountNameOverride,omitempty" protobuf:"bytes,4,opt,name=serviceAccountNameOverride" description:"The name of the service account that will be used to run the scan job."`
+
+	// Scheduler represents the configuration of the scheduler sidecar
+	// +optional
+	Scheduler SearchSchedulerSpec `json:"scheduler,omitempty"`
+}
+
+// SearchSchedulerSpec configures the scheduler sidecar container
+// present on the search pod. The sechduler will read a [Target] JSON
+// spec from the unix socket [EnvVarPipelineFifo] and create pipelines
+// for each target. The pipeline will be derived from the [PipelineTemplate]
+// (with the target replaced) and
+type SearchSchedulerSpec struct {
+	// PipelineTemplate is the template for pipelines that will be created from this search.
+	// The pipeline template will be read by the ocular sidecar container, and when it receives
+	// targets via the unix socket [EnvVarPipelineSocket], it will create a pipeline from the template
+	// with the received target set. If omitted, sidecar container will be disabled
+	// +optional
+	PipelineTemplate PipelineTemplate `json:"pipelineTemplate,omitempty"`
+
+	// IntervalSeconds represents the amount of time to wait
+	// between creating pipelines. If not set, scheduler defaults to
+	// 60 (1 minute).
+	// +optional
+	IntervalSeconds *int32 `json:"intervalSeconds,omitempty"`
+}
+
+// PipelineTemplate is the template for pipelines
+// that are created from a Search
+type PipelineTemplate struct {
+	// Standard object's metadata of the jobs created from this template.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	// Since this is a template, only generateName, labels and annotations will be used.
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+
+	// Spec is the template for created pipelines.
+	// The "target" field will be overrwritten
+	// +optional
+	Spec PipelineSpec `json:"spec,omitempty"`
 }
 
 // SearchStatus defines the observed state of Search.
