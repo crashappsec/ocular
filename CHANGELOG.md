@@ -1,6 +1,20 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
 
+# [v0.2.6](https://github.com/crashappsec/ocular/releases/tag/v0.2.6) - **February 17th, 2026**
+
+### Added
+- Downloader and ClusterDownloader now support parameters
+  - parameters are specified in the `downloaderRef` field of a pipeline
+- Searches now have a "scheduler sidecar", which can create pipelines or searches just by writing to a FIFO
+  - Searches has a new field `scheluder` where you can specify the pipeline template for created pipelines, and an internal for how long to space out newly created resources
+  - writing to the file `$OCULAR_PIPELINE_FIFO` with the JSON of a target will result in the sidecar creating a pipeline based on the `pipelineTemplate` field of the search
+  - writing to the file `$OCULAR_SEARCH_FIFO` with the JSON of a crawler reference will result in the sidecar creating a search with the same spec as the current search, but with the crawler reference updated.
+
+### Fixes
+- `ocular-extractor` now renamed `ocular-sidecar`
+- Pipeline scheduler will now wait for the uploader's reciever to be running before creating scan pod
+
 # [v0.2.5](https://github.com/crashappsec/ocular/releases/tag/v0.2.5) - **February 3rd, 2026**
 
 ### Added
