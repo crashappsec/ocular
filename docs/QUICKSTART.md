@@ -56,24 +56,15 @@ Resource Controllers. The following instructions will guide you through the setu
       ```sh
       # Make sure to add the repo if not done already
       # helm repo add crashoverride https://crashappsec.github.io/helm-charts
-      
-      # This should be the namespace you want to perform scan in.
-      # It should probably be different than the 'ocular-system' namespace
-      # where the ocular controller runs.
-      export NAMESPACE=default
+	  # the default intergration are cluster wide resources, so no namespace is needed
     
       helm install ocular-default-integrations \
-      crashoverride/ocular-default-integrations \
-      --namespace $NAMESPACE
+      crashoverride/ocular-default-integrations 
       ```
     - **Using kubectl:**
 
       ```sh
-      # This should be the namespace you want to perform scan in.
-      # It should probably be different than the 'ocular-system' namespace
-      # where the ocular controller runs.
-      export NAMESPACE=default
-      # Install the latest verion of ocular
+      # Install the latest verion of ocular default integrations
       curl -s https://api.github.com/repos/crashappsec/ocular-default-integrations/releases/latest \
       | grep "browser_download_url.*yaml" \
       | cut -d : -f 2,3 \
@@ -94,14 +85,15 @@ Resource Controllers. The following instructions will guide you through the setu
     You should see the Ocular controller pod in a `Running` state.
     [OPTIONAL] verify that the default integrations have been configured correctly:
     ```sh
-    kubectl get downloaders -n <NAMESPACE>
+    kubectl get clusterdownloaders # or clusteruploaders or clustercrawlers
     ```
     You should see a list of downloader integrations each with `ocular-defaults-` prefix.
 4. **Run a pipeline to scan a git repository**
    In order to run a pipeline we first need to create a `Profile` resource that defines
    the scanners to use and their configurations, and a `Downloader` resource that defines
-   how to fetch the scan targets. In this quickstart guide we will be scanning a git repository,
-   so we can use the `ocular-defaults-git` downloader provided by the default integrations package.
+   how to fetch the scan targets. There is also a `ClusterDownloader` option which is not tied to a namespace,
+   and is what the default integrations uses. In this quickstart guide we will be scanning a git repository,
+   so we can use the `ocular-defaults-git` cluster downloader provided by the default integrations package.
    (if you skipped installing the default integrations you will need to create your own downloader).
    
     Create a file named `quickstart-profile.yaml` with the following content:
@@ -110,7 +102,7 @@ Resource Controllers. The following instructions will guide you through the setu
     kind: Profile
     metadata:
       name: quickstart
-      namespace: default # This should be the same namespace where you installed the default integrations
+      namespace: default # This should be the same namespace where you want the scans to run
     spec:
       containers:
       - name: "semgrep"
@@ -149,10 +141,11 @@ Resource Controllers. The following instructions will guide you through the setu
         # better to use 'generateName' so that multiple pipelines
         # can be created from the same spec without name conflicts
         generateName: quickstart-
-        namespace: default
+        namespace: default # should be same as profile
     spec:
         downloaderRef:
             name: ocular-defaults-git
+			kind: ClusterDownloader 
         profileRef:
             name: quickstart
         target:
