@@ -110,26 +110,12 @@ func main() {
 	}
 
 	if len(webhookCertPath) > 0 {
-		// setupLog.Info("Initializing webhook certificate watcher using provided certificates",
-		// 	"webhook-cert-path", webhookCertPath, "webhook-cert-name", webhookCertName, "webhook-cert-key", webhookCertKey)
-
-		// var err error
-		// webhookCertWatcher, err = certwatcher.New(
-		// 	filepath.Join(webhookCertPath, webhookCertName),
-		// 	filepath.Join(webhookCertPath, webhookCertKey),
-		// )
-		// if err != nil {
-		// 	setupLog.Error(err, "Failed to initialize webhook certificate watcher")
-		// 	os.Exit(1)
-		// }
+		setupLog.Info("Initializing webhook certificate watcher using provided certificates",
+			"webhook-cert-path", webhookCertPath, "webhook-cert-name", webhookCertName, "webhook-cert-key", webhookCertKey)
 
 		webhookServerOptions.CertDir = webhookCertPath
 		webhookServerOptions.CertName = webhookCertName
 		webhookServerOptions.KeyName = webhookCertKey
-
-		// webhookTLSOpts = append(webhookTLSOpts, func(config *tls.Config) {
-		// config.GetCertificate = webhookCertWatcher.GetCertificate
-		// })
 	}
 
 	webhookServer := webhook.NewServer(webhookServerOptions)
