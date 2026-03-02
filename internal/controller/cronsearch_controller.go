@@ -56,8 +56,6 @@ var (
 	scheduledTimeAnnotation = "ocular.crashoverride.run/scheduled-at"
 )
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
 // This function is designed to behave the same as [k8s.io/api/batch/v1.CronJob] controller,
 // The actual implementation is copied and modified from the kubebuilder tutorial, where
 // a CronJob controller is implemented.
@@ -119,7 +117,7 @@ func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			if err := r.Delete(ctx, search, client.PropagationPolicy(metav1.DeletePropagationBackground)); client.IgnoreNotFound(err) != nil {
 				log.Error(err, "unable to delete old failed search", "search", search)
 			} else {
-				log.V(0).Info("deleted old failed search", "search", search)
+				log.Info("deleted old failed search", "search", search)
 			}
 		}
 	}
@@ -138,7 +136,7 @@ func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			if err := r.Delete(ctx, search, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
 				log.Error(err, "unable to delete old successful search", "search", search)
 			} else {
-				log.V(0).Info("deleted old successful search", "search", search)
+				log.Info("deleted old successful search", "search", search)
 			}
 		}
 	}
