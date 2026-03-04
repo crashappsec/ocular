@@ -23,6 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -120,35 +121,24 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	containerOpts := generateBaseContainerOptions(envVars)
 
-	copyOwnership := func(_ context.Context, _ client.Client, actual, desired *corev1.ServiceAccount) error {
-		desired.OwnerReferences = actual.OwnerReferences
-		return nil
-	}
-
 	// generate desired upload pod, service, and scan pod
 	var searchServiceAccount *corev1.ServiceAccount
-	if search.Spec.ServiceAccountNameOverride != "" {
-		searchServiceAccount, err = r.getServiceAccountFromOverride(ctx, search)
+	if search.Status.CustomServiceAccount {
+		searchServiceAccount, err = r.getServiceAccount(ctx, search)
 		if err != nil {
 			l.Error(err, "error getting service account from override for search",
-				"name", search.GetName(), "serviceaccount", search.Spec.ServiceAccountNameOverride)
+				"name", search.GetName(), "serviceaccount", search.Spec.ServiceAccountName)
 			return ctrl.Result{}, err
 		}
 	} else {
 		searchServiceAccount = r.newSearchServiceAccount(search)
-		if err = reconcileChildResource(ctx, r.Client, searchServiceAccount, search, r.Scheme, copyOwnership); err != nil {
+		if err = reconcileChildResource[*corev1.ServiceAccount](ctx, r.Client, searchServiceAccount, search, r.Scheme, nil); err != nil {
 			l.Error(err, "error reconciling service account for search", "name", search.GetName())
 			return ctrl.Result{}, err
 		}
-		search.Spec.ServiceAccountNameOverride = searchServiceAccount.Name
-		if err = r.Update(ctx, search); err != nil {
-			l.Error(err, "error updating search with service account name override", "name", search.GetName())
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
 	}
-	searchRoleBinding := r.newSearchRoleBinding(search, searchServiceAccount)
 
+	searchRoleBinding := r.newSearchRoleBinding(search, searchServiceAccount)
 	if err = reconcileChildResource[*rbacv1.RoleBinding](ctx, r.Client, searchRoleBinding, search, r.Scheme, nil); err != nil {
 		l.Error(err, "error reconciling upload pod for pipeline", "name", search.GetName())
 		return ctrl.Result{}, err
@@ -192,25 +182,25 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *SearchReconciler) newSearchServiceAccount(search *v1beta1.Search) *corev1.ServiceAccount {
-
-	labels := map[string]string{
+	saLabels := map[string]string{
 		v1beta1.SearchLabelKey: search.GetName(),
 		v1beta1.TypeLabelKey:   v1beta1.ServiceAccountTypeSearch,
 	}
 
-	return &corev1.ServiceAccount{
+	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      search.GetName() + searchResourceSuffix,
+			Name:      search.Spec.ServiceAccountName,
 			Namespace: search.GetNamespace(),
-			Labels:    labels,
+			Labels:    saLabels,
 		},
 	}
+	return sa
 }
 
-func (r *SearchReconciler) getServiceAccountFromOverride(ctx context.Context, search *v1beta1.Search) (*corev1.ServiceAccount, error) {
+func (r *SearchReconciler) getServiceAccount(ctx context.Context, search *v1beta1.Search) (*corev1.ServiceAccount, error) {
 	var sa corev1.ServiceAccount
 	err := r.Get(ctx, client.ObjectKey{
-		Name:      search.Spec.ServiceAccountNameOverride,
+		Name:      search.Spec.ServiceAccountName,
 		Namespace: search.Namespace,
 	}, &sa)
 	return &sa, err
@@ -219,7 +209,7 @@ func (r *SearchReconciler) getServiceAccountFromOverride(ctx context.Context, se
 
 func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *corev1.ServiceAccount) *rbacv1.RoleBinding {
 
-	labels := map[string]string{
+	rbLabels := map[string]string{
 		v1beta1.SearchLabelKey: search.GetName(),
 		v1beta1.TypeLabelKey:   v1beta1.RoleBindingTypeSearch,
 	}
@@ -228,7 +218,7 @@ func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *core
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      search.GetName() + searchResourceSuffix,
 			Namespace: search.GetNamespace(),
-			Labels:    labels,
+			Labels:    rbLabels,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
@@ -301,12 +291,35 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1be
 		return nil, fmt.Errorf("unable to marshal pipeline template: %w", err)
 	}
 
-	labels := generateChildLabels(search)
-	labels[v1beta1.SearchLabelKey] = search.GetName()
-	labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeSearch
-	labels[v1beta1.CrawlerLabelKey] = search.Spec.CrawlerRef.Name
+	podLabels := generateChildLabels(search)
+	podLabels[v1beta1.SearchLabelKey] = search.GetName()
+	podLabels[v1beta1.TypeLabelKey] = v1beta1.PodTypeSearch
+	podLabels[v1beta1.CrawlerLabelKey] = search.Spec.CrawlerRef.Name
+
 	annotations := make(map[string]string)
 	annotations[v1beta1.PipelineTemplateAnnotation] = string(pipelineTemplateJSON)
+	annotations[v1beta1.ServiceAccountNameAnnotation] = search.Spec.ServiceAccountName
+	if search.Spec.TTLSecondsAfterFinished != nil {
+		annotations[v1beta1.TTLSecondsAnnotation] = strconv.Itoa(int(*search.Spec.TTLSecondsAfterFinished))
+	} else {
+		annotations[v1beta1.TTLSecondsAnnotation] = ""
+	}
+
+	envVars = append(envVars, corev1.EnvVar{
+		Name: v1beta1.EnvVarSchedulerSearchTTL,
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{
+				FieldPath: "metadata.annotations['" + v1beta1.TTLSecondsAnnotation + "']",
+			},
+		},
+	}, corev1.EnvVar{
+		Name: v1beta1.EnvVarSchedulerServiceAccount,
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{
+				FieldPath: "metadata.annotations['" + v1beta1.ServiceAccountNameAnnotation + "']",
+			},
+		},
+	})
 
 	schedulerSidecarContainer := r.generateSchedulerSidecarContainer(search)
 	keepaliveSidecarContainer := r.generateKeepaliveSidecarContainer(search)
@@ -326,7 +339,7 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1be
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: search.GetName() + "-",
 			Namespace:    search.GetNamespace(),
-			Labels:       labels,
+			Labels:       podLabels,
 			Annotations:  annotations,
 		},
 		Spec: corev1.PodSpec{
@@ -346,6 +359,15 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1be
 
 func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1.Search, pod *corev1.Pod) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
+
+	childPipelines, childSearches, err := r.retrieveRunningScheduledResources(ctx, search)
+	if err != nil {
+		return ctrl.Result{}, err
+	} else if len(childPipelines) > 0 || len(childSearches) > 0 {
+		l.Info("child resources not completed", "search", search.Name, "pipelines", childPipelines, "searches", childSearches)
+		return ctrl.Result{RequeueAfter: time.Second * 10}, nil
+	}
+
 	metricLabels := prometheus.Labels{"namespace": search.Namespace, "crawler": search.Spec.CrawlerRef.Name}
 	switch pod.Status.Phase {
 	case corev1.PodFailed:
@@ -391,6 +413,50 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 	return ctrl.Result{}, nil
 }
 
+func (r *SearchReconciler) retrieveRunningScheduledResources(ctx context.Context, search *v1beta1.Search) ([]v1beta1.Pipeline, []v1beta1.Search, error) {
+	var (
+		err error
+
+		pipelineList v1beta1.PipelineList
+		searchList   v1beta1.SearchList
+	)
+	err = r.List(ctx, &pipelineList, &client.ListOptions{
+		Namespace: search.Namespace,
+		LabelSelector: labels.SelectorFromSet(labels.Set{
+			v1beta1.ScheduledByLabelKey: search.Name,
+		}),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = r.List(ctx, &searchList, &client.ListOptions{
+		Namespace: search.Namespace,
+		LabelSelector: labels.SelectorFromSet(labels.Set{
+			v1beta1.ScheduledByLabelKey: search.Name,
+		}),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pipelines := make([]v1beta1.Pipeline, 0, len(pipelineList.Items))
+	for _, p := range pipelineList.Items {
+		if p.Status.CompletionTime == nil {
+			pipelines = append(pipelines, p)
+		}
+	}
+
+	searches := make([]v1beta1.Search, 0, len(searchList.Items))
+	for _, s := range searchList.Items {
+		if s.Status.CompletionTime == nil {
+			searches = append(searches, s)
+		}
+	}
+	return pipelines, searches, nil
+
+}
+
 func generateBaseSearchEnvironment(search *v1beta1.Search, crawlerName string) []corev1.EnvVar {
 	var schedulerInterval = 60
 	if search.Spec.Scheduler.IntervalSeconds != nil {
@@ -398,7 +464,11 @@ func generateBaseSearchEnvironment(search *v1beta1.Search, crawlerName string) [
 	}
 	return []corev1.EnvVar{
 		{
-			Name:      v1beta1.EnvVarSearchName,
+			Name:  v1beta1.EnvVarSearchName,
+			Value: search.Name,
+		},
+		{
+			Name:      v1beta1.EnvVarPodName,
 			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}},
 		},
 		{
@@ -426,8 +496,12 @@ func generateBaseSearchEnvironment(search *v1beta1.Search, crawlerName string) [
 			Value: strconv.Itoa(schedulerInterval),
 		},
 		{
-			Name:  v1beta1.EnvVarSidecarSchedulerCompletePath,
+			Name:  v1beta1.EnvVarSchedulerCompletePath,
 			Value: sidecarCompletePath,
+		},
+		{
+			Name:  v1beta1.EnvVarSchedulerParentUID,
+			Value: string(search.UID),
 		},
 	}
 }

@@ -23,7 +23,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/resources"
 )
 
@@ -33,16 +33,33 @@ var searchlog = logf.Log.WithName("search-resource")
 
 // SetupSearchWebhookWithManager registers the webhook for Search in the manager.
 func SetupSearchWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, &ocularcrashoverriderunv1beta1.Search{}).
+	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.Search{}).
 		WithValidator(&SearchCustomValidator{
 			c: mgr.GetClient(),
 		}).
-		// WithDefaulter(&SearchCustomDefaulter{}).
+		WithDefaulter(&SearchCustomDefaulter{}).
 		Complete()
 }
 
-// NOTE: currently the search is only configured to run as a validating webhook
-// during the update and/or creation of a Search resource to validate that
+// +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-search,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=searches,verbs=create;update,versions=v1beta1,name=msearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
+
+// SearchCustomDefaulter struct is responsible for setting default values on the custom resource of the
+// Kind Search when those are created
+type SearchCustomDefaulter struct{}
+
+// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Search.
+func (d *SearchCustomDefaulter) Default(_ context.Context, search *v1beta1.Search) error {
+	searchlog.Info("defaulting for Search", "name", search.GetName())
+	if search.Spec.ServiceAccountName == "" && !search.Status.CustomServiceAccount {
+		search.Spec.ServiceAccountName = "search-" + search.GetName()
+	} else {
+		search.Status.CustomServiceAccount = true
+	}
+	return nil
+}
+
+// NOTE: currently the search validating webhook only runs during the
+// update and/or creation of a Search resource to validate that
 // 1) the referenced Crawler exists and is in the same namespace as the Search, and
 // 2) all required parameters defined in the referenced Crawler are provided in the Search.
 // Deletion validation is not currently needed because there are no resources that
@@ -58,36 +75,37 @@ type SearchCustomValidator struct {
 }
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *SearchCustomValidator) ValidateCreate(ctx context.Context, search *ocularcrashoverriderunv1beta1.Search) (admission.Warnings, error) {
+func (v *SearchCustomValidator) ValidateCreate(ctx context.Context, search *v1beta1.Search) (admission.Warnings, error) {
 	searchlog.Info("validating Search resource creation", "name", search.GetName())
 
 	return nil, validateSearch(ctx, v.c, search)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldSearch, newSearch *ocularcrashoverriderunv1beta1.Search) (admission.Warnings, error) {
+func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldSearch, newSearch *v1beta1.Search) (admission.Warnings, error) {
 	searchlog.Info("validating Search resource update", "name", newSearch.GetName())
 
-	if oldSearch.Spec.ServiceAccountNameOverride != "" && oldSearch.Spec.ServiceAccountNameOverride != newSearch.Spec.ServiceAccountNameOverride {
+	if oldSearch.Spec.ServiceAccountName != newSearch.Spec.ServiceAccountName {
 		return nil, apierrors.NewInvalid(
 			schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
 			newSearch.Name,
 			field.ErrorList{
-				field.Invalid(field.NewPath("spec").Child("serviceAccountNameOverride"), newSearch.Spec.ServiceAccountNameOverride, "serviceAccountNameOverride cannot be changed once set"),
+				field.Invalid(field.NewPath("spec").Child("serviceAccountName"), newSearch.Spec.ServiceAccountName, "serviceAccountName cannot be changed once set"),
+			})
+	}
+	if oldSearch.Status.CustomServiceAccount != newSearch.Status.CustomServiceAccount {
+		return nil, apierrors.NewInvalid(
+			schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
+			newSearch.Name,
+			field.ErrorList{
+				field.Invalid(field.NewPath("status").Child("customServiceAccount"), newSearch.Spec.ServiceAccountName, "customServiceAccount cannot be changed once set"),
 			})
 	}
 
 	return nil, validateSearch(ctx, v.c, newSearch)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *SearchCustomValidator) ValidateDelete(ctx context.Context, search *ocularcrashoverriderunv1beta1.Search) (admission.Warnings, error) {
-	searchlog.Info("crawler validate delete should not be registered, see NOTE in webhook/v1beta1/search_webhook.go", "name", search.GetName())
-
-	return nil, nil
-}
-
-func validateSearch(ctx context.Context, c client.Client, search *ocularcrashoverriderunv1beta1.Search) error {
+func validateSearch(ctx context.Context, c client.Client, search *v1beta1.Search) error {
 	var allErrs field.ErrorList
 	var namespace = search.Spec.CrawlerRef.Namespace
 	if namespace == "" {
@@ -107,18 +125,18 @@ func validateSearch(ctx context.Context, c client.Client, search *ocularcrashove
 		return err
 	}
 
-	if search.Spec.ServiceAccountNameOverride != "" {
+	if search.Status.CustomServiceAccount {
 		var serviceAccount corev1.ServiceAccount
 		err = c.Get(ctx, client.ObjectKey{
-			Name:      search.Spec.ServiceAccountNameOverride,
+			Name:      search.Spec.ServiceAccountName,
 			Namespace: search.Namespace,
 		}, &serviceAccount)
 
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
-				return fmt.Errorf("error fetching service account %s/%s: %w", search.Namespace, search.Spec.ServiceAccountNameOverride, err)
+				return fmt.Errorf("error fetching service account %s/%s: %w", search.Namespace, search.Spec.ServiceAccountName, err)
 			}
-			allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("serviceAccountNameOverride"), fmt.Sprintf("%s/%s", search.Namespace, search.Spec.ServiceAccountNameOverride)))
+			allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("serviceAccountName"), fmt.Sprintf("%s/%s", search.Namespace, search.Spec.ServiceAccountName)))
 		}
 	}
 
@@ -137,4 +155,11 @@ func validateSearch(ctx context.Context, c client.Client, search *ocularcrashove
 	return apierrors.NewInvalid(
 		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
 		search.Name, allErrs)
+}
+
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Search.
+func (v *SearchCustomValidator) ValidateDelete(ctx context.Context, search *v1beta1.Search) (admission.Warnings, error) {
+	searchlog.Info("crawler validate delete should not be registered, see NOTE in webhook/v1beta1/search_webhook.go", "name", search.GetName())
+
+	return nil, nil
 }

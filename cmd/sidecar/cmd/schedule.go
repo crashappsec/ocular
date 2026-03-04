@@ -27,12 +27,14 @@ import (
 	"github.com/crashappsec/ocular/pkg/generated/clientset"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	"k8s.io/utils/ptr"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/yaml"
 )
 
 func Schedule(ctx context.Context) error {
@@ -89,6 +91,17 @@ func Schedule(ctx context.Context) error {
 	// when the crawler container exits for this search.
 	crawlerCtx, crawlerCancel := context.WithCancel(ctx)
 
+	scheduledByLabels := make(map[string]string)
+	scheduledByLabels[v1beta1.ScheduledByLabelKey] = searchName
+
+	ownerRef := metav1.OwnerReference{
+		UID:        types.UID(os.Getenv(v1beta1.EnvVarSchedulerParentUID)),
+		Kind:       "Search",
+		APIVersion: v1beta1.GroupVersion.String(),
+		Name:       searchName,
+		Controller: ptr.To(true),
+	}
+
 	log.Info("starting workers")
 	wg := &sync.WaitGroup{}
 
@@ -97,6 +110,14 @@ func Schedule(ctx context.Context) error {
 		fifoDecoder(crawlerCtx, crawlers, searchFIFOPath)
 	})
 	wg.Go(func() {
+		var ttlSeconds *int32
+		if ttlEnv := os.Getenv(v1beta1.EnvVarSchedulerSearchTTL); ttlEnv != "" {
+			ttl, err := strconv.Atoi(ttlEnv)
+			if err == nil {
+				ttlSeconds = ptr.To(int32(ttl))
+			}
+		}
+		serviceAccount := os.Getenv(v1beta1.EnvVarSchedulerServiceAccount)
 		for {
 			crawler, ok := <-crawlers
 			if !ok {
@@ -108,8 +129,14 @@ func Schedule(ctx context.Context) error {
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: searchName + "-",
 					Namespace:    namespace,
+					Labels:       scheduledByLabels,
+					OwnerReferences: []metav1.OwnerReference{
+						*ownerRef.DeepCopy(),
+					},
 				},
 				Spec: v1beta1.SearchSpec{
+					TTLSecondsAfterFinished: ttlSeconds,
+					ServiceAccountName:      serviceAccount,
 					Scheduler: v1beta1.SearchSchedulerSpec{
 						IntervalSeconds: ptr.To(int32(sleepDuration)),
 					},
@@ -118,11 +145,15 @@ func Schedule(ctx context.Context) error {
 			}
 			crawler.DeepCopyInto(&search.Spec.CrawlerRef)
 			template.Spec.DeepCopyInto(&search.Spec.Scheduler.PipelineTemplate.Spec)
-			_, err = cs.ApiV1beta1().Searches(namespace).Create(ctx, search, metav1.CreateOptions{})
+			yamlSearch, _ := yaml.Marshal(search)
+			log.Info("starting search", "search-resource", string(yamlSearch))
+			scheduledSearch, err := cs.ApiV1beta1().Searches(namespace).Create(ctx, search, metav1.CreateOptions{})
 			if err != nil {
 				log.Error(err, "unable to start pipeline for crawler", "crawler", crawler)
 				continue
 			}
+			log.Info("search created", "search", scheduledSearch.Name)
+
 			time.Sleep(time.Duration(sleepDuration) * time.Second)
 		}
 		log.Info("search scheduler complete")
@@ -134,9 +165,7 @@ func Schedule(ctx context.Context) error {
 	})
 
 	wg.Go(func() {
-		pipelineLabels := utils.MergeMaps(template.Labels, map[string]string{
-			v1beta1.SearchLabelKey: searchName,
-		})
+		pipelineLabels := utils.MergeMaps(template.Labels, scheduledByLabels)
 		pipelineAnnotations := template.Annotations
 		for {
 			target, ok := <-targets
@@ -144,6 +173,7 @@ func Schedule(ctx context.Context) error {
 				log.Info("target channel closed")
 				break
 			}
+
 			log.Info("scheduling pipeline for target", "target", target)
 			pipeline := &v1beta1.Pipeline{
 				ObjectMeta: metav1.ObjectMeta{
@@ -151,24 +181,28 @@ func Schedule(ctx context.Context) error {
 					Namespace:    namespace,
 					Annotations:  maps.Clone(pipelineAnnotations),
 					Labels:       maps.Clone(pipelineLabels),
+					OwnerReferences: []metav1.OwnerReference{
+						*ownerRef.DeepCopy(),
+					},
 				},
 			}
 
 			template.Spec.DeepCopyInto(&pipeline.Spec)
 
 			target.DeepCopyInto(&pipeline.Spec.Target)
-			_, err = cs.ApiV1beta1().Pipelines(namespace).Create(ctx, pipeline, metav1.CreateOptions{})
+			scheduledPipeline, err := cs.ApiV1beta1().Pipelines(namespace).Create(ctx, pipeline, metav1.CreateOptions{})
 			if err != nil {
 				log.Error(err, "unable to start pipeline for target", "target", target)
 				continue
 			}
+			log.Info("pipeline created", "pipeline", scheduledPipeline.Name)
 			time.Sleep(time.Duration(sleepDuration) * time.Second)
 		}
 		log.Info("pipeline scheduler complete")
 	})
 
 	// await user crawler completion
-	completePath := os.Getenv(v1beta1.EnvVarSidecarSchedulerCompletePath)
+	completePath := os.Getenv(v1beta1.EnvVarSchedulerCompletePath)
 	for {
 		select {
 		case <-crawlerCtx.Done():

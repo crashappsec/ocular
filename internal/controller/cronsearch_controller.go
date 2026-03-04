@@ -282,9 +282,6 @@ func constructSearchForCronSearch(cronSearch *v1beta1.CronSearch, scheduledTime 
 	name := fmt.Sprintf("%s-%d", cronSearch.Name, scheduledTime.Unix())
 
 	searchSpec := *cronSearch.Spec.SearchTemplate.Spec.DeepCopy()
-	// this is a bug, using TTL seconds after finished here would cause the search to be deleted too early
-	// we need to use our own cleanup logic based on the history limits
-	searchSpec.TTLSecondsAfterFinished = nil
 	search := &v1beta1.Search{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels:      make(map[string]string),

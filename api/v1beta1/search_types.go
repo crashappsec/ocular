@@ -21,7 +21,24 @@ const (
 
 	// PipelineTemplateAnnoation is the annotation containing the JSON
 	// encoded pipeline template for the search scheduler.
-	PipelineTemplateAnnotation = Group + "/pipeineTemplate.json"
+	PipelineTemplateAnnotation = Group + "/pipelineTemplate.json"
+
+	// TTLSecondsAnnotation is the annotation containing the
+	// ttl in seconds for how long the search pod should live
+	// after completion
+	TTLSecondsAnnotation = Group + "/ttlSecondsAfterFinished"
+
+	// ServiceAccountNameAnnotation is the annotation containing
+	// the name of the service account the search is using. This
+	// will be used for any searches created as a result of the
+	// scheduler
+	ServiceAccountNameAnnotation = Group + "/serviceAccount"
+
+	// ScheduledByLabelKey  is the label key used to indetifiy the Search
+	// that created either a Pipeline or Search via the scheduler. This label
+	// is used to query for child resources and hold off on completion until
+	// the child resources are complete as well.
+	ScheduledByLabelKey = Group + "/scheduledBy"
 )
 
 // SearchSpec defines the desired state of Search
@@ -35,12 +52,13 @@ type SearchSpec struct {
 	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,2,opt,name=ttlSecondsAfterFinished"`
 
-	// ServiceAccountNameOverride is the name of the service account that will be used to run the scan job.
-	// If not set, the default service account of the namespace will be used.
+	// ServiceAccountName is the name of the service account that will be used to run the search job.
 	// If not specified, a temporary ServiceAccount will be created for the search.
+	// If set, it is up to the user to ensure the service account role has the proper permissions
+	// to create both pipelines and searches.
 	// NOTE: This ServiceAccount must exist in the same namespace as the Search.
 	// +optional
-	ServiceAccountNameOverride string `json:"serviceAccountNameOverride,omitempty" protobuf:"bytes,4,opt,name=serviceAccountNameOverride" description:"The name of the service account that will be used to run the scan job."`
+	ServiceAccountName string `json:"serviceAccountName,omitempty" protobuf:"bytes,4,opt,name=serviceAccountName" description:"The name of the service account that will be used to run the search job."`
 
 	// Scheduler represents the configuration of the scheduler sidecar
 	// +optional
@@ -106,6 +124,10 @@ type SearchStatus struct {
 	// CronSearchControllerName is the name of the controller that created this search.
 	// +optional
 	CronSearchControllerName *string `json:"cronSearchControllerName,omitempty" description:"The name of the controller that created this search."`
+
+	// CustomServiceAccount indicates wether the service account was supplied by the user (true)
+	// or created bvy the controller (false)
+	CustomServiceAccount bool `json:"customServiceAccount" description:"Indicates if the service account is supplied by the user"`
 }
 
 // +kubebuilder:object:root=true
