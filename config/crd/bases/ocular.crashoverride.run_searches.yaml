@@ -298,7 +298,7 @@ spec:
                 type: object
               serviceAccountNameOverride:
                 description: |-
-                  ServiceAccountNameOverride is the name of the service account that will be used to run the scan job.
+                  ServiceAccountNameOverride is the name of the service account that will be used to run the search job.
                   If not set, the default service account of the namespace will be used.
                   If not specified, a temporary ServiceAccount will be created for the search.
                   NOTE: This ServiceAccount must exist in the same namespace as the Search.

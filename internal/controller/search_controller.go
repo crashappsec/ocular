@@ -305,8 +305,31 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1be
 	labels[v1beta1.SearchLabelKey] = search.GetName()
 	labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeSearch
 	labels[v1beta1.CrawlerLabelKey] = search.Spec.CrawlerRef.Name
+
 	annotations := make(map[string]string)
 	annotations[v1beta1.PipelineTemplateAnnotation] = string(pipelineTemplateJSON)
+	annotations[v1beta1.ServiceAccountTypeSearch] = search.Spec.ServiceAccountNameOverride
+	if search.Spec.TTLSecondsAfterFinished != nil {
+		annotations[v1beta1.TTLSecondsAnnotation] = strconv.Itoa(int(*search.Spec.TTLSecondsAfterFinished))
+	} else {
+		annotations[v1beta1.TTLSecondsAnnotation] = ""
+	}
+
+	envVars = append(envVars, corev1.EnvVar{
+		Name: v1beta1.EnvVarSidecarSchedulerSearchTTL,
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{
+				FieldPath: "metadata.annotations['" + v1beta1.TTLSecondsAnnotation + "']",
+			},
+		},
+	}, corev1.EnvVar{
+		Name: v1beta1.EnvVarSidecarSchedulerServiceAccountOverride,
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &corev1.ObjectFieldSelector{
+				FieldPath: "metadata.annotations['" + v1beta1.ServiceAccountNameAnnotation + "']",
+			},
+		},
+	})
 
 	schedulerSidecarContainer := r.generateSchedulerSidecarContainer(search)
 	keepaliveSidecarContainer := r.generateKeepaliveSidecarContainer(search)

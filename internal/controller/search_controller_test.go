@@ -10,6 +10,8 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -18,12 +20,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/api/v1beta1"
 )
 
 var _ = Describe("Search Controller", func() {
@@ -40,32 +43,32 @@ var _ = Describe("Search Controller", func() {
 			Name:      resourceName,
 			Namespace: "default",
 		}
-		search := &ocularcrashoverriderunv1beta1.Search{}
+		search := &v1beta1.Search{}
 
 		crawlerTypeNamespacedName := types.NamespacedName{
 			Name:      crawlerName,
 			Namespace: "default",
 		}
-		crawler := &ocularcrashoverriderunv1beta1.Crawler{}
+		crawler := &v1beta1.Crawler{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Search")
 
 			err := k8sClient.Get(ctx, crawlerTypeNamespacedName, crawler)
 			if err != nil && errors.IsNotFound(err) {
-				crawlerResource := &ocularcrashoverriderunv1beta1.Crawler{
+				crawlerResource := &v1beta1.Crawler{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      crawlerName,
 						Namespace: "default",
 					},
-					Spec: ocularcrashoverriderunv1beta1.CrawlerSpec{
+					Spec: v1beta1.CrawlerSpec{
 						Container: corev1.Container{
 							Name:    crawlerContainerName,
 							Image:   "alpine:latest",
 							Command: []string{"/bin/sh", "-c"},
 							Args:    []string{"echo crawling $CRAWL_TARGET ...; sleep 10; echo done."},
 						},
-						Parameters: []ocularcrashoverriderunv1beta1.ParameterDefinition{
+						Parameters: []v1beta1.ParameterDefinition{
 							{
 								Name:        "CRAWL_TARGET",
 								Description: "The search query to execute",
@@ -79,23 +82,24 @@ var _ = Describe("Search Controller", func() {
 
 			err = k8sClient.Get(ctx, typeNamespacedName, search)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &ocularcrashoverriderunv1beta1.Search{
+				resource := &v1beta1.Search{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-						CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
+					Spec: v1beta1.SearchSpec{
+						CrawlerRef: v1beta1.ParameterizedObjectReference{
 							ObjectReference: corev1.ObjectReference{
 								Name: crawlerName,
 							},
-							Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+							Parameters: []v1beta1.ParameterSetting{
 								{
 									Name:  "CRAWL_TARGET",
 									Value: "example search query",
 								},
 							},
 						},
+						TTLSecondsAfterFinished: ptr.To(int32(3600)),
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -104,11 +108,11 @@ var _ = Describe("Search Controller", func() {
 
 		AfterEach(func() {
 
-			crawlerResource := &ocularcrashoverriderunv1beta1.Crawler{}
+			crawlerResource := &v1beta1.Crawler{}
 			err := k8sClient.Get(ctx, crawlerTypeNamespacedName, crawlerResource)
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &ocularcrashoverriderunv1beta1.Search{}
+			resource := &v1beta1.Search{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -132,7 +136,7 @@ var _ = Describe("Search Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			resource := &ocularcrashoverriderunv1beta1.Search{}
+			resource := &v1beta1.Search{}
 			err = k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resource.Spec.ServiceAccountNameOverride).ToNot(BeEmpty())
@@ -149,19 +153,30 @@ var _ = Describe("Search Controller", func() {
 			searchPods := &corev1.PodList{}
 			err = k8sClient.List(ctx, searchPods, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					ocularcrashoverriderunv1beta1.TypeLabelKey:   ocularcrashoverriderunv1beta1.PodTypeSearch,
-					ocularcrashoverriderunv1beta1.SearchLabelKey: resource.Name,
+					v1beta1.TypeLabelKey:   v1beta1.PodTypeSearch,
+					v1beta1.SearchLabelKey: resource.Name,
 				}),
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(searchPods.Items).To(HaveLen(1))
 			searchPod := searchPods.Items[0]
+			// check init containers
 			Expect(searchPod.Spec.InitContainers).To(HaveLen(3)) // sidecar, sidecar-init and crawler
 			Expect(searchPod.Spec.InitContainers[0].Name).To(Equal(sidecarSchedulerContainerName))
 			Expect(searchPod.Spec.InitContainers[1].Name).To(Equal(sidecarInitContainerName))
 			Expect(searchPod.Spec.InitContainers[2].Name).To(Equal(crawlerContainerName))
+			// check containers
 			Expect(searchPod.Spec.Containers).To(HaveLen(1)) // sidecar-keepalive
 			Expect(searchPod.Spec.Containers[0].Name).To(Equal(sidecarKeepaliveContainerName))
+
+			// check annotations
+			templateJSON, err := json.Marshal(resource.Spec.Scheduler.PipelineTemplate)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(searchPod.Annotations).
+				To(HaveKeyWithValue(v1beta1.PipelineTemplateAnnotation, string(templateJSON)))
+			ttlStr := strconv.Itoa(int(*resource.Spec.TTLSecondsAfterFinished))
+			Expect(searchPod.Annotations).
+				To(HaveKeyWithValue(v1beta1.TTLSecondsAnnotation, ttlStr))
 
 			searchRB := &rbacv1.RoleBinding{}
 			searchRBName := types.NamespacedName{
