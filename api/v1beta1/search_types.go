@@ -21,7 +21,22 @@ const (
 
 	// PipelineTemplateAnnoation is the annotation containing the JSON
 	// encoded pipeline template for the search scheduler.
-	PipelineTemplateAnnotation = Group + "/pipeineTemplate.json"
+	PipelineTemplateAnnotation = Group + "/pipelineTemplate.json"
+
+	// TTLSecondsAnnotation is the annotation containing the
+	// ttl in seconds for how long the search pod should live
+	// after completion
+	TTLSecondsAnnotation = Group + "/ttlSecondsAfterFinished"
+
+	// ServiceAccountNameAnnotation is the annotation containing
+	// the name of the service override (or empty if no override was provided)
+	ServiceAccountNameAnnotation = Group + "/serviceAccountOverride"
+
+	// ScheduledByLabelKey  is the label key used to indetifiy the Search
+	// that created either a Pipeline or Search via the scheduler. This label
+	// is used to query for child resources and hold off on completion until
+	// the child resources are complete as well.
+	ScheduledByLabelKey = Group + "/scheduledBy"
 )
 
 // SearchSpec defines the desired state of Search
@@ -35,12 +50,12 @@ type SearchSpec struct {
 	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,2,opt,name=ttlSecondsAfterFinished"`
 
-	// ServiceAccountNameOverride is the name of the service account that will be used to run the scan job.
+	// ServiceAccountNameOverride is the name of the service account that will be used to run the search job.
 	// If not set, the default service account of the namespace will be used.
 	// If not specified, a temporary ServiceAccount will be created for the search.
 	// NOTE: This ServiceAccount must exist in the same namespace as the Search.
 	// +optional
-	ServiceAccountNameOverride string `json:"serviceAccountNameOverride,omitempty" protobuf:"bytes,4,opt,name=serviceAccountNameOverride" description:"The name of the service account that will be used to run the scan job."`
+	ServiceAccountNameOverride string `json:"serviceAccountNameOverride,omitempty" protobuf:"bytes,4,opt,name=serviceAccountNameOverride" description:"The name of the service account that will be used to run the search job."`
 
 	// Scheduler represents the configuration of the scheduler sidecar
 	// +optional

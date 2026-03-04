@@ -126,9 +126,18 @@ func validateCronSearch(cronSearch *v1beta1.CronSearch) error {
 	if err := validateCronSearchName(cronSearch); err != nil {
 		allErrs = append(allErrs, err)
 	}
-	if err := validateCronSearchSpec(cronSearch); err != nil {
+
+	if _, err := validateCronSearchSpec(cronSearch); err != nil {
 		allErrs = append(allErrs, err)
 	}
+
+	if cronSearch.Spec.SearchTemplate.Spec.TTLSecondsAfterFinished != nil {
+		allErrs = append(allErrs, field.Invalid(
+			field.NewPath("spec.searchTemplate.spec.ttlSecondsAfterFinished"),
+			cronSearch.Spec.SearchTemplate.Spec.TTLSecondsAfterFinished,
+			"ttlSecondsAfterFinished should not be set for CronSearch template"))
+	}
+
 	if len(allErrs) == 0 {
 		return nil
 	}
@@ -138,19 +147,12 @@ func validateCronSearch(cronSearch *v1beta1.CronSearch) error {
 		cronSearch.Name, allErrs)
 }
 
-func validateCronSearchSpec(cronSearch *v1beta1.CronSearch) *field.Error {
-	// The field helpers from the kubernetes API machinery help us return nicely
-	// structured validation errors.
-	return validateScheduleFormat(
-		cronSearch.Spec.Schedule,
-		field.NewPath("spec").Child("schedule"))
-}
-
-func validateScheduleFormat(schedule string, fldPath *field.Path) *field.Error {
-	if _, err := cron.ParseStandard(schedule); err != nil {
-		return field.Invalid(fldPath, schedule, err.Error())
+func validateCronSearchSpec(cronSearch *v1beta1.CronSearch) (cron.Schedule, *field.Error) {
+	schedule, err := cron.ParseStandard(cronSearch.Spec.Schedule)
+	if err != nil {
+		return nil, field.Invalid(field.NewPath("spec").Child("schedule"), schedule, err.Error())
 	}
-	return nil
+	return schedule, nil
 }
 
 func validateCronSearchName(cronSearch *v1beta1.CronSearch) *field.Error {

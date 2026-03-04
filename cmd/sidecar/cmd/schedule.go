@@ -27,6 +27,7 @@ import (
 	"github.com/crashappsec/ocular/pkg/generated/clientset"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -89,6 +90,16 @@ func Schedule(ctx context.Context) error {
 	// when the crawler container exits for this search.
 	crawlerCtx, crawlerCancel := context.WithCancel(ctx)
 
+	scheduledByLabels := make(map[string]string)
+	scheduledByLabels[v1beta1.ScheduledByLabelKey] = searchName
+
+	ownerRef := metav1.OwnerReference{
+		UID:        types.UID(os.Getenv(v1beta1.EnvVarSchedulerParentUID)),
+		Kind:       "Search",
+		APIVersion: v1beta1.GroupVersion.String(),
+		Name:       searchName,
+	}
+
 	log.Info("starting workers")
 	wg := &sync.WaitGroup{}
 
@@ -97,6 +108,14 @@ func Schedule(ctx context.Context) error {
 		fifoDecoder(crawlerCtx, crawlers, searchFIFOPath)
 	})
 	wg.Go(func() {
+		var ttlSeconds *int32
+		if ttlEnv := os.Getenv(v1beta1.EnvVarSchedulerSearchTTL); ttlEnv != "" {
+			ttl, err := strconv.Atoi(ttlEnv)
+			if err == nil {
+				ttlSeconds = ptr.To(int32(ttl))
+			}
+		}
+		serviceAccountOverride := os.Getenv(v1beta1.EnvVarSchedulerServiceAccountOverride)
 		for {
 			crawler, ok := <-crawlers
 			if !ok {
@@ -108,8 +127,14 @@ func Schedule(ctx context.Context) error {
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: searchName + "-",
 					Namespace:    namespace,
+					Labels:       scheduledByLabels,
+					OwnerReferences: []metav1.OwnerReference{
+						*ownerRef.DeepCopy(),
+					},
 				},
 				Spec: v1beta1.SearchSpec{
+					TTLSecondsAfterFinished:    ttlSeconds,
+					ServiceAccountNameOverride: serviceAccountOverride,
 					Scheduler: v1beta1.SearchSchedulerSpec{
 						IntervalSeconds: ptr.To(int32(sleepDuration)),
 					},
@@ -134,9 +159,7 @@ func Schedule(ctx context.Context) error {
 	})
 
 	wg.Go(func() {
-		pipelineLabels := utils.MergeMaps(template.Labels, map[string]string{
-			v1beta1.SearchLabelKey: searchName,
-		})
+		pipelineLabels := utils.MergeMaps(template.Labels, scheduledByLabels)
 		pipelineAnnotations := template.Annotations
 		for {
 			target, ok := <-targets
@@ -144,6 +167,7 @@ func Schedule(ctx context.Context) error {
 				log.Info("target channel closed")
 				break
 			}
+
 			log.Info("scheduling pipeline for target", "target", target)
 			pipeline := &v1beta1.Pipeline{
 				ObjectMeta: metav1.ObjectMeta{
@@ -151,6 +175,9 @@ func Schedule(ctx context.Context) error {
 					Namespace:    namespace,
 					Annotations:  maps.Clone(pipelineAnnotations),
 					Labels:       maps.Clone(pipelineLabels),
+					OwnerReferences: []metav1.OwnerReference{
+						*ownerRef.DeepCopy(),
+					},
 				},
 			}
 
@@ -168,7 +195,7 @@ func Schedule(ctx context.Context) error {
 	})
 
 	// await user crawler completion
-	completePath := os.Getenv(v1beta1.EnvVarSidecarSchedulerCompletePath)
+	completePath := os.Getenv(v1beta1.EnvVarSchedulerCompletePath)
 	for {
 		select {
 		case <-crawlerCtx.Done():
