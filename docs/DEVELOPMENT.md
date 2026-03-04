@@ -160,9 +160,7 @@ kubectl apply -f ./dist/install.yaml
 **NOTE**: This should only be used if you know what you are doing. Users should prefer installation from the [helm charts repository](https://github.com/crashappsec/helm-charts).
 
 ```sh
-make build-helm \
-  OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
-  OCULAR_SIDECAR_IMG=<some-registry>/ocular-sidecar:tag
+make build-helm
 ```
 
 2. See that a chart was generated under 'dist/chart', and users
