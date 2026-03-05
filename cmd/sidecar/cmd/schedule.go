@@ -97,6 +97,14 @@ func Schedule(ctx context.Context) error {
 		fifoDecoder(crawlerCtx, crawlers, searchFIFOPath)
 	})
 	wg.Go(func() {
+		var ttlSeconds *int32
+		if ttlEnv := os.Getenv(v1beta1.EnvVarSidecarSchedulerSearchTTL); ttlEnv != "" {
+			ttl, err := strconv.Atoi(ttlEnv)
+			if err == nil {
+				ttlSeconds = ptr.To(int32(ttl))
+			}
+		}
+		serviceAccountOverride := os.Getenv(v1beta1.EnvVarSidecarSchedulerServiceAccountOverride)
 		for {
 			crawler, ok := <-crawlers
 			if !ok {
@@ -110,6 +118,8 @@ func Schedule(ctx context.Context) error {
 					Namespace:    namespace,
 				},
 				Spec: v1beta1.SearchSpec{
+					TTLSecondsAfterFinished:    ttlSeconds,
+					ServiceAccountNameOverride: serviceAccountOverride,
 					Scheduler: v1beta1.SearchSchedulerSpec{
 						IntervalSeconds: ptr.To(int32(sleepDuration)),
 					},

@@ -90,6 +90,14 @@ const (
 	// EnvVarExtractorHost is the environment variable name for the extractor host.
 	EnvVarSidecarExtractorHost EnvironmentVariableName = "OCULAR_SIDECAR_EXTRACTOR_HOST"
 
+	// EnvVarSidecarSchedulerSearchTTL is the TTL to set for searches created via scheduler.
+	// Empty string means no TTL
+	EnvVarSidecarSchedulerSearchTTL EnvironmentVariableName = "OCULAR_SIDECAR_SCHEDULER_TTL"
+
+	// EnvVarSidecarSchedulerServiceAccountOverride is the service account name override to
+	// set for searches created via scheduler. Empty string means do not set override.
+	EnvVarSidecarSchedulerServiceAccountOverride EnvironmentVariableName = "OCULAR_SIDECAR_SCHEDULER_SERVICEACCOUNT_OVERRIDE"
+
 	// EnvVarSidecarSchedulerCompletePath is the environment variable name for the path to
 	// the file that is created when the crawler has completed
 	EnvVarSidecarSchedulerCompletePath EnvironmentVariableName = "OCULAR_SIDECAR_SCHEDULER_COMPLETE_PATH"
