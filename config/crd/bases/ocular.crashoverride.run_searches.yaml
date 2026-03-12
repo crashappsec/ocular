@@ -296,11 +296,12 @@ spec:
                         type: object
                     type: object
                 type: object
-              serviceAccountNameOverride:
+              serviceAccountName:
                 description: |-
-                  ServiceAccountNameOverride is the name of the service account that will be used to run the scan job.
-                  If not set, the default service account of the namespace will be used.
+                  ServiceAccountName is the name of the service account that will be used to run the search job.
                   If not specified, a temporary ServiceAccount will be created for the search.
+                  If set, it is up to the user to ensure the service account role has the proper permissions
+                  to create both pipelines and searches.
                   NOTE: This ServiceAccount must exist in the same namespace as the Search.
                 type: string
               ttlSecondsAfterFinished:
@@ -388,10 +389,17 @@ spec:
                 description: CronSearchControllerName is the name of the controller
                   that created this search.
                 type: string
+              customServiceAccount:
+                description: |-
+                  CustomServiceAccount indicates wether the service account was supplied by the user (true)
+                  or created bvy the controller (false)
+                type: boolean
               startTime:
                 description: StartTime is the time when the search started.
                 format: date-time
                 type: string
+            required:
+            - customServiceAccount
             type: object
         required:
         - spec

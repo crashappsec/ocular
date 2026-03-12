@@ -302,7 +302,7 @@ func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.P
 		sidecarCommand = "extract"
 		if uploadService != nil {
 			sidecarEnvVars = append(sidecarEnvVars, corev1.EnvVar{
-				Name:  v1beta1.EnvVarSidecarExtractorHost,
+				Name:  v1beta1.EnvVarExtractorHost,
 				Value: fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", uploadService.Name, uploadService.Namespace, extractorPort),
 			})
 		}
@@ -583,7 +583,7 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 		Args:  []string{"receive"},
 		Env: []corev1.EnvVar{
 			{
-				Name:  v1beta1.EnvVarSidecarExtractorPort,
+				Name:  v1beta1.EnvVarExtractorPort,
 				Value: fmt.Sprintf("%d", extractorPort),
 			},
 		},
@@ -739,7 +739,11 @@ func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline) []corev1.EnvVar
 			Value: pipeline.Spec.ProfileRef.Name,
 		},
 		{
-			Name:      v1beta1.EnvVarPipelineName,
+			Name:  v1beta1.EnvVarPipelineName,
+			Value: pipeline.Name,
+		},
+		{
+			Name:      v1beta1.EnvVarPodName,
 			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}},
 		},
 		{

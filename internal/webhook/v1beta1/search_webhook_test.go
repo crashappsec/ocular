@@ -20,27 +20,29 @@ import (
 	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/api/v1beta1"
 )
 
 var _ = Describe("Search Webhook", func() {
 	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
 		suffix    = testutils.GenerateRandomString(rnd, 5, testutils.LowercaseAlphabeticLetterSet)
-		obj       *ocularcrashoverriderunv1beta1.Search
-		oldObj    *ocularcrashoverriderunv1beta1.Search
-		crawler   *ocularcrashoverriderunv1beta1.Crawler
+		obj       *v1beta1.Search
+		oldObj    *v1beta1.Search
+		crawler   *v1beta1.Crawler
+		customSA  *v1.ServiceAccount
 		validator SearchCustomValidator
+		defaulter SearchCustomDefaulter
 	)
 
 	BeforeEach(func() {
-		crawler = &ocularcrashoverriderunv1beta1.Crawler{
+		crawler = &v1beta1.Crawler{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "crawler",
 				Namespace: metav1.NamespaceDefault,
 			},
-			Spec: ocularcrashoverriderunv1beta1.CrawlerSpec{
-				Parameters: []ocularcrashoverriderunv1beta1.ParameterDefinition{
+			Spec: v1beta1.CrawlerSpec{
+				Parameters: []v1beta1.ParameterDefinition{
 					{
 						Name:     "PARAM_1",
 						Required: true,
@@ -58,18 +60,18 @@ var _ = Describe("Search Webhook", func() {
 				},
 			},
 		}
-		obj = &ocularcrashoverriderunv1beta1.Search{
+		obj = &v1beta1.Search{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "search-" + suffix,
 				Namespace: metav1.NamespaceDefault,
 			},
-			Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-				CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
+			Spec: v1beta1.SearchSpec{
+				CrawlerRef: v1beta1.ParameterizedObjectReference{
 					ObjectReference: v1.ObjectReference{
 						Name:      crawler.Name,
 						Namespace: crawler.Namespace,
 					},
-					Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
+					Parameters: []v1beta1.ParameterSetting{
 						{
 							Name:  "PARAM_1",
 							Value: "value 1",
@@ -81,7 +83,13 @@ var _ = Describe("Search Webhook", func() {
 					}},
 			},
 		}
-		oldObj = &ocularcrashoverriderunv1beta1.Search{
+		customSA = &v1.ServiceAccount{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "webhook-test-custom-sa",
+				Namespace: metav1.NamespaceDefault,
+			},
+		}
+		oldObj = &v1beta1.Search{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "search-" + suffix,
 				Namespace: metav1.NamespaceDefault,
@@ -102,9 +110,26 @@ var _ = Describe("Search Webhook", func() {
 			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, crawler))
 			Expect(err).ToNot(HaveOccurred())
 		}
+		if customSA != nil {
+			err = ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, customSA))
+			Expect(err).ToNot(HaveOccurred())
+		}
 	})
 
 	Context("When creating a search", func() {
+		It("Should default the service account when non is given", func() {
+			Expect(defaulter.Default(ctx, obj)).Error().To(Succeed())
+			Expect(obj.Spec.ServiceAccountName).To(Equal("search-" + obj.Name))
+			Expect(obj.Status.CustomServiceAccount).To(BeFalse())
+		})
+		It("Should indicate custom service account when name is set by user", func() {
+			objSA := obj.DeepCopy()
+			objSA.Spec.ServiceAccountName = customSA.Name
+			Expect(defaulter.Default(ctx, objSA)).Error().To(Succeed())
+			Expect(objSA.Spec.ServiceAccountName).To(Equal(customSA.Name))
+			Expect(objSA.Status.CustomServiceAccount).To(BeTrue())
+		})
+
 		It("Should return an error, if the crawler doesn't exist", func() {
 			_, err := validator.ValidateCreate(ctx, obj)
 			Expect(apierrors.IsInvalid(err)).To(BeTrue())
@@ -115,14 +140,34 @@ var _ = Describe("Search Webhook", func() {
 			Expect(validator.ValidateCreate(ctx, obj)).Error().To(Succeed())
 		})
 
+		It("Should fail if the custom service account doesn't exist", func() {
+			Expect(k8sClient.Create(ctx, crawler)).To(Succeed())
+			objSA := obj.DeepCopy()
+			objSA.Spec.ServiceAccountName = customSA.Name
+			objSA.Status.CustomServiceAccount = true
+			_, err := validator.ValidateCreate(ctx, objSA)
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+
+		It("Should succeed if the custom service account exists", func() {
+			Expect(k8sClient.Create(ctx, crawler)).To(Succeed())
+			Expect(k8sClient.Create(ctx, customSA)).To(Succeed())
+			objSA := obj.DeepCopy()
+			objSA.Spec.ServiceAccountName = customSA.Name
+			objSA.Status.CustomServiceAccount = true
+			Expect(validator.ValidateCreate(ctx, objSA)).Error().To(Succeed())
+		})
+
 		It("Should return an error if the CrawlerRef.Namespace is set to a different namespace", func() {
-			obj.Spec.CrawlerRef.Namespace = "different-namespace"
-			_, err := validator.ValidateCreate(ctx, obj)
+			objNS := obj.DeepCopy()
+			objNS.Spec.CrawlerRef.Namespace = "different-namespace"
+			_, err := validator.ValidateCreate(ctx, objNS)
 			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 		})
 
 		It("Should validate the parameters if the crawler exists and parameters are defined", func() {
-			obj.Spec.CrawlerRef.Parameters = []ocularcrashoverriderunv1beta1.ParameterSetting{
+			Expect(k8sClient.Create(ctx, crawler)).To(Succeed())
+			obj.Spec.CrawlerRef.Parameters = []v1beta1.ParameterSetting{
 				{
 					Name:  "PARAM_2",
 					Value: "value 2",
@@ -141,7 +186,7 @@ var _ = Describe("Search Webhook", func() {
 		})
 
 		It("Should validate the parameters if the crawler exists and parameters are defined", func() {
-			obj.Spec.CrawlerRef.Parameters = []ocularcrashoverriderunv1beta1.ParameterSetting{
+			obj.Spec.CrawlerRef.Parameters = []v1beta1.ParameterSetting{
 				{
 					Name:  "PARAM_3",
 					Value: "value 3",

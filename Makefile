@@ -278,11 +278,11 @@ build-helm: kubebuilder ## Generate a helm-chart using kubebuilder
 	@mkdir -p dist
 	@"$(KUBEBUILDER)" edit --plugins=helm/v2-alpha
 	@# update manfiests with any templating or customizations TODO(bryce): have this be one script
-	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.manager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)env: \[\]/\1env:\n\1  {{- with .Values.manager.env }}\n\1  {{- toYaml . | nindent 20 }}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)annotations:/\1annotations:\n\1    {{- range $$key, $$val := .Values.manager.annotations }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.manager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.manager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1  {{- range $$key, $$val := .Values.manager.labels }}\n  \1{{ $$key }}: {{ $$val | quote }}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)env: \[\]/\1env: {{- toYaml .Values.manager.env | nindent 10 }}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)annotations:/\1annotations:\n\1  {{- range $$key, $$val := .Values.manager.annotations }}\n  \1{{ $$key }}: {{ $$val | quote }}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1{{- with .Values.manager.volumeMounts }}\n\1{{- toYaml . | nindent 8}}\n\1{{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1{{- with .Values.manager.volumes }}\n\1{{- toYaml . | nindent 6}}\n\1{{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+OCULAR_SIDECAR_IMG:)[^\n]+/\1 "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"/g' dist/chart/templates/extras/controller-manager-config.yaml
 	@sed -i.bak -r 's/^([ ]+value:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.sidecar.image.pullPolicy }}"/g' dist/chart/templates/manager/manager.yaml
 	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/extras/controller-manager-config.yaml.bak # cleanup backup file from sed

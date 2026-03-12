@@ -21,6 +21,9 @@ const (
 	// the pipeline or search is running in.
 	EnvVarNamespaceName EnvironmentVariableName = "OCULAR_NAMESPACE_NAME"
 
+	// EnvVarPodName is the environment variable name for the current pod.
+	EnvVarPodName EnvironmentVariableName = "OCULAR_POD_NAME"
+
 	/* Pipeline and Profile related environment variables */
 
 	// EnvVarTargetIdentifier is the environment variable name for the target identifier.
@@ -85,12 +88,25 @@ const (
 	// internal environment variables  //
 
 	// EnvVarExtractorPort is the environment variable name for the extractor port.
-	EnvVarSidecarExtractorPort EnvironmentVariableName = "OCULAR_SIDECAR_EXTRACTOR_PORT"
+	EnvVarExtractorPort EnvironmentVariableName = "OCULAR_EXTRACTOR_PORT"
 
 	// EnvVarExtractorHost is the environment variable name for the extractor host.
-	EnvVarSidecarExtractorHost EnvironmentVariableName = "OCULAR_SIDECAR_EXTRACTOR_HOST"
+	EnvVarExtractorHost EnvironmentVariableName = "OCULAR_EXTRACTOR_HOST"
 
-	// EnvVarSidecarSchedulerCompletePath is the environment variable name for the path to
+	// EnvVarSchedulerSearchTTL is the TTL to set for searches created via scheduler.
+	// Empty string means no TTL
+	EnvVarSchedulerSearchTTL EnvironmentVariableName = "OCULAR_SCHEDULER_TTL"
+
+	// EnvVarSchedulerServiceAccount is the service account name override to
+	// set for searches created via scheduler. Empty string means do not set override.
+	EnvVarSchedulerServiceAccount EnvironmentVariableName = "OCULAR_SCHEDULER_SERVICEACCOUNT"
+
+	// EnvVarSchedulerCompletePath is the environment variable name for the path to
 	// the file that is created when the crawler has completed
-	EnvVarSidecarSchedulerCompletePath EnvironmentVariableName = "OCULAR_SIDECAR_SCHEDULER_COMPLETE_PATH"
+	EnvVarSchedulerCompletePath EnvironmentVariableName = "OCULAR_SCHEDULER_COMPLETE_PATH"
+
+	// EnvVarResourceUID is the UID of the current resource in k8s
+	// This will be the UID of the pipeline for any pipeline pods
+	// and the UID of the search for any search pods
+	EnvVarSchedulerParentUID EnvironmentVariableName = "OCULAR_SCHEDULER_PARENT_UID"
 )

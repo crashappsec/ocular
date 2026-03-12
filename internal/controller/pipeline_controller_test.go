@@ -349,7 +349,11 @@ func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
 				Value: "/mnt/results",
 			},
 			corev1.EnvVar{
-				Name: "OCULAR_PIPELINE_NAME",
+				Name:  "OCULAR_PIPELINE_NAME",
+				Value: pipeline.Name,
+			},
+			corev1.EnvVar{
+				Name: "OCULAR_POD_NAME",
 				ValueFrom: &corev1.EnvVarSource{
 					FieldRef: &corev1.ObjectFieldSelector{
 						APIVersion: "v1",
@@ -393,7 +397,11 @@ func ValidatePipelineUploadPodSpec(podSpec corev1.PodSpec,
 				Value: "/mnt/results",
 			},
 			corev1.EnvVar{
-				Name: "OCULAR_PIPELINE_NAME",
+				Name:  "OCULAR_PIPELINE_NAME",
+				Value: pipeline.Name,
+			},
+			corev1.EnvVar{
+				Name: "OCULAR_POD_NAME",
 				ValueFrom: &corev1.EnvVarSource{
 					FieldRef: &corev1.ObjectFieldSelector{
 						APIVersion: "v1",
