@@ -19,11 +19,12 @@ import (
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/crashappsec/ocular/internal/utils"
 	ocularRuntime "github.com/crashappsec/ocular/pkg/runtime"
-	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -109,19 +110,21 @@ func (r *PipelineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// The pipeline reconciler is responsible for creating and managing the scan and upload pods
-// for a given pipeline. It ensures that the pods are created and updated as necessary,
+// The pipeline reconciler is responsible for creating and managing the scan pod, upload pod
+// (if applicable) and upload service (if applicable) for a given pipeline.
+// It ensures that the pods are created and updated as necessary,
 // and that the status of the pipeline is updated accordingly.
 // Breakdown of the reconciliation steps:
 // 1. Fetch the pipeline instance
-// 2. Handle finalizers
-// 3. If the pipeline has a completion time, check if it needs to be deleted based on TTL
-// 4. Fetch and validate the profile and downloader references
-// 5. Determine if an upload pod is needed based on the profile's artifacts and uploader references
-// 6. If an upload pod is needed, fetch or create the upload pod and service
-// 7. Fetch or create the scan pod
-// 8. Update the pipeline status accordingly based on the state of the pods
+// 2. Fetch referenced resources (profile, downloader, uploaders)
+// 3. Update status to indicate if scan only (exit if updated)
+// 4. Fetch or create upload pod if applicable (exit if created)
+// 5. Fetch or create upload service if applicable (exit if created)
+// 6. Await upload pod running, and create scan pod if applicable (exit if created)
+// 8. Continually Update the pipeline status accordingly based on the state of the pods
+// 9. Once completed, await TTL if set
 // For more details, check Reconcile and its Result here:
+// https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile#Reconciler
 func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
 	l.Info("reconciling pipeline object", "name", req.Name, "namespace", req.Namespace, "req", req)
@@ -132,6 +135,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	l = l.WithValues("pipeline", pipeline.Name, "namespace", pipeline.Namespace)
 
 	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace,
 		"downloader": pipeline.Spec.DownloaderRef.Name, "profile": pipeline.Spec.ProfileRef.Name}
@@ -148,23 +152,39 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}, profile); err != nil {
 		return ctrl.Result{}, err
 	}
+	l = l.WithValues("profile", profile.Name)
+
+	// In the case where no artifacts or uploaders are defined and the pipeline hasn't started
+	// set the status to scan pod only
+	scanPodOnly := len(profile.Spec.UploaderRefs) == 0
+	l = l.WithValues("scanPodOnly", scanPodOnly)
+	if pipeline.Status.StartTime == nil && scanPodOnly != pipeline.Status.ScanPodOnly {
+		l.Info("setting pipeline scan only status", "scan-pod-only", scanPodOnly)
+		pipeline.Status.ScanPodOnly = scanPodOnly
+		if scanPodOnly {
+			pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageSkipped
+		}
+		return ctrl.Result{}, updateStatus(logf.IntoContext(ctx, l), r.Client, pipeline)
+	}
 
 	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, r.Client, pipeline.GetNamespace(), pipeline.Spec.DownloaderRef.ObjectReference)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	l = l.WithValues("downloader", pipeline.Spec.DownloaderRef)
 
-	uploaders, err := r.getUploaders(ctx, profile)
-	if err != nil {
-		l.Error(err, "error fetching uploaders for pipeline", "name", req.Name)
-		return ctrl.Result{}, err
-	}
+	uploaderInvocations := make([]uploaderInvocation, 0, len(profile.Spec.UploaderRefs))
+	for _, uploaderRef := range profile.Spec.UploaderRefs {
+		spec, err := resources.UploaderSpecFromReference(ctx, r.Client, profile.Namespace, uploaderRef.ObjectReference)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("unable to get uploader spec for %s/%s: %w", uploaderRef.Namespace, uploaderRef.Name, err)
+		}
 
-	// In the case where no artifacts or uploaders are defined, we only need to run the scan pod
-	shouldRunUploadPod := len(profile.Spec.Artifacts) > 0 && len(profile.Spec.UploaderRefs) > 0
-	if !shouldRunUploadPod && !pipeline.Status.ScanPodOnly {
-		pipeline.Status.ScanPodOnly = true
-		pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageSkipped
+		uploaderInvocations = append(uploaderInvocations, uploaderInvocation{
+			spec:       spec,
+			name:       uploaderRef.Name,
+			parameters: uploaderRef.Parameters,
+		})
 	}
 
 	envVars := generateBasePipelineEnvironment(pipeline)
@@ -173,54 +193,65 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// & uploaders to specify which artifacts to extract
 	artifactArgs := generateArtifactArguments(downloaderSpec.MetadataFiles, profile.Spec.Artifacts)
 
-	// generate desired upload pod, service, and scan pod
-	uploadPod := r.newUploaderPod(pipeline, profile, uploaders,
-		append(containerOpts,
-			containers.WithAdditionalArgs(artifactArgs...),
-			containers.WithWorkingDir(v1beta1.PipelineResultsDirectory),
-			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
-				Name:      pipelineResultsVolumeName,
-				MountPath: v1beta1.PipelineResultsDirectory,
-			}),
-			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
-				Name:      pipelineMetadataVolumeName,
-				MountPath: v1beta1.PipelineMetadataDirectory,
-			}),
-		)...)
+	// generate upload components (if applicable)
+	uploadPod, uploadService := &corev1.Pod{}, &corev1.Service{}
+	if !pipeline.Status.ScanPodOnly {
+		l.Info("creating upload resources")
+		desiredUploadPod, err := r.newUploaderPod(pipeline, profile, uploaderInvocations,
+			append(containerOpts,
+				containers.WithAdditionalArgs(artifactArgs...),
+				containers.WithWorkingDir(v1beta1.PipelineResultsDirectory),
+				containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+					Name:      pipelineResultsVolumeName,
+					MountPath: v1beta1.PipelineResultsDirectory,
+				}),
+				containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+					Name:      pipelineMetadataVolumeName,
+					MountPath: v1beta1.PipelineMetadataDirectory,
+				}),
+			)...)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("unable to generate new upload pod: %w", err)
+		}
 
-	uploadPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, uploadPod, []string{
-		v1beta1.PipelineLabelKey,
-		v1beta1.TypeLabelKey,
-	}, uploadPodsCreated.With(metricLabels))
-	if err != nil {
-		l.Error(err, "error reconciling upload pod for pipeline", "name", pipeline.GetName())
-		return ctrl.Result{}, err
-	}
-
-	uploadService := r.newUploadService(pipeline, uploadPod)
-
-	if uploadService != nil {
-		if err = reconcileChildResource[*corev1.Service](ctx, r.Client, uploadService, pipeline, r.Scheme, nil); err != nil {
-			l.Error(err, "error reconciling upload service for pipeline", "name", pipeline.GetName())
+		err = r.Get(ctx, types.NamespacedName{Name: desiredUploadPod.Name, Namespace: desiredUploadPod.Namespace}, uploadPod)
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, r.Create(ctx, &desiredUploadPod)
+		} else if err != nil {
 			return ctrl.Result{}, err
 		}
-	}
+		l = l.WithValues("uploadPod", uploadPod.Name)
 
-	if !pipeline.Status.ScanPodOnly && pipeline.Status.StartTime == nil {
-		// check if uploader is running & can accept sc
-		uploaderReady := false
-		for _, status := range uploadPod.Status.InitContainerStatuses {
-			if status.Name == sidecarReceiverContainerName && status.Started != nil {
-				uploaderReady = *status.Started
-				break
+		desiredUploadService, err := r.newUploadService(pipeline, uploadPod)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("unable to generate new upload service: %w", err)
+		}
+
+		err = r.Get(ctx, types.NamespacedName{Name: desiredUploadService.Name, Namespace: desiredUploadService.Namespace}, uploadService)
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, r.Create(ctx, &desiredUploadService)
+		} else if err != nil {
+			return ctrl.Result{}, err
+		}
+		l = l.WithValues("uploadService", uploadService.Name)
+		if pipeline.Status.StartTime == nil {
+			// check if uploader is running & can accept sc
+			uploaderReady := false
+			for _, status := range uploadPod.Status.InitContainerStatuses {
+				if status.Name == sidecarReceiverContainerName && status.Started != nil {
+					uploaderReady = *status.Started
+					break
+				}
+			}
+			if !uploaderReady {
+				return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 			}
 		}
-		if !uploaderReady {
-			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
-		}
+
 	}
 
-	scanPod := r.newScanPod(pipeline, profile.Spec, downloaderSpec,
+	scanPod := &corev1.Pod{}
+	desiredScanPod, err := r.newScanPod(pipeline, profile.Spec, downloaderSpec,
 		r.createSidecarExtractorContainer(pipeline, uploadService, artifactArgs),
 		append(containerOpts,
 			containers.WithWorkingDir(v1beta1.PipelineTargetDirectory),
@@ -236,19 +267,21 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				Name:      pipelineResultsVolumeName,
 				MountPath: v1beta1.PipelineResultsDirectory,
 			}))...)
-
-	scanPod, err = reconcilePodFromLabel(ctx, r.Client, r.Scheme, pipeline, scanPod, []string{
-		v1beta1.PipelineLabelKey,
-		v1beta1.TypeLabelKey,
-	}, scanPodsCreated.With(metricLabels))
-
 	if err != nil {
-		l.Error(err, "error reconciling scan pod for pipeline", "name", pipeline.GetName())
+		return ctrl.Result{}, fmt.Errorf("unable to generate new scan pod: %w", err)
+	}
+
+	err = r.Get(ctx, types.NamespacedName{Name: desiredScanPod.Name, Namespace: desiredScanPod.Namespace}, scanPod)
+	if apierrors.IsNotFound(err) {
+		return ctrl.Result{}, r.Create(ctx, &desiredScanPod)
+	} else if err != nil {
 		return ctrl.Result{}, err
 	}
+	l = l.WithValues("scanPod", scanPod.Name)
 
 	// Update status to reflect pods have been created
 	if pipeline.Status.StartTime == nil {
+		l.Info("marking pipeline as started")
 		reason, message := "ScanPodSuccessfullyCreated", fmt.Sprintf("The scan pod %s has been created.", scanPod.Name)
 		startTime := metav1.NewTime(time.Now())
 		pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
@@ -272,14 +305,19 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		pipeline.Status.StartTime = &startTime
 		pipeline.Status.Phase = v1beta1.PipelineDownloading
 		pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageInProgress
-		if err := updateStatus(ctx, r.Client, pipeline, "step", "child resources created"); err != nil {
-			return ctrl.Result{}, err
+		pipeline.Status.StageStatuses.ScanStatus = v1beta1.PipelineStageNotStarted
+		if !pipeline.Status.ScanPodOnly {
+			pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
 		}
-		pipelinesRunning.With(metricLabels).Add(1)
+		err := updateStatus(logf.IntoContext(ctx, l), r.Client, pipeline)
+		if err == nil {
+			pipelinesRunning.With(metricLabels).Add(1)
+		}
+		return ctrl.Result{}, err
 	}
 
 	// Check for completion of pods and update status accordingly
-	return r.handleCompletion(ctx, pipeline, scanPod, uploadPod)
+	return r.handleCompletion(logf.IntoContext(ctx, l), pipeline, scanPod, uploadPod)
 }
 
 const (
@@ -291,6 +329,14 @@ const (
 	// sidecar container in the upload pod
 	sidecarReceiverContainerName = "receive-artifacts"
 )
+
+// uploaderInvocation is a convience struct to hold both the spec
+// on an uploader, and the "invocation" (i.e. defined parameters) within the profile.
+type uploaderInvocation struct {
+	spec       v1beta1.UploaderSpec
+	name       string
+	parameters []v1beta1.ParameterSetting
+}
 
 func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.Pipeline, uploadService *corev1.Service, artifactsArgs []string) corev1.Container {
 	var (
@@ -434,12 +480,10 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	if err := updateStatus(ctx, r.Client, pipeline, "step", "scan pod completed"); err != nil {
-		return ctrl.Result{}, err
-	}
+	err := updateStatus(ctx, r.Client, pipeline, "step", "scan pod completed")
 
 	// checked if we marked complete during this run
-	if markedComplete := pipeline.Status.CompletionTime != nil; markedRunning && markedComplete {
+	if markedComplete := pipeline.Status.CompletionTime != nil; err == nil && markedRunning && markedComplete {
 		pipelinesRunning.With(metricLabels).Dec()
 		metricLabels["phase"] = string(pipeline.Status.Phase)
 		pipelinesCompleted.With(metricLabels).Add(1)
@@ -453,7 +497,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 			"start_time", pipeline.Status.StartTime, "completion_time", pipeline.Status.CompletionTime)
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
 
 func (r *PipelineReconciler) failPod(ctx context.Context, pod *corev1.Pod) error {
@@ -466,37 +510,7 @@ func (r *PipelineReconciler) failPod(ctx context.Context, pod *corev1.Pod) error
 	return r.Update(ctx, pod)
 }
 
-type uploaderInvocation struct {
-	spec       v1beta1.UploaderSpec
-	name       string
-	parameters []v1beta1.ParameterSetting
-}
-
-func (r *PipelineReconciler) getUploaders(ctx context.Context, profile *v1beta1.Profile) ([]uploaderInvocation, error) {
-	uploaders := make([]uploaderInvocation, 0, len(profile.Spec.UploaderRefs))
-
-	var errs *multierror.Error
-	for _, uploaderRef := range profile.Spec.UploaderRefs {
-		spec, err := resources.UploaderSpecFromReference(ctx, r.Client, profile.Namespace, uploaderRef.ObjectReference)
-		if err != nil {
-			errs = multierror.Append(errs, err)
-			continue
-		}
-
-		uploaders = append(uploaders, uploaderInvocation{
-			spec:       spec,
-			name:       uploaderRef.Name,
-			parameters: uploaderRef.Parameters,
-		})
-	}
-	return uploaders, errs.ErrorOrNil()
-}
-
-func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, uploadPod *corev1.Pod) *corev1.Service {
-	if pipeline.Status.ScanPodOnly || uploadPod == nil {
-		return nil
-	}
-
+func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, uploadPod *corev1.Pod) (corev1.Service, error) {
 	labels := map[string]string{
 		v1beta1.TypeLabelKey:       v1beta1.ServiceTypeUpload,
 		v1beta1.PipelineLabelKey:   pipeline.GetName(),
@@ -504,7 +518,7 @@ func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, upload
 		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
 	}
 
-	return &corev1.Service{
+	svc := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pipeline.GetName() + uploadServiceSuffix,
 			Namespace: uploadPod.Namespace,
@@ -523,15 +537,14 @@ func (r *PipelineReconciler) newUploadService(pipeline *v1beta1.Pipeline, upload
 			PublishNotReadyAddresses: true,
 		},
 	}
+	err := ctrl.SetControllerReference(pipeline, &svc, r.Scheme)
+	return svc, err
 }
 
-func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile *v1beta1.Profile, uploaders []uploaderInvocation, containerOpts ...containers.Option) *corev1.Pod {
-	if pipeline.Status.ScanPodOnly {
-		return nil
-	}
+func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile *v1beta1.Profile, uploaders []uploaderInvocation, containerOpts ...containers.Option) (corev1.Pod, error) {
 	var (
 		uploaderContainers = make([]corev1.Container, 0, len(uploaders))
-		volumes            []corev1.Volume
+		volumes            = make([]corev1.Volume, 0, len(uploaders))
 	)
 	for _, invocation := range uploaders {
 		baseContainer := invocation.spec.Container
@@ -589,11 +602,11 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 		},
 	}
 
-	uploadPod := &corev1.Pod{
+	uploadPod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: pipeline.GetName() + uploadPodSuffix + "-",
-			Namespace:    pipeline.GetNamespace(),
-			Labels:       labels,
+			Name:      pipeline.GetName() + uploadPodSuffix,
+			Namespace: pipeline.GetNamespace(),
+			Labels:    labels,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: pipeline.Spec.UploadServiceAccountName,
@@ -622,11 +635,13 @@ func (r *PipelineReconciler) newUploaderPod(pipeline *v1beta1.Pipeline, profile 
 		},
 	}
 
-	return uploadPod
+	err := ctrl.SetControllerReference(pipeline, &uploadPod, r.Scheme)
+
+	return uploadPod, err
 }
 
 func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profileSpec v1beta1.ProfileSpec, downloaderSpec v1beta1.DownloaderSpec,
-	extractorContainer corev1.Container, containerOpts ...containers.Option) *corev1.Pod {
+	extractorContainer corev1.Container, containerOpts ...containers.Option) (corev1.Pod, error) {
 
 	volumes := append(profileSpec.Volumes, downloaderSpec.Volumes...)
 
@@ -662,11 +677,11 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profileSpec 
 		}
 	}
 
-	scanPod := &corev1.Pod{
+	scanPod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: pipeline.GetName() + scanPodSuffix + "-",
-			Namespace:    pipeline.GetNamespace(),
-			Labels:       labels,
+			Name:      pipeline.GetName() + scanPodSuffix,
+			Namespace: pipeline.GetNamespace(),
+			Labels:    labels,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: pipeline.Spec.ScanServiceAccountName,
@@ -696,7 +711,9 @@ func (r *PipelineReconciler) newScanPod(pipeline *v1beta1.Pipeline, profileSpec 
 		},
 	}
 
-	return scanPod
+	err := ctrl.SetControllerReference(pipeline, &scanPod, r.Scheme)
+
+	return scanPod, err
 }
 
 func generateArtifactArguments(metadataFiles []string, artifacts []string) []string {
@@ -774,18 +791,22 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 		ttl := time.Duration(*pipeline.Spec.TTLSecondsAfterFinished) * time.Second
 		deleteTime := finishTime.Add(ttl)
 		if time.Now().After(deleteTime) {
-			l.Info("pipeline has exceeded its TTL, deleting", "name", pipeline.GetName(), "completionTime", pipeline.Status.CompletionTime, "ttlSecondsAfterFinished", *pipeline.Spec.TTLSecondsAfterFinished)
-			if err := r.Delete(ctx, pipeline); err != nil {
-				l.Error(err, "error deleting pipeline after TTL exceeded", "name", pipeline.GetName())
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, nil
+			l.Info("pipeline has exceeded its TTL, deleting",
+				"name", pipeline.GetName(),
+				"completionTime", pipeline.Status.CompletionTime,
+				"ttlSecondsAfterFinished", *pipeline.Spec.TTLSecondsAfterFinished)
+			return ctrl.Result{}, r.Delete(ctx, pipeline)
 		} else {
-			l.Info("pipeline has completed, checking TTL before next reconciliation", "name", pipeline.GetName(), "completionTime", pipeline.Status.CompletionTime, "ttlSecondsAfterFinished", *pipeline.Spec.TTLSecondsAfterFinished)
+			l.Info("pipeline has completed, checking TTL before next reconciliation",
+				"name", pipeline.GetName(),
+				"completionTime", pipeline.Status.CompletionTime,
+				"ttlSecondsAfterFinished", *pipeline.Spec.TTLSecondsAfterFinished)
 			return ctrl.Result{RequeueAfter: time.Until(deleteTime)}, nil
 		}
 	}
-	l.Info("pipeline has completed, skipping reconciliation", "name", pipeline.GetName(), "completionTime", pipeline.Status.CompletionTime)
+	l.Info("pipeline has completed, skipping reconciliation",
+		"name", pipeline.GetName(),
+		"completionTime", pipeline.Status.CompletionTime)
 	return ctrl.Result{}, nil
 }
 

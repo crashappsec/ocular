@@ -12,9 +12,6 @@ import (
 	"context"
 	"errors"
 
-	"fmt"
-
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -50,10 +47,8 @@ type SearchCustomDefaulter struct{}
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Search.
 func (d *SearchCustomDefaulter) Default(_ context.Context, search *v1beta1.Search) error {
 	searchlog.Info("defaulting for Search", "name", search.GetName())
-	if search.Spec.ServiceAccountName == "" && !search.Status.CustomServiceAccount {
+	if search.Spec.ServiceAccountName == "" {
 		search.Spec.ServiceAccountName = "search-" + search.GetName()
-	} else {
-		search.Status.CustomServiceAccount = true
 	}
 	return nil
 }
@@ -93,14 +88,6 @@ func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldSearch, n
 				field.Invalid(field.NewPath("spec").Child("serviceAccountName"), newSearch.Spec.ServiceAccountName, "serviceAccountName cannot be changed once set"),
 			})
 	}
-	if oldSearch.Status.CustomServiceAccount != newSearch.Status.CustomServiceAccount {
-		return nil, apierrors.NewInvalid(
-			schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
-			newSearch.Name,
-			field.ErrorList{
-				field.Invalid(field.NewPath("status").Child("customServiceAccount"), newSearch.Spec.ServiceAccountName, "customServiceAccount cannot be changed once set"),
-			})
-	}
 
 	return nil, validateSearch(ctx, v.c, newSearch)
 }
@@ -123,21 +110,6 @@ func validateSearch(ctx context.Context, c client.Client, search *v1beta1.Search
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef"), search.Spec.CrawlerRef, "referenced crawler could not be found"))
 	} else if err != nil {
 		return err
-	}
-
-	if search.Status.CustomServiceAccount {
-		var serviceAccount corev1.ServiceAccount
-		err = c.Get(ctx, client.ObjectKey{
-			Name:      search.Spec.ServiceAccountName,
-			Namespace: search.Namespace,
-		}, &serviceAccount)
-
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return fmt.Errorf("error fetching service account %s/%s: %w", search.Namespace, search.Spec.ServiceAccountName, err)
-			}
-			allErrs = append(allErrs, field.NotFound(field.NewPath("spec").Child("serviceAccountName"), fmt.Sprintf("%s/%s", search.Namespace, search.Spec.ServiceAccountName)))
-		}
 	}
 
 	paramErrs := validateSetParameters(search.Spec.CrawlerRef.Name,

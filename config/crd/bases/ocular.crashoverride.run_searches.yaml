@@ -389,17 +389,10 @@ spec:
                 description: CronSearchControllerName is the name of the controller
                   that created this search.
                 type: string
-              customServiceAccount:
-                description: |-
-                  CustomServiceAccount indicates wether the service account was supplied by the user (true)
-                  or created bvy the controller (false)
-                type: boolean
               startTime:
                 description: StartTime is the time when the search started.
                 format: date-time
                 type: string
-            required:
-            - customServiceAccount
             type: object
         required:
         - spec

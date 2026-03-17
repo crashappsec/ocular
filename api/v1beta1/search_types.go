@@ -124,10 +124,6 @@ type SearchStatus struct {
 	// CronSearchControllerName is the name of the controller that created this search.
 	// +optional
 	CronSearchControllerName *string `json:"cronSearchControllerName,omitempty" description:"The name of the controller that created this search."`
-
-	// CustomServiceAccount indicates wether the service account was supplied by the user (true)
-	// or created bvy the controller (false)
-	CustomServiceAccount bool `json:"customServiceAccount" description:"Indicates if the service account is supplied by the user"`
 }
 
 // +kubebuilder:object:root=true

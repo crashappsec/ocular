@@ -19,7 +19,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,6 +36,7 @@ var _ = Describe("Search Controller", func() {
 			crawlerName          = "test-crawler"
 			serviceAccountName   = "test-sa"
 			crawlerContainerName = "crawler-container"
+			searchClusterRole    = "test-search-cluster-role"
 		)
 
 		ctx := context.Background()
@@ -59,10 +59,28 @@ var _ = Describe("Search Controller", func() {
 		}
 		serviceAccount := &corev1.ServiceAccount{}
 
+		clusterRoleNamespacedName := types.NamespacedName{
+			Name:      searchClusterRole,
+			Namespace: "default",
+		}
+		clusterRole := &rbacv1.ClusterRole{}
+
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Search")
 
-			err := k8sClient.Get(ctx, crawlerTypeNamespacedName, crawler)
+			err := k8sClient.Get(ctx, clusterRoleNamespacedName, clusterRole)
+			if err != nil && errors.IsNotFound(err) {
+				clusterRoleResource := &rbacv1.ClusterRole{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      searchClusterRole,
+						Namespace: "default",
+					},
+				}
+				Expect(k8sClient.Create(ctx, clusterRoleResource)).To(Succeed())
+				Expect(k8sClient.Get(ctx, clusterRoleNamespacedName, clusterRole)).To(Succeed())
+			}
+
+			err = k8sClient.Get(ctx, crawlerTypeNamespacedName, crawler)
 			if err != nil && errors.IsNotFound(err) {
 				crawlerResource := &v1beta1.Crawler{
 					ObjectMeta: metav1.ObjectMeta{
@@ -86,6 +104,7 @@ var _ = Describe("Search Controller", func() {
 					},
 				}
 				Expect(k8sClient.Create(ctx, crawlerResource)).To(Succeed())
+				Expect(k8sClient.Get(ctx, crawlerTypeNamespacedName, crawler)).To(Succeed())
 			}
 
 			err = k8sClient.Get(ctx, typeNamespacedName, search)
@@ -112,6 +131,7 @@ var _ = Describe("Search Controller", func() {
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				Expect(k8sClient.Get(ctx, typeNamespacedName, search)).To(Succeed())
 			}
 		})
 
@@ -137,28 +157,41 @@ var _ = Describe("Search Controller", func() {
 			controllerReconciler := &SearchReconciler{
 				Client:            k8sClient,
 				Scheme:            k8sClient.Scheme(),
-				SearchClusterRole: "test-search-cluster-role",
+				SearchClusterRole: searchClusterRole,
 				SidecarImage:      "ocular-sidecar:test",
 				SidecarPullPolicy: corev1.PullNever,
 			}
 
+			// 1st creates service account
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			err = k8sClient.Get(ctx, typeNamespacedName, search)
-			Expect(err).NotTo(HaveOccurred())
-
-			searchPods := &corev1.PodList{}
-			err = k8sClient.List(ctx, searchPods, &client.ListOptions{
-				LabelSelector: labels.SelectorFromSet(map[string]string{
-					v1beta1.TypeLabelKey:   v1beta1.PodTypeSearch,
-					v1beta1.SearchLabelKey: search.Name,
-				}),
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: search.Spec.ServiceAccountName, Namespace: search.Namespace}, serviceAccount)).To(Succeed())
+			// 2nd creates role binding
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(searchPods.Items).To(HaveLen(1), "search pod should have been created")
-			searchPod := searchPods.Items[0]
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: search.Name + searchResourceSuffix, Namespace: search.Namespace}, &rbacv1.RoleBinding{})).To(Succeed())
+
+			// 3rd creates pod
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			searchPod := &corev1.Pod{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: search.Name + searchResourceSuffix, Namespace: search.Namespace}, searchPod)
+			Expect(err).NotTo(HaveOccurred())
+
+			// 4th marks read
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, typeNamespacedName, search)
+			Expect(err).NotTo(HaveOccurred())
 
 			Expect(search.Status.StartTime).ToNot(BeNil(), "search should be marked started")
 			err = k8sClient.Get(ctx, serviceAccountNamespacedName, serviceAccount)
@@ -337,26 +370,34 @@ var _ = Describe("Search Controller", func() {
 			}
 
 			// first ensure reconcile is working normally
+			// 1st invocation creates service account
+			Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})).Error().NotTo(HaveOccurred())
+			// 2nd creates role binding
+			Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})).Error().NotTo(HaveOccurred())
+			// 3rd creates pods
 			Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})).Error().NotTo(HaveOccurred())
 			Expect(k8sClient.Get(ctx, typeNamespacedName, search)).Error().ToNot(HaveOccurred())
-
-			Expect(search.Status.StartTime).ToNot(BeNil())
+			Expect(search.Status.StartTime).To(BeNil())
+			Expect(search.Status.CompletionTime).To(BeNil())
+			// 4th marks started
+			Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})).Error().NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, search)).Error().ToNot(HaveOccurred())
+			Expect(search.Status.StartTime).NotTo(BeNil())
 			Expect(search.Status.CompletionTime).To(BeNil())
 
-			searchPods := &corev1.PodList{}
-			err := k8sClient.List(ctx, searchPods, &client.ListOptions{
-				LabelSelector: labels.SelectorFromSet(map[string]string{
-					v1beta1.TypeLabelKey:   v1beta1.PodTypeSearch,
-					v1beta1.SearchLabelKey: search.Name,
-				}),
-			})
+			searchPod := &corev1.Pod{}
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: search.Name + searchResourceSuffix, Namespace: search.Namespace}, searchPod)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(searchPods.Items).To(HaveLen(1))
-			searchPod := searchPods.Items[0]
 			searchPod.Status.Phase = corev1.PodSucceeded
-			Expect(k8sClient.Status().Update(ctx, &searchPod)).Error().ToNot(HaveOccurred())
+			Expect(k8sClient.Status().Update(ctx, searchPod)).Error().ToNot(HaveOccurred())
 
 			// run once more to check handleCompletion doesn't mark
 			// as complete till pipeline is marked

@@ -120,14 +120,12 @@ var _ = Describe("Search Webhook", func() {
 		It("Should default the service account when non is given", func() {
 			Expect(defaulter.Default(ctx, obj)).Error().To(Succeed())
 			Expect(obj.Spec.ServiceAccountName).To(Equal("search-" + obj.Name))
-			Expect(obj.Status.CustomServiceAccount).To(BeFalse())
 		})
-		It("Should indicate custom service account when name is set by user", func() {
+		It("Should accept a custom service account", func() {
 			objSA := obj.DeepCopy()
 			objSA.Spec.ServiceAccountName = customSA.Name
 			Expect(defaulter.Default(ctx, objSA)).Error().To(Succeed())
 			Expect(objSA.Spec.ServiceAccountName).To(Equal(customSA.Name))
-			Expect(objSA.Status.CustomServiceAccount).To(BeTrue())
 		})
 
 		It("Should return an error, if the crawler doesn't exist", func() {
@@ -140,13 +138,12 @@ var _ = Describe("Search Webhook", func() {
 			Expect(validator.ValidateCreate(ctx, obj)).Error().To(Succeed())
 		})
 
-		It("Should fail if the custom service account doesn't exist", func() {
+		It("Should succeed if a custom service account doesnt exist (it will create it)", func() {
 			Expect(k8sClient.Create(ctx, crawler)).To(Succeed())
 			objSA := obj.DeepCopy()
 			objSA.Spec.ServiceAccountName = customSA.Name
-			objSA.Status.CustomServiceAccount = true
 			_, err := validator.ValidateCreate(ctx, objSA)
-			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("Should succeed if the custom service account exists", func() {
@@ -154,7 +151,6 @@ var _ = Describe("Search Webhook", func() {
 			Expect(k8sClient.Create(ctx, customSA)).To(Succeed())
 			objSA := obj.DeepCopy()
 			objSA.Spec.ServiceAccountName = customSA.Name
-			objSA.Status.CustomServiceAccount = true
 			Expect(validator.ValidateCreate(ctx, objSA)).Error().To(Succeed())
 		})
 
