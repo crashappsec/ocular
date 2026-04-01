@@ -1,0 +1,58 @@
+---
+# This profile will validate the
+# configuration of the scanner containers
+# and call the validator uploaders
+# Requires uploaders 'validate-files'
+# and 'validate-env' to exist
+
+# TODO(bthuilot): make this into a more compact script/image
+---
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Profile
+metadata:
+  name: validate-scanners
+  namespace: e2e-test-pipeline
+spec:
+  containers:
+    - image: alpine/git:latest
+      name: validate-git
+      command: ['/bin/sh']
+      args: ["/scripts/validate-scanner-git.sh"]
+      env:
+      - name: GIT_CONFIG_COUNT
+        value: "1"
+      - name: GIT_CONFIG_KEY_0
+        value: "safe.directory"
+      - name: GIT_CONFIG_VALUE_0
+        value: "/mnt/target"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      volumeMounts:
+      - mountPath: "/scripts"
+        name: "validate-scripts"
+    - image: alpine/git:latest
+      name: validate-env
+      command: ['/bin/sh']
+      args: ["/scripts/validate-scanner-env.sh"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      volumeMounts:
+      - mountPath: "/scripts"
+        name: "validate-scripts"
+  artifacts:
+    - git.test
+    - env.test
+  uploaderRefs:
+    - name: validate-uploader-env
+      parameters:
+        - name: TEST_PARAM
+          value: "testing-param-value"
+    - name: validate-uploader-files
+  volumes:
+    - name: "validate-scripts"
+      configMap:
+        name: validate-scripts
+  securityContext:
+    runAsNonRoot: true

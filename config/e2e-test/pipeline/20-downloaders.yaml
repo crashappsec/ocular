@@ -1,0 +1,30 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Downloader
+metadata:
+  name: git-clone
+  namespace: e2e-test-pipeline
+spec:
+  parameters:
+    - name: TEST_PARAM
+      required: true
+  metadataFiles:
+    - git.metadata
+  container:
+    image: alpine/git:latest
+    name: validate-container
+    command: ['/bin/sh']
+    args: ["/scripts/validate-downloader.sh"]
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+    # volume created in profile
+    volumeMounts:
+      - mountPath: "/scripts"
+        name: "validate-scripts"
+    env:
+      - name: GIT_CONFIG_COUNT
+        value: "1"
+      - name: GIT_CONFIG_KEY_0
+        value: "safe.directory"
+      - name: GIT_CONFIG_VALUE_0
+        value: "/mnt/target"

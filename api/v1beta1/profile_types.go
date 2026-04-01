@@ -41,6 +41,15 @@ type ProfileSpec struct {
 	// +listMapKey=name
 	Volumes []v1.Volume `json:"volumes,omitempty" yaml:"volumes,omitempty" description:"A list of volumes that will be mounted into the scanner containers. This is useful for sharing data between scanners or for providing configuration files."`
 
+	// SecurityContext is the security context settings for
+	// the scan and upload pods. The following settings
+	// are always set, regardless of anything specified by the user:
+	// seccompProfile.type = "RuntimeDefault"
+	// For containers, the following is set:
+	// allowPrivilegeEscalation=false
+	// capabilities.drop="ALL"
+	SecurityContext v1.PodSecurityContext `json:"securityContext,omitempty,omitzero" descrption:"Security context for the upload and scan pods"`
+
 	// UploaderRefs is a list of [UploaderRunSpec] that will be used to upload
 	// the results of the scanners. An uploader will be passed each of the artifacts
 	// as command line arguments, prefixed by the argument '--' . Each [UploaderObjectReference] must specify the
