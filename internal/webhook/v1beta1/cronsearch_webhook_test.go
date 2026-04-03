@@ -176,4 +176,14 @@ var _ = Describe("CronSearch Webhook", func() {
 		})
 	})
 
+	Context("When creating a CronSearch with a search TTL under Validting Webhook", func() {
+		It("Should deny creation", func() {
+			obj.Name = validCronSearchName
+			obj.Spec.Schedule = "0 0 * * *"
+			obj.Spec.SearchTemplate.Spec.TTLSecondsAfterFinished = ptr.To[int32](60)
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred(),
+				"Expected validation to fail for TTL")
+		})
+	})
+
 })

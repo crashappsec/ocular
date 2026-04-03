@@ -6,7 +6,9 @@
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-FROM golang:1.26@sha256:9edf71320ef8a791c4c33ec79f90496d641f306a91fb112d3d060d5c1cee4e20 AS builder
+ARG BUILDPLATFORM
+
+FROM --platform=${BUILDPLATFORM} golang:1.26@sha256:9edf71320ef8a791c4c33ec79f90496d641f306a91fb112d3d060d5c1cee4e20 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -18,8 +20,7 @@ ENV GOFLAGS="${GOFLAGS} -trimpath"
 
 WORKDIR /workspace
 
-COPY go.mod go.mod
-COPY go.sum go.sum
+COPY go.mod go.sum .
 
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 

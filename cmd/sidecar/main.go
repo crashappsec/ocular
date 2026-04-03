@@ -82,7 +82,7 @@ func main() {
 	case "scheduler":
 		err = cmd.Schedule(cancelCtx)
 	case "scheduler-keepalive": // keeps pod alive till scheduler is done
-		if _, err = os.Create(os.Getenv(v1beta1.EnvVarSidecarSchedulerCompletePath)); err != nil {
+		if _, err = os.Create(os.Getenv(v1beta1.EnvVarSchedulerCompletePath)); err != nil {
 			logger.Error(err, "unable to create complete path")
 			os.Exit(1)
 		}
