@@ -134,8 +134,9 @@ var _ = Describe("Pipeline Controller", func() {
 				Name:      pipeline.Name,
 				Namespace: pipeline.Namespace,
 			}, pipeline)).To(Succeed())
+			Expect(pipeline.Status.ScanPodOnly).To(BeTrue())
 
-			// 2nd reconcile should create pod
+			// 2nd reconcile should create scan pod
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      pipeline.Name,
@@ -147,7 +148,6 @@ var _ = Describe("Pipeline Controller", func() {
 				Name:      pipeline.Name,
 				Namespace: pipeline.Namespace,
 			}, pipeline)).To(Succeed())
-			Expect(pipeline.Status.ScanPodOnly).To(BeTrue())
 
 			scanPod := &corev1.Pod{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanPodSuffix, Namespace: pipeline.Namespace}, scanPod)

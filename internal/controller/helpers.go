@@ -32,6 +32,15 @@ func updateStatus(ctx context.Context, c client.Client, obj client.Object, error
 	return nil
 }
 
+func patchStatus(ctx context.Context, c client.Client, obj client.Object, patch client.Patch) error {
+	l := logf.FromContext(ctx)
+	if patchErr := c.Status().Patch(ctx, obj, patch); patchErr != nil {
+		l.Error(patchErr, fmt.Sprintf("failed to patch status of %s", obj.GetName()))
+		return patchErr
+	}
+	return nil
+}
+
 func generateBaseContainerOptions(envVars []corev1.EnvVar) []containers.Option {
 	return []containers.Option{
 		containers.WithAdditionalEnvVars(envVars...),

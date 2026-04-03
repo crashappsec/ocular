@@ -41,7 +41,7 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-LDFLAGS ?= -X main.version=$(OCULAR_VERSION) -X main.buildTime=$(shell date -Iseconds) -X main.gitCommit=$(shell git rev-parse --short HEAD)
+
 
 .PHONY: all
 all: build
@@ -126,6 +126,14 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: update-github-actions
+update-github-actions: frizbee ## Update GitHub action versions in workflows
+	@echo "Updating GitHub workflows ..."
+	@"$(FRIZBEEE)" actions .github/workflows
+
+
+##@ Testing
+
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
@@ -145,7 +153,7 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 		*"$(KIND_CLUSTER)"*) \
 			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
 		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
+			echo "Creating Kind cluster '$(KIND_CLUSTER)'... $(DOCKER_DEFAULT_PLATFORM)"; \
 			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
 	esac
 
@@ -157,6 +165,8 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+
+##@ Linting
 
 .PHONY: lint
 lint: golangci-lint license-eye ## Run golangci-lint linter
@@ -172,19 +182,12 @@ lint-fix: golangci-lint license-eye ## Run golangci-lint linter and perform fixe
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
-CURRENT_DIR := $(shell pwd)
-
 license-fix: ## Fix license headers
 	@echo "Formatting license headers ..."
 	@"$(LICENSE_EYE)" header fix
 
-update-github-actions: frizbee ## Update GitHub action versions in workflows
-	@echo "Updating GitHub workflows ..."
-	@"$(FRIZBEEE)" actions .github/workflows
-
 
 ##@ Build
-COMMANDS := controller sidecar
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
@@ -194,20 +197,35 @@ build: manifests generate fmt vet ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/manager/main.go
 
-# If you wish to build the manager image targeting other platforms you can use the --platform flag.
-# (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
-# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build-all
-docker-build-all: docker-build-controller docker-build-sidecar ## Build docker image with the manager.
+docker-build-all: docker-build-controller docker-build-sidecar ## Builds all docker images
 
+
+
+
+# PLATFORMS is a list of platforms to
+# build for. Production Ocular images are built
+# with: 'linux/arm64,linux/amd64,linux/s390x,linux/ppc64le'
+PLATFORMS=linux/arm64,linux/amd64
+
+# Additionally, docker args can be set,
+# adding --push will push the image
+DOCKER_ARGS ?= --platform=$(PLATFORMS)
+
+LDFLAGS ?= -X main.version=$(OCULAR_VERSION) -X main.buildTime=$(shell date -Iseconds) -X main.gitCommit=$(shell git rev-parse --short HEAD)
 .PHONY: docker-build-controller
-docker-build-controller:  docker-build-img-controller ## Build docker image with the manager.
+docker-build-controller:  docker-build-img-controller ## Build docker image for the manager.
 
 .PHONY: docker-build-sidecar
-docker-build-sidecar: docker-build-img-sidecar ## Build docker image with the sidecar.
+docker-build-sidecar: docker-build-img-sidecar ## Build docker image for the sidecar.
 
-docker-build-img-%:
-	$(CONTAINER_TOOL) build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-build-img-%=%) -t $(OCULAR_$(shell echo '$(@:docker-build-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) .
+docker-build-img-%: ## Builds the docker image
+	$(CONTAINER_TOOL) build \
+		--build-arg LDFLAGS="$(LDFLAGS)" \
+		--build-arg COMMAND=$* \
+		--tag $(OCULAR_$(shell echo '$*' | tr '[:lower:]' '[:upper:]')_IMG) \
+		$(DOCKER_ARGS) \
+		-f Dockerfile .
 
 .PHONY: docker-push-all
 docker-push-all: docker-push-controller docker-push-sidecar ## Push docker both manager and sidecar images.
@@ -219,34 +237,7 @@ docker-push-controller: docker-push-img-controller ## Push docker image with the
 docker-push-sidecar: docker-push-img-sidecar ## Push docker image with the sidecar.
 
 docker-push-img-%: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push $(OCULAR_$(shell echo '$(@:docker-build-%=%)' | tr '[:lower:]' '[:upper:]')_IMG)
-
-# PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
-# architectures. (i.e. make docker-buildx OCULAR_CONTROLLER_IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
-# - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
-# - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-# - be able to push the image to your registry (i.e. if you do not set a valid value via OCULAR_CONTROLLER_IMG=<myregistry/image:<tag>> then the export will fail)
-# To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
-PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
-.PHONY: docker-buildx-all
-docker-buildx-all: docker-buildx-controller  docker-buildx-sidecar ## Build and push docker images for both manager and sidecar for cross-platform support.
-
-.PHONY: docker-buildx-controller
-docker-buildx-controller: docker-buildx-img-controller ## Build and push docker image for the manager for cross-platform support
-
-.PHONY: docker-buildx-sidecar
-docker-buildx-sidecar: docker-buildx-img-sidecar ## Build and push docker image for the sidecar for cross-platform support
-
-docker-buildx-img-%: ## Build and push docker image for the manager for cross-platform support
-	@echo -e "This will build and \e[31m$$(tput bold)push$$(tput sgr0)\e[0m the image $(OCULAR_$(shell echo '$(@:docker-buildx-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) for platforms: ${PLATFORMS}."
-	@read -p "press enter to continue, or ctrl-c to abort: "
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name ocular-builder
-	$(CONTAINER_TOOL) buildx use ocular-builder
-	- $(CONTAINER_TOOL) buildx build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-buildx-img-%=%) --push --platform=$(PLATFORMS) --tag $(OCULAR_$(shell echo '$(@:docker-buildx-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm ocular-builder
-	rm Dockerfile.cross
+	$(CONTAINER_TOOL) push $(OCULAR_$(shell echo '$*' | tr '[:lower:]' '[:upper:]')_IMG)
 
 .PHONY: build-installer
 build-installer: manifests generate kustomize yq ## Generate a consolidated YAML with CRDs and deployment.

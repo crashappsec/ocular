@@ -3,7 +3,6 @@ module github.com/crashappsec/ocular
 go 1.25.3
 
 require (
-
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
