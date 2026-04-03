@@ -11,7 +11,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
 	"path"
 	"slices"
 	"time"
@@ -20,7 +19,6 @@ import (
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/crashappsec/ocular/internal/utils"
 	ocularRuntime "github.com/crashappsec/ocular/pkg/runtime"
-	"github.com/google/go-cmp/cmp"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -373,6 +371,9 @@ func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.P
 		Args:            append([]string{sidecarCommand}, artifactsArgs...),
 		Env:             sidecarEnvVars,
 		RestartPolicy:   ptr.To(corev1.ContainerRestartPolicyAlways),
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot: ptr.To(true),
+		},
 	}
 }
 
@@ -526,7 +527,6 @@ func (r *PipelineReconciler) failPod(ctx context.Context, pod *corev1.Pod) error
 }
 
 func (r *PipelineReconciler) populateUploadService(svc *corev1.Service, pipeline *v1beta1.Pipeline) error {
-	before := svc.DeepCopy()
 	svc.Labels = map[string]string{
 		v1beta1.TypeLabelKey:       v1beta1.ServiceTypeUpload,
 		v1beta1.PipelineLabelKey:   pipeline.GetName(),
@@ -542,11 +542,6 @@ func (r *PipelineReconciler) populateUploadService(svc *corev1.Service, pipeline
 	svc.Spec.Ports = []corev1.ServicePort{
 		{Port: extractorPort, TargetPort: intstr.FromInt32(extractorPort), Protocol: corev1.ProtocolTCP},
 	}
-
-	if diff := cmp.Diff(before, svc); diff != "" {
-		log.Print("service diff", "diff", diff)
-	}
-
 	return ctrl.SetControllerReference(pipeline, svc, r.Scheme)
 }
 
@@ -563,7 +558,7 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 		// only edit pod spec if not created yet
 		// since once created, spec cant really be modified
 		uploaderContainers := make([]corev1.Container, 0, len(uploaders))
-		volumes := make([]corev1.Volume, 0, len(uploaders))
+		volumes := profile.Spec.Volumes
 		for _, invocation := range uploaders {
 			baseContainer := invocation.spec.Container
 			baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
@@ -604,6 +599,9 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 			Args:  []string{"receive"},
 			Env: []corev1.EnvVar{
 				{Name: v1beta1.EnvVarExtractorPort, Value: fmt.Sprintf("%d", extractorPort)},
+			},
+			SecurityContext: &corev1.SecurityContext{
+				RunAsNonRoot: ptr.To(true),
 			},
 		}
 		pod.Spec.ServiceAccountName = pipeline.Spec.UploadServiceAccountName
@@ -695,6 +693,10 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 				},
 			},
 		)
+		pod.Spec.SecurityContext = &profileSpec.SecurityContext
+		pod.Spec.SecurityContext.SeccompProfile = &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		}
 	}
 
 	return ctrl.SetControllerReference(pipeline, pod, r.Scheme)

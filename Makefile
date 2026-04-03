@@ -83,7 +83,17 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" apply -f -
 
 deploy-%: manifests kustomize ## Specify which config folder (%) to deploy to the K8s cluster specified in ~/.kube/config.
-	"$(KUSTOMIZE)" build config/$(@:deploy-%=%) | "$(KUBECTL)" apply -f -
+	"$(KUSTOMIZE)" build config/$* | "$(KUBECTL)" apply -f -
+
+run-e2e-test-%:
+	"$(KUSTOMIZE)" build config/e2e-test/$* | "$(KUBECTL)" apply -f -
+
+stop-e2e-test-%:
+	@"$(KUSTOMIZE)" build config/e2e-test/$* | \
+		"$(YQ)" ea '[.] | reverse | .[]'  | \
+		sed '/^apiVersion:/i ---' | \
+		"$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+
 
 .PHONY: refresh-deployment
 refresh-deployment: ## Refresh the controller deployment in the K8s cluster specified in ~/.kube/config.
@@ -94,7 +104,7 @@ undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 undeploy-%: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	"$(KUSTOMIZE)" build config/$(@:undeploy-%=%) | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+	"$(KUSTOMIZE)" build config/$* | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 
 ##@ Development
@@ -238,7 +248,6 @@ docker-push-sidecar: docker-push-img-sidecar ## Push docker image with the sidec
 
 docker-push-img-%: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push $(OCULAR_$(shell echo '$*' | tr '[:lower:]' '[:upper:]')_IMG)
-
 .PHONY: build-installer
 build-installer: manifests generate kustomize yq ## Generate a consolidated YAML with CRDs and deployment.
 	@mkdir -p dist
@@ -277,9 +286,9 @@ build-helm: kubebuilder ## Generate a helm-chart using kubebuilder
 	@sed -i.bak -r 's/^([ ]+OCULAR_SIDECAR_IMG:)[^\n]+/\1 "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"/g' dist/chart/templates/extras/controller-manager-config.yaml
 	@sed -i.bak -r 's/^([ ]+value:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.sidecar.image.pullPolicy }}"/g' dist/chart/templates/manager/manager.yaml
 	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/extras/controller-manager-config.yaml.bak # cleanup backup file from sed
-	@yq -ie '.manager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
-	@yq -ie '.sidecar.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
-	@yq -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
+	@"$(YQ)" -ie '.manager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
+	@"$(YQ)" -ie '.sidecar.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
+	@"$(YQ)" -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
 
 .PHONY: clean-helm
 clean-helm: ## Clean up the helm chart generated files

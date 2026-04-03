@@ -931,6 +931,7 @@ func (in *ProfileSpec) DeepCopyInto(out *ProfileSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	in.SecurityContext.DeepCopyInto(&out.SecurityContext)
 	if in.UploaderRefs != nil {
 		in, out := &in.UploaderRefs, &out.UploaderRefs
 		*out = make([]ParameterizedObjectReference, len(*in))

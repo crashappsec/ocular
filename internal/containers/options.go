@@ -56,6 +56,7 @@ func WithPodSecurityStandardRestricted() Option {
 		if c.SecurityContext == nil {
 			c.SecurityContext = &corev1.SecurityContext{}
 		}
+
 		c.SecurityContext.AllowPrivilegeEscalation = ptr.To(false)
 		c.SecurityContext.Capabilities = &corev1.Capabilities{
 			Drop: []corev1.Capability{"ALL"},
