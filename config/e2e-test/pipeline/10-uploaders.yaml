@@ -6,10 +6,8 @@ metadata:
 spec:
   parameters:
     - name: TEST_PARAM
-      required: true
     - name: DEFAULT
       default: default-value
-      required: false
   container:
     image: alpine/git:latest
     name: validate-env

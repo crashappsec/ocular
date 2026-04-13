@@ -15,7 +15,7 @@ import (
 
 // ProfileSpec defines the desired state of Profile
 type ProfileSpec struct {
-	// Containers is a list of [v1.Container] that will be run
+	// Containers is a list of [ScannerContainer] that will be run
 	// in parallel, with their current working directory set to
 	// the directory where the target has been downloaded to.
 	// +kubebuilder:validation:MinItems=1
@@ -24,7 +24,7 @@ type ProfileSpec struct {
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=name
-	Containers []v1.Container `json:"containers" yaml:"containers" description:"A list of containers that will be run over the target. The containers will be run in parallel, with their current working directory set to the directory where the target has been downloaded to."`
+	Containers []ConditionalContainer `json:"containers" yaml:"containers" description:"A list of containers that will be run over the target. The containers will be run in parallel, with their current working directory set to the directory where the target has been downloaded to."`
 	// Artifacts is a list of paths to the artifacts that will be produced
 	// by the scanners. These paths are relative to the results directory
 	// +optional
@@ -41,15 +41,6 @@ type ProfileSpec struct {
 	// +listMapKey=name
 	Volumes []v1.Volume `json:"volumes,omitempty" yaml:"volumes,omitempty" description:"A list of volumes that will be mounted into the scanner containers. This is useful for sharing data between scanners or for providing configuration files."`
 
-	// SecurityContext is the security context settings for
-	// the scan and upload pods. The following settings
-	// are always set, regardless of anything specified by the user:
-	// seccompProfile.type = "RuntimeDefault"
-	// For containers, the following is set:
-	// allowPrivilegeEscalation=false
-	// capabilities.drop="ALL"
-	SecurityContext v1.PodSecurityContext `json:"securityContext,omitempty,omitzero" descrption:"Security context for the upload and scan pods"`
-
 	// UploaderRefs is a list of [UploaderRunSpec] that will be used to upload
 	// the results of the scanners. An uploader will be passed each of the artifacts
 	// as command line arguments, prefixed by the argument '--' . Each [UploaderObjectReference] must specify the
@@ -57,10 +48,28 @@ type ProfileSpec struct {
 	// +optional
 	UploaderRefs []ParameterizedObjectReference `json:"uploaderRefs" yaml:"uploaderRefs" description:"A list of uploaders that will be used to upload the results of the scanners. An uploader will be passed each of the artifacts as command line arguments, prefixed by the argument '--'. Each UploaderRunRequest must specify the name of the uploader and any parameters that are required."`
 
-	// AdditionalPodMetadata defines additional specifications to be added to the pod
-	// running the scanners, such as annotations and labels.
+	// Parameters specifies a set of variables that can be configured
+	// and supplied to the scanner containers.
 	// +optional
-	AdditionalPodMetadata AdditionalPodMetadata `json:"additionalPodMetadata,omitempty,omitzero" yaml:"additionalPodMetadata,omitempty,omitzero" description:"Additional specifications to be added to the pod running the scanners, such as annotations and labels."`
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
+	Parameters []ParameterDefinition `json:"parameters,omitempty"`
+}
+
+// ConditionalContainer represents a container that
+// is only included if a condition is met.
+type ConditionalContainer struct {
+	v1.Container `json:",inline"`
+	// TODO(bthuilot): possibly move artifacts here
+
+	// IncludeIf specifies when a container should be
+	// included in the scan pod. An empty value means
+	// it should always be included. If no pods pass the
+	// condition, the pipeline will fail to be created.
+	// +optional
+	IncludeIf *ContainerCondition `json:"includeIf,omitempty,omitzero" description:"Give conditions for when the container should be included. Null conditions means always include"`
 }
 
 type ProfileStatus struct {

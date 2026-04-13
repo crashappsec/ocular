@@ -136,7 +136,8 @@ spec:
                           downloaderRef:
                             description: |-
                               DownloaderRef is a reference to the downloader that will be used in this pipeline.
-                              It should point to a valid Downloader resource in the same namespace.
+                              It should point to a valid Downloader resource in the same namespace, or a ClusterDownloader
+                              by setting kind to "ClusterDownloader".
                             properties:
                               apiVersion:
                                 description: API version of the referent.
@@ -200,6 +201,40 @@ spec:
                                 type: string
                             type: object
                             x-kubernetes-map-type: atomic
+                          parameters:
+                            description: |-
+                              Parameters is a list of ParameterDefinition that can be used to define "parameters"
+                              that the user can specify in a downloader reference that can configure how to download targets.
+                            items:
+                              description: |-
+                                ParameterDefinition is a definition of a parameter that can be passed to a container.
+                                It defines the name of the parameter, a description of the parameter,
+                                whether the parameter is required, and a default value for the parameter (when not required).
+                              properties:
+                                default:
+                                  description: |-
+                                    Default is the default value for the parameter.
+                                    If default is not set, the parameter is assumed to
+                                    be required - and will cause an error if parameter
+                                    is not set via [ParameterizedObjectReference]
+                                  type: string
+                                description:
+                                  description: Description is the description of the
+                                    parameter.
+                                  type: string
+                                name:
+                                  description: Name is the name of the parameter.
+                                  maxLength: 64
+                                  minLength: 1
+                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
                           profileRef:
                             description: |-
                               ProfileRef is a reference to the profile that will be used in this pipeline.
@@ -233,6 +268,28 @@ spec:
                                   Namespace of the referent.
                                   More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
                                 type: string
+                              parameters:
+                                description: |-
+                                  Parameters is a list of parameters to pass to the referenced resource.
+                                  as environment variables.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name is the name of the parameter
+                                        to set.
+                                      type: string
+                                    value:
+                                      description: Value is the value to set the parameter
+                                        to.
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - name
+                                x-kubernetes-list-type: map
                               resourceVersion:
                                 description: |-
                                   Specific resourceVersion to which this reference is made, if any.
@@ -276,6 +333,7 @@ spec:
                               If set, the pipeline and its associated resources will be automatically deleted
                               after the specified number of seconds have passed since the pipeline finished.
                             format: int32
+                            minimum: 0
                             type: integer
                           ttlSecondsMaxLifetime:
                             description: |-
@@ -284,6 +342,7 @@ spec:
                               after the specified number of seconds have passed since the pipeline was created,
                               regardless of its state.
                             format: int32
+                            minimum: 0
                             type: integer
                           uploadServiceAccountName:
                             description: |-

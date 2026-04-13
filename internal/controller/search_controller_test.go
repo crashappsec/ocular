@@ -98,7 +98,6 @@ var _ = Describe("Search Controller", func() {
 							{
 								Name:        "CRAWL_TARGET",
 								Description: "The search query to execute",
-								Required:    true,
 							},
 						},
 					},
@@ -324,8 +323,10 @@ var _ = Describe("Search Controller", func() {
 								Name: "test",
 							},
 						},
-						ProfileRef: corev1.ObjectReference{
-							Name: "test",
+						ProfileRef: v1beta1.ParameterizedObjectReference{
+							ObjectReference: corev1.ObjectReference{
+								Name: "test",
+							},
 						},
 						Target: v1beta1.Target{
 							Identifier: "test",

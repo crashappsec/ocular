@@ -37,8 +37,8 @@ type DownloaderSpec struct {
 	// +listType=set
 	MetadataFiles []string `json:"metadataFiles,omitempty" protobuf:"bytes,3,opt,name=metadataFiles" patchStrategy:"merge"`
 
-	// Parameters is a list of ParameterDefinition that can be used to define "parameters"
-	// that the user can specify in a downloader reference that can configure how to download targets.
+	// Parameters specifies a set of variables that can be configured
+	// and supplied to the scanner containers.
 	// +optional
 	// +patchMergeKey=name
 	// +patchStrategy=merge,retainKeys

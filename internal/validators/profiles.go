@@ -7,3 +7,64 @@
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
 package validators
+
+import (
+	"context"
+	"errors"
+
+	"github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/internal/resources"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// ValidateProfile will validate the fields and references of the profile and return
+// nil if the profile is valid. If the profile is not valid, a
+// [k8s.io/apimachinery/pkg/api/errors.StatusError] is returned containing the
+// details of the validation error.
+func ValidateProfile(ctx context.Context, c client.Client, profile *v1beta1.Profile) error {
+	var fieldErrors field.ErrorList
+
+	volumeNames := make(map[string]struct{})
+	for i, vol := range profile.Spec.Volumes {
+		if _, exists := volumeNames[vol.Name]; exists {
+			fieldErrors = append(fieldErrors, field.Duplicate(field.NewPath("spec").Child("volumes").Index(i).Child("name"), vol.Name))
+		} else {
+			volumeNames[vol.Name] = struct{}{}
+		}
+	}
+
+	for i, uploaderRef := range profile.Spec.UploaderRefs {
+		var refErr resources.InvalidObjectReference
+
+		refField := field.NewPath("spec").Child("uploaderRefs").Index(i)
+		uploader, err := resources.UploaderInvocationFromReference(ctx, c, profile.Namespace, uploaderRef)
+		if errors.As(err, &refErr) {
+			fieldErrors = append(fieldErrors, field.Invalid(refField, uploaderRef, refErr.Message))
+			continue
+		} else if apierrors.IsNotFound(err) {
+			fieldErrors = append(fieldErrors, field.NotFound(refField, uploaderRef))
+			continue
+		} else if err != nil {
+			return err
+		}
+
+		fieldErrors = append(fieldErrors, ValidateParameterReference(ctx, refField, uploaderRef, uploader.Spec.Parameters)...)
+
+		for i, vol := range uploader.Spec.Volumes {
+			if _, exists := volumeNames[vol.Name]; exists {
+				fieldErrors = append(fieldErrors, field.Duplicate(refField.Child("volumes").Index(i).Child("name"), vol.Name))
+			} else {
+				volumeNames[vol.Name] = struct{}{}
+			}
+		}
+	}
+
+	if len(fieldErrors) == 0 {
+		return nil
+	}
+
+	return apierrors.NewInvalid(schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Profile"}, profile.Name, fieldErrors)
+}

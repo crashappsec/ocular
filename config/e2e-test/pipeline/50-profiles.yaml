@@ -41,6 +41,22 @@ spec:
       volumeMounts:
       - mountPath: "/scripts"
         name: "validate-scripts"
+    - image: alpine/git:latest
+      name: should-not-run
+      command: ['/bin/sh', '-c']
+      args:
+        - |
+            echo "ERROR: param inlcude set to $OCULAR_PARAM_TEST_INCLUDE"
+            exit 1
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      includeIf:
+        whenParamSet: "TEST_INCLUDE"
+  parameters:
+    - name: "SCANNER_TEST"
+    - name: "TEST_INCLUDE"
+      default: "1"
   artifacts:
     - git.test
     - env.test
@@ -54,5 +70,3 @@ spec:
     - name: "validate-scripts"
       configMap:
         name: validate-scripts
-  securityContext:
-    runAsNonRoot: true

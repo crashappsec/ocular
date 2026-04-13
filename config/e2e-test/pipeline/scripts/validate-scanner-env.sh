@@ -27,4 +27,6 @@ validate-common-env
 
 validate-pwd "$OCULAR_TARGET_DIR"
 
+validate-parameter "SCANNER_TEST" "PASS"
+
 complete "scanner enviornment validated" 

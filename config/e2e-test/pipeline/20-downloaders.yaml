@@ -6,7 +6,6 @@ metadata:
 spec:
   parameters:
     - name: TEST_PARAM
-      required: true
   metadataFiles:
     - git.metadata
   container:

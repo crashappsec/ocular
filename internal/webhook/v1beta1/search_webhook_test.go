@@ -44,18 +44,15 @@ var _ = Describe("Search Webhook", func() {
 			Spec: v1beta1.CrawlerSpec{
 				Parameters: []v1beta1.ParameterDefinition{
 					{
-						Name:     "PARAM_1",
-						Required: true,
+						Name: "PARAM_1",
 					},
 					{
-						Name:     "PARAM_2",
-						Required: false,
-						Default:  ptr.To("parameter 2"),
+						Name:    "PARAM_2",
+						Default: ptr.To("parameter 2"),
 					},
 					{
-						Name:     "PARAM_3",
-						Required: false,
-						Default:  ptr.To("parameter 3"),
+						Name:    "PARAM_3",
+						Default: ptr.To("parameter 3"),
 					},
 				},
 			},

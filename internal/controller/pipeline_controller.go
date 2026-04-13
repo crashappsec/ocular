@@ -11,14 +11,15 @@ package controller
 import (
 	"context"
 	"fmt"
+	"log"
+	"maps"
 	"path"
 	"slices"
 	"time"
 
 	"github.com/crashappsec/ocular/internal/containers"
 	"github.com/crashappsec/ocular/internal/resources"
-	"github.com/crashappsec/ocular/internal/utils"
-	ocularRuntime "github.com/crashappsec/ocular/pkg/runtime"
+	"github.com/google/go-cmp/cmp"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -146,33 +147,25 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return r.handlePostCompletion(ctx, pipeline)
 	}
 
-	profile := &v1beta1.Profile{}
-	if err = r.Get(ctx, client.ObjectKey{
-		Namespace: pipeline.GetNamespace(),
-		Name:      pipeline.Spec.ProfileRef.Name,
-	}, profile); err != nil {
+	profile, err := resources.ProfileInvocationFromReference(ctx, r.Client, pipeline.GetNamespace(), pipeline.Spec.ProfileRef)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
-	l = l.WithValues("profile", profile.Name)
+	l = l.WithValues("profile", pipeline.Spec.ProfileRef)
 
-	downloaderSpec, err := resources.DownloaderSpecFromReference(ctx, r.Client, pipeline.GetNamespace(), pipeline.Spec.DownloaderRef.ObjectReference)
+	downloader, err := resources.DownloaderInvocationFromReference(ctx, r.Client, pipeline.GetNamespace(), pipeline.Spec.DownloaderRef)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	l = l.WithValues("downloader", pipeline.Spec.DownloaderRef)
 
-	uploaderInvocations := make([]uploaderInvocation, 0, len(profile.Spec.UploaderRefs))
+	var uploaders []resources.Invocation[v1beta1.UploaderSpec]
 	for _, uploaderRef := range profile.Spec.UploaderRefs {
-		spec, err := resources.UploaderSpecFromReference(ctx, r.Client, profile.Namespace, uploaderRef.ObjectReference)
+		uploader, err := resources.UploaderInvocationFromReference(ctx, r.Client, pipeline.Namespace, uploaderRef)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("unable to get uploader spec for %s/%s: %w", uploaderRef.Namespace, uploaderRef.Name, err)
 		}
-
-		uploaderInvocations = append(uploaderInvocations, uploaderInvocation{
-			spec:       spec,
-			name:       uploaderRef.Name,
-			parameters: uploaderRef.Parameters,
-		})
+		uploaders = append(uploaders, uploader)
 	}
 
 	// In the case where no artifacts or uploaders are defined and the pipeline hasn't started
@@ -193,7 +186,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	containerOpts := generateBaseContainerOptions(envVars)
 	// aritfactArgs are the arguments passed to the sidecar
 	// & uploaders to specify which artifacts to extract
-	artifactArgs := generateArtifactArguments(downloaderSpec.MetadataFiles, profile.Spec.Artifacts)
+	artifactArgs := generateArtifactArguments(downloader.Spec.MetadataFiles, profile.Spec.Artifacts)
 
 	// generate upload components (if applicable)
 	uploadPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: pipeline.GetName() + uploadPodSuffix, Namespace: pipeline.GetNamespace()}}
@@ -213,7 +206,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 					MountPath: v1beta1.PipelineMetadataDirectory,
 				}),
 			)
-			return r.populateUploadPod(uploadPod, pipeline, profile, uploaderInvocations, uploaderContainerOpts...)
+			return r.populateUploadPod(uploadPod, pipeline, profile, uploaders, uploaderContainerOpts...)
 		})
 
 		if err != nil {
@@ -275,7 +268,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				Name:      pipelineResultsVolumeName,
 				MountPath: v1beta1.PipelineResultsDirectory,
 			}))
-		return r.populateScanPod(scanPod, pipeline, profile.Spec, downloaderSpec, sidecarContainer, scanContainerOpts...)
+		return r.populateScanPod(scanPod, pipeline, profile, downloader, sidecarContainer, scanContainerOpts...)
 	})
 
 	if err != nil {
@@ -339,14 +332,6 @@ const (
 	// sidecar container in the upload pod
 	sidecarReceiverContainerName = "receive-artifacts"
 )
-
-// uploaderInvocation is a convience struct to hold both the spec
-// on an uploader, and the "invocation" (i.e. defined parameters) within the profile.
-type uploaderInvocation struct {
-	spec       v1beta1.UploaderSpec
-	name       string
-	parameters []v1beta1.ParameterSetting
-}
 
 func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.Pipeline, uploadService *corev1.Service, artifactsArgs []string) corev1.Container {
 	var (
@@ -527,6 +512,7 @@ func (r *PipelineReconciler) failPod(ctx context.Context, pod *corev1.Pod) error
 }
 
 func (r *PipelineReconciler) populateUploadService(svc *corev1.Service, pipeline *v1beta1.Pipeline) error {
+	before := svc.DeepCopy()
 	svc.Labels = map[string]string{
 		v1beta1.TypeLabelKey:       v1beta1.ServiceTypeUpload,
 		v1beta1.PipelineLabelKey:   pipeline.GetName(),
@@ -542,53 +528,42 @@ func (r *PipelineReconciler) populateUploadService(svc *corev1.Service, pipeline
 	svc.Spec.Ports = []corev1.ServicePort{
 		{Port: extractorPort, TargetPort: intstr.FromInt32(extractorPort), Protocol: corev1.ProtocolTCP},
 	}
+
+	if diff := cmp.Diff(before, svc); diff != "" {
+		log.Print("service diff", "diff", diff)
+	}
+
 	return ctrl.SetControllerReference(pipeline, svc, r.Scheme)
 }
 
-func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta1.Pipeline, profile *v1beta1.Profile, uploaders []uploaderInvocation, containerOpts ...containers.Option) error {
-
-	pod.Labels = utils.MergeMaps(profile.Spec.AdditionalPodMetadata.Labels, map[string]string{
-		v1beta1.TypeLabelKey:       v1beta1.PodTypeUpload,
-		v1beta1.PipelineLabelKey:   pipeline.GetName(),
-		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
-		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
-	})
+func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta1.Pipeline, profile resources.Invocation[v1beta1.ProfileSpec], uploaders []resources.Invocation[v1beta1.UploaderSpec], containerOpts ...containers.Option) error {
 
 	if pod.CreationTimestamp.IsZero() {
+		labels := make(map[string]string)
+		maps.Copy(labels, profile.Metadata.GetLabels())
+		maps.Copy(labels, pipeline.Labels)
+		annotations := make(map[string]string)
+		maps.Copy(annotations, profile.Metadata.GetAnnotations())
+		maps.Copy(annotations, pipeline.Annotations)
 		// only edit pod spec if not created yet
 		// since once created, spec cant really be modified
 		uploaderContainers := make([]corev1.Container, 0, len(uploaders))
-		volumes := profile.Spec.Volumes
+		volumes := make([]corev1.Volume, 0, len(uploaders))
+		volumes = append(volumes, profile.Spec.Volumes...)
 		for _, invocation := range uploaders {
-			baseContainer := invocation.spec.Container
+			baseContainer := invocation.Spec.Container
 			baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
 				Name:  v1beta1.EnvVarUploaderName,
-				Value: invocation.name,
+				Value: invocation.Metadata.Name,
 			})
 
-			// this loop does not check for duplicate parameters NOR
-			// required parameters to be set. This is done during
-			// profile admission validation.
-			var setParams = map[string]struct{}{}
-			for _, paramDef := range invocation.parameters {
-				setParams[paramDef.Name] = struct{}{}
-				envVarName := ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name)
-				baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
-					Name:  envVarName,
-					Value: paramDef.Value,
-				})
-			}
+			baseContainer.Env = append(baseContainer.Env,
+				containers.ParseParameterEnvVars(invocation.Spec.Parameters, invocation.Parameters)...)
 
-			for _, paramDef := range invocation.spec.Parameters {
-				if _, exists := setParams[paramDef.Name]; !exists && paramDef.Default != nil {
-					baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
-						Name:  ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name),
-						Value: *paramDef.Default,
-					})
-				}
-			}
+			maps.Copy(labels, invocation.Metadata.GetLabels())
+			maps.Copy(annotations, invocation.Metadata.GetAnnotations())
 
-			volumes = append(volumes, invocation.spec.Volumes...)
+			volumes = append(volumes, invocation.Spec.Volumes...)
 
 			uploaderContainers = append(uploaderContainers, baseContainer)
 		}
@@ -596,10 +571,12 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 		sidecarContainer := corev1.Container{
 			Name:  sidecarReceiverContainerName,
 			Image: r.SidecarImage,
-			Args:  []string{"receive"},
+
+			Args: []string{"receive"},
 			Env: []corev1.EnvVar{
 				{Name: v1beta1.EnvVarExtractorPort, Value: fmt.Sprintf("%d", extractorPort)},
 			},
+			RestartPolicy: ptr.To(corev1.ContainerRestartPolicyAlways),
 			SecurityContext: &corev1.SecurityContext{
 				RunAsNonRoot: ptr.To(true),
 			},
@@ -628,48 +605,47 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 			},
 		)
 
+		if pod.Labels == nil {
+			pod.Labels = make(map[string]string)
+		}
+		maps.Copy(pod.Labels, resources.PropagateMetadata(labels))
+		pod.Labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeUpload
+		pod.Labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
+		pod.Labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
+		pod.Labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
+
+		if pod.Annotations == nil {
+			pod.Annotations = make(map[string]string)
+		}
+		maps.Copy(pod.Annotations, resources.PropagateMetadata(annotations))
+
 	}
 
 	return ctrl.SetControllerReference(pipeline, pod, r.Scheme)
 }
 
-func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.Pipeline, profileSpec v1beta1.ProfileSpec, downloaderSpec v1beta1.DownloaderSpec,
+func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.Pipeline, profile resources.Invocation[v1beta1.ProfileSpec], downloader resources.Invocation[v1beta1.DownloaderSpec],
 	extractorContainer corev1.Container, containerOpts ...containers.Option) error {
-
-	pod.Labels = utils.MergeMaps(profileSpec.AdditionalPodMetadata.Labels, map[string]string{
-		v1beta1.TypeLabelKey:       v1beta1.PodTypeScan,
-		v1beta1.PipelineLabelKey:   pipeline.GetName(),
-		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
-		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
-	})
-
+	// only edit pod spec if not created yet
+	// since once created, spec cant really be modified
 	if pod.CreationTimestamp.IsZero() {
-		// only edit pod spec if not created yet
-		// since once created, spec cant really be modified
-		downloaderContainer := downloaderSpec.Container
-		var setParams = map[string]struct{}{}
-		// Set parameters
-		for _, paramDef := range pipeline.Spec.DownloaderRef.Parameters {
-			setParams[paramDef.Name] = struct{}{}
-			envVarName := ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name)
-			downloaderContainer.Env = append(downloaderContainer.Env, corev1.EnvVar{
-				Name:  envVarName,
-				Value: paramDef.Value,
-			})
-		}
+		labels := make(map[string]string)
+		maps.Copy(labels, downloader.Metadata.GetLabels())
+		maps.Copy(labels, profile.Metadata.GetLabels())
+		annotations := make(map[string]string)
+		maps.Copy(annotations, downloader.Metadata.GetAnnotations())
+		maps.Copy(annotations, profile.Metadata.GetAnnotations())
 
-		// Set defaults for missing
-		for _, paramDef := range downloaderSpec.Parameters {
-			if _, exists := setParams[paramDef.Name]; !exists && paramDef.Default != nil {
-				downloaderContainer.Env = append(downloaderContainer.Env, corev1.EnvVar{
-					Name:  ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name),
-					Value: *paramDef.Default,
-				})
-			}
-		}
+		downloaderContainer := downloader.Spec.Container
+		downloaderContainer.Env = append(downloaderContainer.Env, containers.ParseParameterEnvVars(downloader.Spec.Parameters, pipeline.Spec.DownloaderRef.Parameters)...)
+
+		scannerContainers := containers.FilterConditionalContainers(profile.Spec.Containers, pipeline.Spec.ProfileRef.Parameters)
+
 		pod.Spec.ServiceAccountName = pipeline.Spec.ScanServiceAccountName
 		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
-		pod.Spec.Containers = containers.ApplyOptions(profileSpec.Containers, containerOpts...)
+		pod.Spec.Containers = containers.ApplyOptions(scannerContainers, append(containerOpts,
+			containers.WithParameters(profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters))...,
+		)
 
 		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{
 			// Add the downloader as an init container
@@ -677,7 +653,7 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 			// Add the extractor as a sidecar container running in extract mode
 			extractorContainer,
 		}, containerOpts...)
-		volumes := append(profileSpec.Volumes, downloaderSpec.Volumes...)
+		volumes := append(profile.Spec.Volumes, downloader.Spec.Volumes...)
 		pod.Spec.Volumes = append(volumes,
 			corev1.Volume{Name: pipelineTargetVolumeName,
 				VolumeSource: corev1.VolumeSource{
@@ -693,10 +669,21 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 				},
 			},
 		)
-		pod.Spec.SecurityContext = &profileSpec.SecurityContext
-		pod.Spec.SecurityContext.SeccompProfile = &corev1.SeccompProfile{
-			Type: corev1.SeccompProfileTypeRuntimeDefault,
+
+		if pod.Labels == nil {
+			pod.Labels = make(map[string]string)
 		}
+		maps.Copy(pod.Labels, resources.PropagateMetadata(labels))
+		pod.Labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeScan
+		pod.Labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
+		pod.Labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
+		pod.Labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
+
+		if pod.Annotations == nil {
+			pod.Annotations = make(map[string]string)
+		}
+		maps.Copy(pod.Annotations, resources.PropagateMetadata(annotations))
+
 	}
 
 	return ctrl.SetControllerReference(pipeline, pod, r.Scheme)

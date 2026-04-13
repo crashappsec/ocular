@@ -70,12 +70,42 @@ var _ = Describe("Pipeline Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: v1beta1.ProfileSpec{
-					Containers: []corev1.Container{
+					Containers: []v1beta1.ConditionalContainer{
 						{
-							Image:   "alpine:latest",
-							Name:    "profile-container",
-							Command: []string{"/bin/sh", "-c"},
-							Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
+							Container: corev1.Container{
+								Image:   "alpine:latest",
+								Name:    "profile-container",
+								Command: []string{"/bin/sh", "-c"},
+								Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
+							},
+						},
+						{
+							Container: corev1.Container{
+								Image: "alpine:latest",
+								Name:  "do-not-include",
+							},
+							IncludeIf: &v1beta1.ContainerCondition{
+								WhenParamSet: "DEFAULT_SET",
+							},
+						},
+						{
+							Container: corev1.Container{
+								Image: "alpine:latest",
+								Name:  "should-include",
+							},
+							IncludeIf: &v1beta1.ContainerCondition{
+								WhenParamSet: "DEFAULT_EMPTY",
+							},
+						},
+					},
+					Parameters: []v1beta1.ParameterDefinition{
+						{
+							Name:    "DEFAULT_SET",
+							Default: ptr.To("1"),
+						},
+						{
+							Name:    "DEFAULT_EMPTY",
+							Default: ptr.To(""),
 						},
 					},
 					Artifacts: []string{"results.txt"},
@@ -92,9 +122,22 @@ var _ = Describe("Pipeline Controller", func() {
 							Name: downloader.Name,
 						},
 					},
-					ProfileRef: corev1.ObjectReference{
-						Name:      profileResource.Name,
-						Namespace: namespace,
+					ProfileRef: v1beta1.ParameterizedObjectReference{
+						ObjectReference: corev1.ObjectReference{
+							Name:      profileResource.Name,
+							Namespace: namespace,
+							Kind:      "Profile",
+						},
+						Parameters: []v1beta1.ParameterSetting{
+							{
+								Name:  "DEFAULT_SET",
+								Value: "",
+							},
+							{
+								Name:  "DEFAULT_EMPTY",
+								Value: "1",
+							},
+						},
 					},
 					Target: v1beta1.Target{
 						Identifier: "https://example.com/samplefile.txt",
@@ -186,7 +229,6 @@ var _ = Describe("Pipeline Controller", func() {
 						{
 							Name:        "PARAM1",
 							Description: "A sample parameter for the uploader",
-							Required:    true,
 						},
 					},
 				},
@@ -197,14 +239,45 @@ var _ = Describe("Pipeline Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: v1beta1.ProfileSpec{
-					Containers: []corev1.Container{
+					Containers: []v1beta1.ConditionalContainer{
 						{
-							Image:   "alpine:latest",
-							Name:    "profile-container",
-							Command: []string{"/bin/sh", "-c"},
-							Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
+							Container: corev1.Container{
+								Image:   "alpine:latest",
+								Name:    "profile-container",
+								Command: []string{"/bin/sh", "-c"},
+								Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
+							},
+						},
+						{
+							Container: corev1.Container{
+								Image: "alpine:latest",
+								Name:  "do-not-include",
+							},
+							IncludeIf: &v1beta1.ContainerCondition{
+								WhenParamSet: "DEFAULT_SET",
+							},
+						},
+						{
+							Container: corev1.Container{
+								Image: "alpine:latest",
+								Name:  "should-include",
+							},
+							IncludeIf: &v1beta1.ContainerCondition{
+								WhenParamSet: "DEFAULT_EMPTY",
+							},
 						},
 					},
+					Parameters: []v1beta1.ParameterDefinition{
+						{
+							Name:    "DEFAULT_SET",
+							Default: ptr.To("1"),
+						},
+						{
+							Name:    "DEFAULT_EMPTY",
+							Default: ptr.To(""),
+						},
+					},
+
 					Artifacts: []string{"results.txt"},
 					UploaderRefs: []v1beta1.ParameterizedObjectReference{
 						{ObjectReference: corev1.ObjectReference{
@@ -232,9 +305,22 @@ var _ = Describe("Pipeline Controller", func() {
 							Name: downloader.Name,
 						},
 					},
-					ProfileRef: corev1.ObjectReference{
-						Name:      profile.Name,
-						Namespace: namespace,
+					ProfileRef: v1beta1.ParameterizedObjectReference{
+						ObjectReference: corev1.ObjectReference{
+							Name:      profile.Name,
+							Namespace: namespace,
+							Kind:      "Profile",
+						},
+						Parameters: []v1beta1.ParameterSetting{
+							{
+								Name:  "DEFAULT_SET",
+								Value: "",
+							},
+							{
+								Name:  "DEFAULT_EMPTY",
+								Value: "1",
+							},
+						},
 					},
 					Target: v1beta1.Target{
 						Identifier: "https://example.com/samplefile.txt",
@@ -342,7 +428,14 @@ func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
 	profile *v1beta1.Profile,
 	downloader *v1beta1.Downloader) {
 	Expect(podSpec.InitContainers).To(HaveLen(2)) // downloader + sidecar
-	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.Containers)))
+	// length minus 1 due to condition not being set
+	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.Containers) - 1))
+	containerNames := make([]string, 0, len(podSpec.Containers))
+	for _, c := range podSpec.Containers {
+		containerNames = append(containerNames, c.Name)
+	}
+	Expect(containerNames).To(ContainElements("should-include", "profile-container"),
+		"included containers should be 'profile-container' and 'should include'")
 	// Downloader
 	Expect(podSpec.InitContainers[0].Name).To(Equal(downloader.Spec.Container.Name))
 	Expect(podSpec.InitContainers[0].Image).To(Equal(downloader.Spec.Container.Image))
@@ -387,6 +480,14 @@ func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
 			corev1.EnvVar{
 				Name:  "OCULAR_DOWNLOADER_NAME",
 				Value: downloader.Name,
+			},
+			corev1.EnvVar{
+				Name:  "OCULAR_PARAM_DEFAULT_EMPTY",
+				Value: "1",
+			},
+			corev1.EnvVar{
+				Name:  "OCULAR_PARAM_DEFAULT_SET",
+				Value: "",
 			},
 		))
 	}

@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/internal/resources"
 )
 
 // nolint:unused
@@ -66,22 +67,24 @@ func (d *CronSearchCustomDefaulter) Default(_ context.Context, cronSearch *v1bet
 }
 
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-cronsearch,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=cronsearches,verbs=create;update,versions=v1beta1,name=vcronsearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
-func (d *CronSearchCustomDefaulter) applyDefaults(cronJob *v1beta1.CronSearch) {
-	if cronJob.Spec.ConcurrencyPolicy == "" {
-		cronJob.Spec.ConcurrencyPolicy = d.DefaultConcurrencyPolicy
+func (d *CronSearchCustomDefaulter) applyDefaults(cronSearch *v1beta1.CronSearch) {
+	if cronSearch.Spec.ConcurrencyPolicy == "" {
+		cronSearch.Spec.ConcurrencyPolicy = d.DefaultConcurrencyPolicy
 	}
-	if cronJob.Spec.Suspend == nil {
-		cronJob.Spec.Suspend = new(bool)
-		*cronJob.Spec.Suspend = d.DefaultSuspend
+	if cronSearch.Spec.Suspend == nil {
+		cronSearch.Spec.Suspend = new(bool)
+		*cronSearch.Spec.Suspend = d.DefaultSuspend
 	}
-	if cronJob.Spec.SuccessfulJobsHistoryLimit == nil {
-		cronJob.Spec.SuccessfulJobsHistoryLimit = new(int32)
-		*cronJob.Spec.SuccessfulJobsHistoryLimit = d.DefaultSuccessfulJobsHistoryLimit
+	if cronSearch.Spec.SuccessfulJobsHistoryLimit == nil {
+		cronSearch.Spec.SuccessfulJobsHistoryLimit = new(int32)
+		*cronSearch.Spec.SuccessfulJobsHistoryLimit = d.DefaultSuccessfulJobsHistoryLimit
 	}
-	if cronJob.Spec.FailedJobsHistoryLimit == nil {
-		cronJob.Spec.FailedJobsHistoryLimit = new(int32)
-		*cronJob.Spec.FailedJobsHistoryLimit = d.DefaultFailedJobsHistoryLimit
+	if cronSearch.Spec.FailedJobsHistoryLimit == nil {
+		cronSearch.Spec.FailedJobsHistoryLimit = new(int32)
+		*cronSearch.Spec.FailedJobsHistoryLimit = d.DefaultFailedJobsHistoryLimit
 	}
+
+	cronSearch.Spec.SearchTemplate.Spec.CrawlerRef = resources.ReferenceDefaulter(cronSearch.Spec.SearchTemplate.Spec.CrawlerRef, "Crawler", cronSearch.Namespace)
 }
 
 // NOTE: currently the cronsearch is only configured to run as a validating webhook

@@ -1567,8 +1567,9 @@ spec:
                     default:
                       description: |-
                         Default is the default value for the parameter.
-                        It is only valid if Required is false.
-                        A null value indicates that if there is no value provided, the environment variable will be unset.
+                        If default is not set, the parameter is assumed to
+                        be required - and will cause an error if parameter
+                        is not set via [ParameterizedObjectReference]
                       type: string
                     description:
                       description: Description is the description of the parameter.
@@ -1579,37 +1580,13 @@ spec:
                       minLength: 1
                       pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                       type: string
-                    required:
-                      description: |-
-                        Required is true if the parameter is required.
-                        If true, the execution will fail to start if the parameter is not provided.
-                      type: boolean
                   required:
                   - name
-                  - required
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:
                 - name
                 x-kubernetes-list-type: map
-              podSpecAdditions:
-                description: |-
-                  AdditionalPodMetadata defines additional specifications to be added to the pod
-                  running the scanners, such as annotations and labels.
-                properties:
-                  annotations:
-                    additionalProperties:
-                      type: string
-                    description: Annotations are key-value pairs that will be added
-                      to the pod running the scanners.
-                    type: object
-                  labels:
-                    additionalProperties:
-                      type: string
-                    description: Labels are key-value pairs that will be added to
-                      the pod running the scanners.
-                    type: object
-                type: object
               volumes:
                 description: |-
                   List of volumes that can be mounted by containers belonging to the pod.

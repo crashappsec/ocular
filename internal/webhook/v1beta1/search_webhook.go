@@ -22,6 +22,7 @@ import (
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/resources"
+	"github.com/crashappsec/ocular/internal/validators"
 )
 
 // nolint:unused
@@ -50,6 +51,8 @@ func (d *SearchCustomDefaulter) Default(_ context.Context, search *v1beta1.Searc
 	if search.Spec.ServiceAccountName == "" {
 		search.Spec.ServiceAccountName = "search-" + search.GetName()
 	}
+
+	search.Spec.CrawlerRef = resources.ReferenceDefaulter(search.Spec.CrawlerRef, "Crawler", search.GetNamespace())
 	return nil
 }
 
@@ -103,7 +106,7 @@ func validateSearch(ctx context.Context, c client.Client, search *v1beta1.Search
 	}
 
 	var refErr resources.InvalidObjectReference
-	crawlerSpec, err := resources.CrawlerSpecFromReference(ctx, c, search.Namespace, search.Spec.CrawlerRef.ObjectReference)
+	crawler, err := resources.CrawlerInvocationFromReference(ctx, c, search.Namespace, search.Spec.CrawlerRef)
 	if errors.As(err, &refErr) {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef"), search.Spec.CrawlerRef, refErr.Message))
 	} else if apierrors.IsNotFound(err) {
@@ -112,13 +115,8 @@ func validateSearch(ctx context.Context, c client.Client, search *v1beta1.Search
 		return err
 	}
 
-	paramErrs := validateSetParameters(search.Spec.CrawlerRef.Name,
-		field.NewPath("spec").Child("crawlerRef").Child("parameters"),
-		crawlerSpec.Parameters, search.Spec.CrawlerRef.Parameters)
-
-	if len(paramErrs) > 0 {
-		allErrs = append(allErrs, paramErrs...)
-	}
+	crawlerRefPath := field.NewPath("spec").Child("crawlerRef")
+	allErrs = append(allErrs, validators.ValidateParameterReference(ctx, crawlerRefPath, search.Spec.CrawlerRef, crawler.Spec.Parameters)...)
 
 	if len(allErrs) == 0 {
 		return nil

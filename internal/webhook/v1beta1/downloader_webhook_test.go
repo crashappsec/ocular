@@ -19,39 +19,41 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/api/v1beta1"
 )
 
 var _ = Describe("Downloader Webhook", func() {
 	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
 		namespace  = "default"
-		obj        *ocularcrashoverriderunv1beta1.Downloader
-		oldObj     *ocularcrashoverriderunv1beta1.Downloader
-		pipeline   *ocularcrashoverriderunv1beta1.Pipeline
-		profile    *ocularcrashoverriderunv1beta1.Profile
+		obj        *v1beta1.Downloader
+		oldObj     *v1beta1.Downloader
+		pipeline   *v1beta1.Pipeline
+		profile    *v1beta1.Profile
 		svcAccount *corev1.ServiceAccount
 		validator  DownloaderCustomValidator
 	)
 
 	BeforeEach(func() {
-		profile = &ocularcrashoverriderunv1beta1.Profile{
+		profile = &v1beta1.Profile{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "downloader-webhook-test-profile",
 				Namespace: namespace,
 			},
-			Spec: ocularcrashoverriderunv1beta1.ProfileSpec{
-				Containers: []corev1.Container{
-					testutils.GenerateRandomContainer(rnd),
+			Spec: v1beta1.ProfileSpec{
+				Containers: []v1beta1.ConditionalContainer{
+					{
+						Container: testutils.GenerateRandomContainer(rnd),
+					},
 				},
 			},
 		}
-		obj = &ocularcrashoverriderunv1beta1.Downloader{
+		obj = &v1beta1.Downloader{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "downloader-webhook-test",
 				Namespace: namespace,
 			},
-			Spec: ocularcrashoverriderunv1beta1.DownloaderSpec{
+			Spec: v1beta1.DownloaderSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 			},
 		}
@@ -61,22 +63,28 @@ var _ = Describe("Downloader Webhook", func() {
 				Namespace: namespace,
 			},
 		}
-		oldObj = &ocularcrashoverriderunv1beta1.Downloader{}
-		pipeline = &ocularcrashoverriderunv1beta1.Pipeline{
+		oldObj = &v1beta1.Downloader{}
+		pipeline = &v1beta1.Pipeline{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "downloader-webhook-test-pipeline",
 				Namespace: namespace,
 			},
-			Spec: ocularcrashoverriderunv1beta1.PipelineSpec{
-				ProfileRef: corev1.ObjectReference{
-					Name: profile.Name,
-				},
-				DownloaderRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
+			Spec: v1beta1.PipelineSpec{
+				ProfileRef: v1beta1.ParameterizedObjectReference{
 					ObjectReference: corev1.ObjectReference{
-						Name: obj.Name,
+						Name:      profile.Name,
+						Namespace: profile.Namespace,
+						Kind:      "Profile",
 					},
 				},
-				Target: ocularcrashoverriderunv1beta1.Target{
+				DownloaderRef: v1beta1.ParameterizedObjectReference{
+					ObjectReference: corev1.ObjectReference{
+						Name:      obj.Name,
+						Namespace: obj.Namespace,
+						Kind:      "Downloader",
+					},
+				},
+				Target: v1beta1.Target{
 					Identifier: "some-identifier",
 					Version:    "some-version",
 				},

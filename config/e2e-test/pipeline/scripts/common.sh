@@ -61,7 +61,7 @@ validate-pwd() {
 
 validate-file-contents() {
     filepath="$1"
-    expected="$1"
+    expected="$2"
     actual="$(cat "$filepath" || fail "unable to access file $filepath")"
 
     if [ "$expected" = "$actual" ]; then
@@ -91,4 +91,8 @@ validate-common-env() {
     validate-env-var "OCULAR_TARGET_VERSION" "84462a71dea813105ce746718d7618aeda8923b8"
 
     validate-env-var "OCULAR_NAMESPACE_NAME" "e2e-test-pipeline"
+}
+
+validate-parameter() {
+    validate-env-var "OCULAR_PARAM_$1" "$2"
 }

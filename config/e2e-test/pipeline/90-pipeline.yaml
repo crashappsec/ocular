@@ -14,9 +14,14 @@ spec:
     version: 84462a71dea813105ce746718d7618aeda8923b8
   profileRef:
     name: validate-scanners
+    parameters:
+      - name: "TEST_INCLUDE"
+        value: ""
+      - name: "SCANNER_TEST"
+        value: "PASS"
   downloaderRef:
     name: git-clone
     parameters:
       - name: TEST_PARAM
-        value: downloader-param
+        value: "PASS"
   ttlSecondsMaxLifetime: 3600 # delete after an hour in case test isnt cleaned up

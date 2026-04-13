@@ -26,6 +26,8 @@ validate-common-env
 
 validate-pwd "$OCULAR_TARGET_DIR"
 
+validate-parameter "TEST_PARAM" "PASS"
+
 clone-target
 
 complete "downloader completed successfully"

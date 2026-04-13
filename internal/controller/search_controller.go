@@ -132,7 +132,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return r.handlePostCompletion(ctx, search)
 	}
 
-	crawlerSpec, err := resources.CrawlerSpecFromReference(ctx, r.Client, req.Namespace, search.Spec.CrawlerRef.ObjectReference)
+	crawler, err := resources.CrawlerInvocationFromReference(ctx, r.Client, req.Namespace, search.Spec.CrawlerRef)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -172,7 +172,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	l = l.WithValues("rolebinding", roleBinding.Name)
 
-	desiredSearchPod, err := r.newSearchPod(search, crawlerSpec, containerOpts...)
+	desiredSearchPod, err := r.newSearchPod(search, crawler, containerOpts...)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to generate search pod: %w", err)
 	}
@@ -258,8 +258,8 @@ func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *core
 
 }
 
-func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1beta1.CrawlerSpec, containerOpts ...containers.Option) (corev1.Pod, error) {
-	envVars := make([]corev1.EnvVar, 0, len(crawlerSpec.Parameters))
+func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler resources.Invocation[v1beta1.CrawlerSpec], containerOpts ...containers.Option) (corev1.Pod, error) {
+	envVars := make([]corev1.EnvVar, 0, len(crawler.Spec.Parameters))
 
 	// this loop does not check for duplicate parameters NOR
 	// required parameters to be set. This is done during
@@ -274,7 +274,7 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1be
 		})
 	}
 
-	for _, paramDef := range crawlerSpec.Parameters {
+	for _, paramDef := range crawler.Spec.Parameters {
 		if _, exists := setParams[paramDef.Name]; !exists {
 			if paramDef.Default != nil {
 				envVars = append(envVars, corev1.EnvVar{
@@ -368,9 +368,9 @@ func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawlerSpec v1be
 		Spec: corev1.PodSpec{
 			ServiceAccountName: search.Spec.ServiceAccountName,
 			RestartPolicy:      corev1.RestartPolicyNever,
-			InitContainers:     containers.ApplyOptions([]corev1.Container{schedulerSidecarContainer, initSidecarContainer, crawlerSpec.Container}, containerOpts...),
+			InitContainers:     containers.ApplyOptions([]corev1.Container{schedulerSidecarContainer, initSidecarContainer, crawler.Spec.Container}, containerOpts...),
 			Containers:         containers.ApplyOptions([]corev1.Container{keepaliveSidecarContainer}, containerOpts...),
-			Volumes:            append(crawlerSpec.Volumes, templateVolume, socketVolume),
+			Volumes:            append(crawler.Spec.Volumes, templateVolume, socketVolume),
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsUser: ptr.To(int64(0)),
 			},

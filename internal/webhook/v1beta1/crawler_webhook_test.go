@@ -58,7 +58,9 @@ var _ = Describe("Crawler Webhook", func() {
 			Spec: ocularcrashoverriderunv1beta1.SearchSpec{
 				CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
 					ObjectReference: v1.ObjectReference{
-						Name: obj.Name,
+						Name:      obj.Name,
+						Namespace: obj.Namespace,
+						Kind:      "Crawler",
 					},
 				},
 			},
@@ -88,8 +90,8 @@ var _ = Describe("Crawler Webhook", func() {
 		It("Should validate newly required params validated for references", func() {
 			By("creating a Search that references the Crawler, then updating Crawler to add a new required param")
 			oldObj.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{
-				{Name: "param1", Required: true},
-				{Name: "param2", Required: false, Default: ptr.To("default_value")},
+				{Name: "param1"},
+				{Name: "param2", Default: ptr.To("default_value")},
 			}
 			Expect(k8sClient.Create(ctx, oldObj)).To(Succeed())
 
@@ -104,9 +106,9 @@ var _ = Describe("Crawler Webhook", func() {
 			Expect(k8sClient.Create(ctx, search)).To(Succeed())
 
 			obj.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{
-				{Name: "param1", Required: true},
-				{Name: "param2", Required: false, Default: ptr.To("default_value")},
-				{Name: "param3", Required: true},
+				{Name: "param1"},
+				{Name: "param2", Default: ptr.To("default_value")},
+				{Name: "param3"},
 			}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to new required parameter not being set in Search reference")
 

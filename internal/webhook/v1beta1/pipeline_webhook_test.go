@@ -11,7 +11,7 @@ package v1beta1
 import (
 	"math/rand"
 
-	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/api/v1beta1"
 	testutils "github.com/crashappsec/ocular/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,25 +24,29 @@ var _ = Describe("Pipeline Webhook", func() {
 	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
 		namespace  = "default"
-		obj        *ocularcrashoverriderunv1beta1.Pipeline
-		oldObj     *ocularcrashoverriderunv1beta1.Pipeline
-		profile    *ocularcrashoverriderunv1beta1.Profile
-		downloader *ocularcrashoverriderunv1beta1.Downloader
+		obj        *v1beta1.Pipeline
+		oldObj     *v1beta1.Pipeline
+		profile    *v1beta1.Profile
+		downloader *v1beta1.Downloader
 		svcAccount *corev1.ServiceAccount
 		validator  PipelineCustomValidator
 		defaulter  PipelineCustomDefaulter
 	)
 
 	BeforeEach(func() {
-		profile = &ocularcrashoverriderunv1beta1.Profile{
+		profile = &v1beta1.Profile{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipeline-webhook-test-profile",
 				Namespace: namespace,
 			},
-			Spec: ocularcrashoverriderunv1beta1.ProfileSpec{
-				Containers: []corev1.Container{
-					testutils.GenerateRandomContainer(rnd),
-					testutils.GenerateRandomContainer(rnd),
+			Spec: v1beta1.ProfileSpec{
+				Containers: []v1beta1.ConditionalContainer{
+					{
+						Container: testutils.GenerateRandomContainer(rnd),
+					},
+					{
+						Container: testutils.GenerateRandomContainer(rnd),
+					},
 				},
 			},
 		}
@@ -52,36 +56,40 @@ var _ = Describe("Pipeline Webhook", func() {
 				Namespace: namespace,
 			},
 		}
-		downloader = &ocularcrashoverriderunv1beta1.Downloader{
+		downloader = &v1beta1.Downloader{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipeline-webhook-test-downloader",
 				Namespace: namespace,
 			},
-			Spec: ocularcrashoverriderunv1beta1.DownloaderSpec{
+			Spec: v1beta1.DownloaderSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 			},
 		}
-		obj = &ocularcrashoverriderunv1beta1.Pipeline{
+		obj = &v1beta1.Pipeline{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pipeline-webhook-test",
 				Namespace: namespace,
 			},
-			Spec: ocularcrashoverriderunv1beta1.PipelineSpec{
-				ProfileRef: corev1.ObjectReference{
-					Name:      profile.Name,
-					Namespace: profile.Namespace,
+			Spec: v1beta1.PipelineSpec{
+				ProfileRef: v1beta1.ParameterizedObjectReference{
+					ObjectReference: corev1.ObjectReference{
+						Name:      profile.Name,
+						Namespace: profile.Namespace,
+						Kind:      "Profile",
+					},
 				},
-				DownloaderRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
+				DownloaderRef: v1beta1.ParameterizedObjectReference{
 					ObjectReference: corev1.ObjectReference{
 						Name:      downloader.Name,
 						Namespace: downloader.Namespace,
+						Kind:      "Downloader",
 					},
 				},
 				ScanServiceAccountName:   svcAccount.Name,
 				UploadServiceAccountName: svcAccount.Name,
 			},
 		}
-		oldObj = &ocularcrashoverriderunv1beta1.Pipeline{}
+		oldObj = &v1beta1.Pipeline{}
 		validator = PipelineCustomValidator{
 			c: k8sClient,
 		}

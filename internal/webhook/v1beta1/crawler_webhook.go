@@ -11,19 +11,17 @@ package v1beta1
 import (
 	"context"
 	"fmt"
-	"slices"
+	"strings"
 
 	"github.com/crashappsec/ocular/internal/validators"
-	"github.com/hashicorp/go-multierror"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/api/v1beta1"
 )
 
 // nolint:unused
@@ -32,14 +30,23 @@ var crawlerlog = logf.Log.WithName("crawler-resource")
 
 // SetupCrawlerWebhookWithManager registers the webhook for Crawler in the manager.
 func SetupCrawlerWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, &ocularcrashoverriderunv1beta1.Crawler{}).
+	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.Crawler{}).
 		WithValidator(&CrawlerCustomValidator{
 			c: mgr.GetClient(),
 		}).
 		Complete()
 }
 
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-crawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=crawlers,verbs=create;delete;update,versions=v1beta1,name=vcrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
+// NOTE: currently the crawler only configured to run as a validating webhook
+// during the update and/or deletion of a Crawler resource to validate that
+// 1) no new required parameters have been added that are not defined in
+//    existing (Cron)?Search resources that reference it (on update), and
+// 2) no (Cron)?Search resources referring to it exist (on delete).
+// Creation is currently not needed since most of the work is handled by the
+// k8s OpenAPI schema validation. If in the future there is a need to validate
+// Crawler resources on creation, the ValidateCreate method below can be implemented and 'create'
+// can be added to the verbs in the kubebuilder marker below.
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-crawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=crawlers,verbs=delete;update,versions=v1beta1,name=vcrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // CrawlerCustomValidator struct is responsible for validating the Crawler resource
 // when it is created, updated, or deleted.
@@ -48,138 +55,122 @@ type CrawlerCustomValidator struct {
 }
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateCreate(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
-	crawlerlog.Info("validating crawler", "name", crawler.GetName())
+func (v *CrawlerCustomValidator) ValidateCreate(ctx context.Context, crawler *v1beta1.Crawler) (admission.Warnings, error) {
+	crawlerlog.Info("crawler validate create should not be registered, see NOTE in webhook/v1beta1/crawler_webhook.go", "name", crawler.GetName())
 
-	return nil, v.validateCrawler(ctx, crawler)
-}
-
-func (v *CrawlerCustomValidator) validateCrawler(_ context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) error {
-
-	var allErrs field.ErrorList
-	allErrs = append(allErrs, validators.ValidateAdditionalLabels(crawler.Spec.AdditionalPodMetadata.Labels, field.NewPath("spec").Child("additionalPodMetadata").Child("labels"))...)
-
-	allErrs = append(allErrs, validators.ValidateAdditionalAnnotations(crawler.Spec.AdditionalPodMetadata.Annotations, field.NewPath("spec").Child("additionalPodMetadata").Child("annotations"))...)
-	if len(allErrs) == 0 {
-		return nil
-	}
-
-	return apierrors.NewInvalid(schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Crawler"}, crawler.Name, allErrs)
-
-}
-
-func (v *CrawlerCustomValidator) validateNewRequiredParameters(ctx context.Context, oldCrawler, newCrawler *ocularcrashoverriderunv1beta1.Crawler) error {
-	newRequiredParameters := validators.GetNewRequiredParameters(oldCrawler.Spec.Parameters, newCrawler.Spec.Parameters)
-
-	var paramErrors field.ErrorList
-	var searches ocularcrashoverriderunv1beta1.SearchList
-	if err := v.c.List(ctx, &searches); err != nil {
-		return fmt.Errorf("failed to list searches: %w", err)
-	}
-
-	for _, search := range searches.Items {
-		var namespace = search.Spec.CrawlerRef.Namespace
-		if namespace == "" {
-			namespace = search.Namespace
-		}
-		if search.Spec.CrawlerRef.Name == newCrawler.Name && namespace == newCrawler.Namespace {
-			if !validators.AllParametersDefined(newRequiredParameters, search.Spec.CrawlerRef.Parameters) {
-				paramErrors = append(paramErrors, field.Required(field.NewPath("spec").Child("parameters"), fmt.Sprintf("crawler %s is still referenced by search %s and not all new required parameters are defined", newCrawler.Name, search.Name)))
-			}
-		}
-	}
-
-	var cronSearches ocularcrashoverriderunv1beta1.CronSearchList
-	if err := v.c.List(ctx, &cronSearches); err != nil {
-		return fmt.Errorf("failed to list cron searches: %w", err)
-	}
-
-	for _, cSearch := range cronSearches.Items {
-		var namespace = cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Namespace
-		if namespace == "" {
-			namespace = cSearch.Namespace
-		}
-		if cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Name == newCrawler.Name && namespace == newCrawler.Namespace {
-			if !validators.AllParametersDefined(newRequiredParameters, cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Parameters) {
-				paramErrors = append(paramErrors, field.Required(field.NewPath("spec").Child("parameters"), fmt.Sprintf("crawler %s is still referenced by cron search %s and not all new required parameters are defined", newCrawler.Name, cSearch.Name)))
-			}
-		}
-	}
-
-	if len(paramErrors) == 0 {
-		return nil
-	}
-
-	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Crawler"},
-		newCrawler.Name, paramErrors)
+	return nil, nil
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler, newCrawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
+func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler, newCrawler *v1beta1.Crawler) (admission.Warnings, error) {
 	crawlerlog.Info("validation for crawler upon update", "name", newCrawler.GetName())
 
-	crawlerlog.Info("validating crawler update", "name", newCrawler.GetName())
-	if err := v.validateCrawler(ctx, newCrawler); err != nil {
-		return nil, err
+	newRequiredParams := parseNewRequiredParameters(oldCrawler.Spec.Parameters, newCrawler.Spec.Parameters)
+
+	dependantSearches, err := v.getDependantSearches(ctx, oldCrawler)
+	if err != nil {
+		return nil, apierrors.NewInternalError(err)
 	}
 
-	return nil, v.validateNewRequiredParameters(ctx, oldCrawler, newCrawler)
+	for _, search := range dependantSearches {
+		_, unset := validators.ParseSetParameters(search.Spec.CrawlerRef, newRequiredParams)
+		if len(unset) > 0 {
+			var missingParamNames []string
+			for _, u := range unset {
+				missingParamNames = append(missingParamNames, u.Name)
+			}
+			return nil, apierrors.NewForbidden(
+				schema.GroupResource{Group: "ocular.crashoverride.run", Resource: newCrawler.Name},
+				newCrawler.Name, fmt.Errorf("dependant search %s does not define newly required parameters: [%s]", search.Name, strings.Join(missingParamNames, ",")))
+		}
+	}
+
+	dependantCronSearches, err := v.getDependantCronSearches(ctx, oldCrawler)
+	if err != nil {
+		return nil, apierrors.NewInternalError(err)
+	}
+
+	for _, cronsearch := range dependantCronSearches {
+		_, unset := validators.ParseSetParameters(cronsearch.Spec.SearchTemplate.Spec.CrawlerRef, newRequiredParams)
+		if len(unset) > 0 {
+			var missingParamNames []string
+			for _, u := range unset {
+				missingParamNames = append(missingParamNames, u.Name)
+			}
+			return nil, apierrors.NewForbidden(
+				schema.GroupResource{Group: "ocular.crashoverride.run", Resource: newCrawler.Name},
+				newCrawler.Name, fmt.Errorf("dependant cronsearch %s does not define newly required parameters: [%s]", cronsearch.Name, strings.Join(missingParamNames, ",")))
+		}
+	}
+
+	return nil, nil
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) (admission.Warnings, error) {
+func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *v1beta1.Crawler) (admission.Warnings, error) {
 	crawlerlog.Info("validating crawler is no longer referenced by any Search or CronSearch resource", "name", crawler.GetName())
 
-	return nil, v.validateNoCrawlerReferences(ctx, crawler)
+	dependantSearches, err := v.getDependantSearches(ctx, crawler)
+	if err != nil {
+		return nil, apierrors.NewInternalError(err)
+	}
+
+	if len(dependantSearches) > 0 {
+		searchNames := make([]string, 0, len(dependantSearches))
+		for _, search := range dependantSearches {
+			searchNames = append(searchNames, search.Name)
+		}
+		return nil, apierrors.NewForbidden(
+			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: crawler.Name}, crawler.Name,
+			fmt.Errorf("cannot delete crawler with dependant searches: [%s]", strings.Join(searchNames, ",")))
+	}
+
+	dependantCronSearches, err := v.getDependantCronSearches(ctx, crawler)
+	if err != nil {
+		return nil, apierrors.NewInternalError(err)
+	}
+
+	if len(dependantCronSearches) > 0 {
+		cronSearchNames := make([]string, 0, len(dependantCronSearches))
+		for _, cronSearch := range dependantCronSearches {
+			cronSearchNames = append(cronSearchNames, cronSearch.Name)
+		}
+		return nil, apierrors.NewForbidden(
+			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: crawler.Name}, crawler.Name,
+			fmt.Errorf("cannot delete crawler with dependant cron searches: [%s]", strings.Join(cronSearchNames, ",")))
+	}
+
+	return nil, nil
 }
 
-func (v *CrawlerCustomValidator) validateNoCrawlerReferences(ctx context.Context, crawler *ocularcrashoverriderunv1beta1.Crawler) error {
-	var searches ocularcrashoverriderunv1beta1.SearchList
-	if err := v.c.List(ctx, &searches, client.InNamespace(crawler.Namespace)); err != nil {
-		return fmt.Errorf("failed to list searches: %w", err)
+func (v *CrawlerCustomValidator) getDependantSearches(ctx context.Context, crawler *v1beta1.Crawler) ([]v1beta1.Search, error) {
+	var searchesInNamespace v1beta1.SearchList
+	if err := v.c.List(ctx, &searchesInNamespace, client.InNamespace(crawler.Namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list searches in namespace %s: %w", crawler.Namespace, err)
 	}
 
-	var cronSearches ocularcrashoverriderunv1beta1.CronSearchList
-	if err := v.c.List(ctx, &cronSearches, client.InNamespace(crawler.Namespace)); err != nil {
-		return fmt.Errorf("failed to list cron searches: %w", err)
+	var searches []v1beta1.Search
+	for _, search := range searchesInNamespace.Items {
+		if refMatches(search.Spec.CrawlerRef, crawler, "Crawler") {
+			searches = append(searches, search)
+			break
+		}
 	}
-	var allErrs error
-	for _, search := range searches.Items {
-		crawlerRef := search.Spec.CrawlerRef
-		refNamespace := crawlerRef.Namespace
-		if refNamespace == "" {
-			refNamespace = search.Namespace
-		}
-		// ignore cluster crawler
-		if !slices.Contains([]string{"", "Crawler"}, search.Spec.CrawlerRef.Kind) {
-			continue
-		}
-		if crawlerRef.Name == crawler.Name && refNamespace == crawler.Namespace {
-			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'Search/%s in namespace %s'", search.Name, search.Namespace))
-		}
+	return searches, nil
+}
+
+func (v *CrawlerCustomValidator) getDependantCronSearches(ctx context.Context, crawler *v1beta1.Crawler) ([]v1beta1.CronSearch, error) {
+	var cronSearchesInNamespace v1beta1.CronSearchList
+	if err := v.c.List(ctx, &cronSearchesInNamespace, client.InNamespace(crawler.Namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list cronSearches in namespace %s: %w", crawler.Namespace, err)
 	}
 
-	for _, cSearch := range cronSearches.Items {
-		crawlerRef := cSearch.Spec.SearchTemplate.Spec.CrawlerRef
-		refNamespace := crawlerRef.Namespace
-		if refNamespace == "" {
-			refNamespace = cSearch.Namespace
-		}
-		// ignore cluster crawlers
-		if !slices.Contains([]string{"", "Crawler"}, cSearch.Spec.SearchTemplate.Spec.CrawlerRef.Kind) {
-			continue
-		}
-		if crawlerRef.Name == crawler.Name && refNamespace == crawler.Namespace {
-			allErrs = multierror.Append(allErrs, fmt.Errorf("this resource cannot be deleted because it is still referenced by 'CronSearch/%s in namespace %s'", cSearch.Name, cSearch.Namespace))
+	var cronSearches []v1beta1.CronSearch
+	for _, cronSearch := range cronSearchesInNamespace.Items {
+		if refMatches(cronSearch.Spec.SearchTemplate.Spec.CrawlerRef, crawler, "Crawler") {
+			cronSearches = append(cronSearches, cronSearch)
+			break
 		}
 	}
-
-	if allErrs == nil {
-		return nil
-	}
-
-	return apierrors.NewForbidden(
-		schema.GroupResource{Group: "ocular.crashoverride.run", Resource: crawler.Name},
-		crawler.Name, allErrs)
+	return cronSearches, nil
 }

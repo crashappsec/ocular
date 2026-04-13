@@ -9,6 +9,7 @@
 package containers
 
 import (
+	"github.com/crashappsec/ocular/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 )
@@ -49,6 +50,15 @@ func ApplyOptions(
 		}
 	}
 	return containers
+}
+
+// WithParameters creates an Option for applying pararmeter settings to a container.
+// This function assumes the settings have been checked for which parameters are required.
+func WithParameters(definitions []v1beta1.ParameterDefinition, settings []v1beta1.ParameterSetting) Option {
+	env := ParseParameterEnvVars(definitions, settings)
+	return func(c *corev1.Container) {
+		c.Env = append(c.Env, env...)
+	}
 }
 
 func WithPodSecurityStandardRestricted() Option {
