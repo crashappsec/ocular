@@ -13,7 +13,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -48,10 +47,8 @@ var _ = Describe("CronSearch Controller", func() {
 						Schedule: "*/1 * * * *",
 						SearchTemplate: ocularcrashoverriderunv1beta1.SearchTemplateSpec{
 							Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-								CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
-									ObjectReference: v1.ObjectReference{
-										Name: "example-crawler",
-									},
+								CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedLocalObjectReference{
+									Name: "example-crawler",
 								},
 							},
 						},

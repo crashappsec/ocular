@@ -52,7 +52,7 @@ func (d *SearchCustomDefaulter) Default(_ context.Context, search *v1beta1.Searc
 		search.Spec.ServiceAccountName = "search-" + search.GetName()
 	}
 
-	search.Spec.CrawlerRef = resources.ReferenceDefaulter(search.Spec.CrawlerRef, "Crawler", search.GetNamespace())
+	search.Spec.CrawlerRef = resources.ReferenceDefaulter(search.Spec.CrawlerRef, "Crawler")
 	return nil
 }
 
@@ -97,15 +97,8 @@ func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldSearch, n
 
 func validateSearch(ctx context.Context, c client.Client, search *v1beta1.Search) error {
 	var allErrs field.ErrorList
-	var namespace = search.Spec.CrawlerRef.Namespace
-	if namespace == "" {
-		namespace = search.Namespace
-	}
-	if namespace != search.Namespace {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef").Child("namespace"), search.Spec.CrawlerRef.Namespace, "crawlerRef namespace must be empty or match the Search namespace"))
-	}
-
 	var refErr resources.InvalidObjectReference
+
 	crawler, err := resources.CrawlerInvocationFromReference(ctx, c, search.Namespace, search.Spec.CrawlerRef)
 	if errors.As(err, &refErr) {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef"), search.Spec.CrawlerRef, refErr.Message))

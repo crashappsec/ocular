@@ -9,6 +9,7 @@
 package resources
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -33,12 +34,17 @@ func shouldExcludeKey(key string) bool {
 	return false
 }
 
-func PropagateMetadata(src map[string]string) map[string]string {
-	result := make(map[string]string)
-	for k, v := range src {
-		if !shouldExcludeKey(k) {
-			result[k] = v
-		}
+func PropagateMetadata(parentLabels ...map[string]string) map[string]string {
+	childLabels := make(map[string]string)
+	for _, parent := range parentLabels {
+		maps.Copy(childLabels, parent)
 	}
-	return result
+	// we want to remove any labels/annotations that may be used by a service
+	// to reoncile objects
+	maps.DeleteFunc(childLabels, func(k string, _ string) bool {
+		return shouldExcludeKey(k)
+	})
+
+	childLabels["app.kubernetes.io/managed-by"] = "ocular-controller"
+	return childLabels
 }

@@ -51,7 +51,7 @@ func GetNewRequiredParameters(oldParams, newParams []v1beta1.ParameterDefinition
 	return result
 }
 
-func ParseSetParameters(ref v1beta1.ParameterizedObjectReference, definitions []v1beta1.ParameterDefinition) (set []v1beta1.ParameterSetting, unset []v1beta1.ParameterDefinition) {
+func ParseSetParameters(ref v1beta1.ParameterizedLocalObjectReference, definitions []v1beta1.ParameterDefinition) (set []v1beta1.ParameterSetting, unset []v1beta1.ParameterDefinition) {
 	var params = make(map[string]v1beta1.ParameterSetting)
 	for _, param := range ref.Parameters {
 		params[param.Name] = param
@@ -67,7 +67,7 @@ func ParseSetParameters(ref v1beta1.ParameterizedObjectReference, definitions []
 	return
 }
 
-func ValidateParameterReference(ctx context.Context, refPath *field.Path, ref v1beta1.ParameterizedObjectReference, paramDefs []v1beta1.ParameterDefinition) field.ErrorList {
+func ValidateParameterReference(ctx context.Context, refPath *field.Path, ref v1beta1.ParameterizedLocalObjectReference, paramDefs []v1beta1.ParameterDefinition) field.ErrorList {
 	var (
 		paramErrors field.ErrorList
 		setParams   = make(map[string]struct{}, len(ref.Parameters))
@@ -80,8 +80,8 @@ func ValidateParameterReference(ctx context.Context, refPath *field.Path, ref v1
 		if _, ok := setParams[param.Name]; !ok && param.Default == nil {
 			paramErrors = append(paramErrors,
 				field.Invalid(refPath.Child("parameters"), ref.Parameters, fmt.Sprintf(
-					"missing required parameter %s in reference to %s resource %s/%s",
-					param.Name, ref.Kind, ref.Namespace, ref.Name,
+					"missing required parameter %s in reference to %s resource %s",
+					param.Name, ref.Kind, ref.Name,
 				)))
 		}
 	}

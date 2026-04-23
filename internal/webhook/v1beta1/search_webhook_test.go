@@ -63,11 +63,8 @@ var _ = Describe("Search Webhook", func() {
 				Namespace: metav1.NamespaceDefault,
 			},
 			Spec: v1beta1.SearchSpec{
-				CrawlerRef: v1beta1.ParameterizedObjectReference{
-					ObjectReference: v1.ObjectReference{
-						Name:      crawler.Name,
-						Namespace: crawler.Namespace,
-					},
+				CrawlerRef: v1beta1.ParameterizedLocalObjectReference{
+					Name: crawler.Name,
 					Parameters: []v1beta1.ParameterSetting{
 						{
 							Name:  "PARAM_1",
@@ -149,13 +146,6 @@ var _ = Describe("Search Webhook", func() {
 			objSA := obj.DeepCopy()
 			objSA.Spec.ServiceAccountName = customSA.Name
 			Expect(validator.ValidateCreate(ctx, objSA)).Error().To(Succeed())
-		})
-
-		It("Should return an error if the CrawlerRef.Namespace is set to a different namespace", func() {
-			objNS := obj.DeepCopy()
-			objNS.Spec.CrawlerRef.Namespace = "different-namespace"
-			_, err := validator.ValidateCreate(ctx, objNS)
-			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 		})
 
 		It("Should validate the parameters if the crawler exists and parameters are defined", func() {

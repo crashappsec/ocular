@@ -11,7 +11,6 @@ package v1beta1
 import (
 	"context"
 
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -54,10 +53,6 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, pipeline *ocularcra
 		pipeline.Spec.ScanServiceAccountName = "default"
 	}
 
-	if pipeline.Spec.TTLSecondsMaxLifetime == nil {
-		pipeline.Spec.TTLSecondsMaxLifetime = ptr.To[int32](0)
-	}
-
 	pipeline.Status.Phase = ocularcrashoverriderunv1beta1.PipelinePending
 	pipeline.Status.StageStatuses = ocularcrashoverriderunv1beta1.PipelineStageStatuses{
 		DownloadStatus: ocularcrashoverriderunv1beta1.PipelineStageNotStarted,
@@ -65,8 +60,8 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, pipeline *ocularcra
 		UploadStatus:   ocularcrashoverriderunv1beta1.PipelineStageNotStarted,
 	}
 
-	pipeline.Spec.DownloaderRef = resources.ReferenceDefaulter(pipeline.Spec.DownloaderRef, "Downloader", pipeline.GetNamespace())
-	pipeline.Spec.ProfileRef = resources.ReferenceDefaulter(pipeline.Spec.ProfileRef, "Profile", pipeline.GetNamespace())
+	pipeline.Spec.DownloaderRef = resources.ReferenceDefaulter(pipeline.Spec.DownloaderRef, "Downloader")
+	pipeline.Spec.ProfileRef = resources.ReferenceDefaulter(pipeline.Spec.ProfileRef, "Profile")
 
 	return nil
 }

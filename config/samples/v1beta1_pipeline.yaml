@@ -7,9 +7,10 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
 spec:
   downloaderRef:
-    name: downloader-sample
+    name: clusterdownloader-sample
+    kind: "ClusterDownloader" # can be Downloader or ClusterDownloader
   profileRef:
     name: profile-sample
   target:
-    identifier: "https://github.com/crashappsec/chalk"
+    identifier: "https://github.com/crashappsec/chalk"    
   ttlSecondsAfterFinished: 180 # 3 minutes

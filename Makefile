@@ -210,13 +210,10 @@ run: manifests generate fmt vet ## Run a controller from your host.
 .PHONY: docker-build-all
 docker-build-all: docker-build-controller docker-build-sidecar ## Builds all docker images
 
-
-
-
 # PLATFORMS is a list of platforms to
 # build for. Production Ocular images are built
 # with: 'linux/arm64,linux/amd64,linux/s390x,linux/ppc64le'
-PLATFORMS=linux/arm64,linux/amd64
+PLATFORMS ?= linux/arm64,linux/amd64
 
 # Additionally, docker args can be set,
 # adding --push will push the image

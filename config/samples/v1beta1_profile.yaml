@@ -11,17 +11,19 @@ spec:
       image: trufflesecurity/trufflehog:latest
       imagePullPolicy: IfNotPresent
       command: [ /bin/sh, -c ]
-      args: [ "trufflehog git file://. -j --no-update > $OCULAR_RESULTS_DIR/thog.trufflehogjson" ]
+      args: [ "trufflehog git file://. -j --no-update > $OCULAR_RESULTS_DIR/trufflehog.json" ]
     - name: semgrep
       image: semgrep/semgrep:latest-nonroot
       imagePullPolicy: IfNotPresent
       command: [ /bin/sh, -c ]
-      args: [ "semgrep scan --config=auto --json . > $OCULAR_RESULTS_DIR/output.semgrepjson" ]
+      args: [ "semgrep scan --config=auto --json . > $OCULAR_RESULTS_DIR/semgrep.json" ]
   artifacts:
-    - thog.trufflehogjson
-    - output.semgrepjson
+    - trufflehog.json
+    - semgrep.json
   uploaderRefs:
     - name: uploader-sample
       parameters:
         - name: EXAMPLE
           value: example value
+    - name: clusteruploader-sample
+      kind: "ClusterUploader"

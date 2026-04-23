@@ -84,7 +84,7 @@ func (d *CronSearchCustomDefaulter) applyDefaults(cronSearch *v1beta1.CronSearch
 		*cronSearch.Spec.FailedJobsHistoryLimit = d.DefaultFailedJobsHistoryLimit
 	}
 
-	cronSearch.Spec.SearchTemplate.Spec.CrawlerRef = resources.ReferenceDefaulter(cronSearch.Spec.SearchTemplate.Spec.CrawlerRef, "Crawler", cronSearch.Namespace)
+	cronSearch.Spec.SearchTemplate.Spec.CrawlerRef = resources.ReferenceDefaulter(cronSearch.Spec.SearchTemplate.Spec.CrawlerRef, "Crawler")
 }
 
 // NOTE: currently the cronsearch is only configured to run as a validating webhook

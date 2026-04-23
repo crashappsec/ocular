@@ -119,19 +119,13 @@ var _ = Describe("Profile Webhook", func() {
 				Namespace: namespace,
 			},
 			Spec: v1beta1.PipelineSpec{
-				ProfileRef: v1beta1.ParameterizedObjectReference{
-					ObjectReference: v1.ObjectReference{
-						Name:      obj.Name,
-						Namespace: obj.Namespace,
-						Kind:      "Profile",
-					},
+				ProfileRef: v1beta1.ParameterizedLocalObjectReference{
+					Name: obj.Name,
+					Kind: "Profile",
 				},
-				DownloaderRef: v1beta1.ParameterizedObjectReference{
-					ObjectReference: v1.ObjectReference{
-						Name:      downloader.Name,
-						Namespace: namespace,
-						Kind:      "Downloader",
-					},
+				DownloaderRef: v1beta1.ParameterizedLocalObjectReference{
+					Name: downloader.Name,
+					Kind: "Downloader",
 				},
 				Target: v1beta1.Target{
 					Identifier: "some-target",
@@ -183,19 +177,16 @@ var _ = Describe("Profile Webhook", func() {
 	Context("When creating a new profile under validating webhook", func() {
 		It("should succeed if no uploaders are referenced", func() {
 			By("not referencing any uploaders")
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{}
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{}
 			Expect(validator.ValidateCreate(ctx, obj)).Error().To(Succeed())
 		})
 
 		It("should fail if referenced uploaders do not exist", func() {
 			By("setting uploader references to non-existent cluster uploader")
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      "non-existent-uploader-1",
-						Namespace: namespace,
-						Kind:      "ClusterUploader",
-					},
+					Name: "non-existent-uploader-1",
+					Kind: "ClusterUploader",
 				}}
 			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
 		})
@@ -203,13 +194,10 @@ var _ = Describe("Profile Webhook", func() {
 		It("should fail if uploader reference is invalid", func() {
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			By("not defining a required parameter for a referenced uploader")
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader1.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader1.Name,
+					Kind: "Uploader",
 					Parameters: []v1beta1.ParameterSetting{
 						{
 							Name:  "UPLOADER_1_PARAM_2",
@@ -224,13 +212,10 @@ var _ = Describe("Profile Webhook", func() {
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())
 			By("defining all required parameters for referenced uploaders")
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader1.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader1.Name,
+					Kind: "Uploader",
 					Parameters: []v1beta1.ParameterSetting{
 						{
 							Name:  "UPLOADER_1_PARAM_1",
@@ -239,11 +224,8 @@ var _ = Describe("Profile Webhook", func() {
 					},
 				},
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader2.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader2.Name,
+					Kind: "Uploader",
 					Parameters: []v1beta1.ParameterSetting{
 						{
 							Name:  "UPLOADER_2_PARAM_2",
@@ -259,13 +241,10 @@ var _ = Describe("Profile Webhook", func() {
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			By("setting the namespace of a referenced uploader to a different namespace than the profile")
 			obj.Namespace = "different-namespace-1"
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader1.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader1.Name,
+					Kind: "Uploader",
 				},
 			}
 			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
@@ -283,20 +262,14 @@ var _ = Describe("Profile Webhook", func() {
 			}
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader1.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader1.Name,
+					Kind: "Uploader",
 				},
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader2.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader2.Name,
+					Kind: "Uploader",
 				},
 			}
 			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to duplicate volume names across referenced uploaders")
@@ -306,19 +279,16 @@ var _ = Describe("Profile Webhook", func() {
 	Context("When updating a Profile under Validating Webhook", func() {
 		It("should succeed if no uploaders are referenced", func() {
 			By("not referencing any uploaders")
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{}
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(Succeed())
 		})
 
 		It("should fail if referenced uploaders do not exist", func() {
 			By("setting uploader references to non-existent uploaders")
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      "non-existent-uploader-1",
-						Namespace: namespace,
-						Kind:      "ClusterUploader",
-					},
+					Name: "non-existent-uploader-1",
+					Kind: "ClusterUploader",
 				}}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
 		})
@@ -326,13 +296,10 @@ var _ = Describe("Profile Webhook", func() {
 		It("should fail if uploader reference is invalid", func() {
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			By("not defining a required parameter for a referenced uploader")
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader1.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader1.Name,
+					Kind: "Uploader",
 					Parameters: []v1beta1.ParameterSetting{
 						{
 							Name:  "UPLOADER_1_PARAM_2",
@@ -347,13 +314,10 @@ var _ = Describe("Profile Webhook", func() {
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())
 			By("defining all required parameters for referenced uploaders")
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader1.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader1.Name,
+					Kind: "Uploader",
 					Parameters: []v1beta1.ParameterSetting{
 						{
 							Name:  "UPLOADER_1_PARAM_1",
@@ -362,11 +326,8 @@ var _ = Describe("Profile Webhook", func() {
 					},
 				},
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader2.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader2.Name,
+					Kind: "Uploader",
 					Parameters: []v1beta1.ParameterSetting{
 						{
 							Name:  "UPLOADER_2_PARAM_2",
@@ -382,13 +343,10 @@ var _ = Describe("Profile Webhook", func() {
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			By("setting the namespace of a referenced uploader to a different namespace than the profile")
 			obj.Namespace = "different-namespace"
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader1.Name,
-						Namespace: namespace,
-						Kind:      "Uploader",
-					},
+					Name: uploader1.Name,
+					Kind: "Uploader",
 				},
 			}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred())
@@ -406,18 +364,12 @@ var _ = Describe("Profile Webhook", func() {
 			}
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())
-			obj.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			obj.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader1.Name,
-						Namespace: namespace,
-					},
+					Name: uploader1.Name,
 				},
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      uploader2.Name,
-						Namespace: namespace,
-					},
+					Name: uploader2.Name,
 				},
 			}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to duplicate volume names across referenced uploaders")

@@ -71,19 +71,13 @@ var _ = Describe("Pipeline Webhook", func() {
 				Namespace: namespace,
 			},
 			Spec: v1beta1.PipelineSpec{
-				ProfileRef: v1beta1.ParameterizedObjectReference{
-					ObjectReference: corev1.ObjectReference{
-						Name:      profile.Name,
-						Namespace: profile.Namespace,
-						Kind:      "Profile",
-					},
+				ProfileRef: v1beta1.ParameterizedLocalObjectReference{
+					Name: profile.Name,
+					Kind: "Profile",
 				},
-				DownloaderRef: v1beta1.ParameterizedObjectReference{
-					ObjectReference: corev1.ObjectReference{
-						Name:      downloader.Name,
-						Namespace: downloader.Namespace,
-						Kind:      "Downloader",
-					},
+				DownloaderRef: v1beta1.ParameterizedLocalObjectReference{
+					Name: downloader.Name,
+					Kind: "Downloader",
 				},
 				ScanServiceAccountName:   svcAccount.Name,
 				UploadServiceAccountName: svcAccount.Name,

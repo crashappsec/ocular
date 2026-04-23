@@ -9,11 +9,19 @@ spec:
   container:
     name: example-uploader
     image: ubuntu:latest
-    command: ["/bin/bash", "-c", "echo param is $OCULAR_PARAM_EXAMPLE; ls -al $OCULAR_RESULTS_DIR; for fileArg in \"${@:1}\"; do \n echo reading $fileArg; cat $fileArg; done;"]
+    command: ["/bin/bash", "-c"]
+    args:
+      - |
+          echo param is $OCULAR_PARAM_EXAMPLE
+          ls -al $OCULAR_RESULTS_DIR
+
+          for fileArg in \"${@:1}\"; do
+            echo "reading $fileArg"
+            cat "$fileArg"
+          done
   parameters:
-    - name: "EXAMPLE"
+    - name: "REQUIRED_PARAM"
       description: "My example parameter."
-      required: true
     - name: "OPTIONAL_PARAM"
       description: "An optional parameter."
-      required: false
+      default: "not-set"

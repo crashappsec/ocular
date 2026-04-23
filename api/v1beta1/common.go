@@ -73,9 +73,16 @@ type ParameterSetting struct {
 	Value string `json:"value" yaml:"value" description:"The value to set the parameter to."`
 }
 
-// ParameterizedObjectReference is a reference to a resource that will be run with parameters.
-type ParameterizedObjectReference struct {
-	v1.ObjectReference `json:",inline"`
+// ParameterizedLocalObjectReference is a reference to a resource that will be run with parameters.
+// The reference is local to (in the same namespace) as the resource that contains the
+// reference. In cases where a resource has a "cluster" and "non-cluster" version
+// (e.q. Downloader, Uploader, Crawler) - Kind can be specified.
+type ParameterizedLocalObjectReference struct {
+	// Name is the name of resource being referenced
+	// +required
+	Name string `json:"name" protobuf:"bytes,2,opt,name=name"`
+	// Kind is the type of resource being referenced
+	Kind string `json:"kind,omitempty" protobuf:"bytes,1,opt,name=kind"`
 
 	// Parameters is a list of parameters to pass to the referenced resource.
 	// as environment variables.
@@ -84,7 +91,7 @@ type ParameterizedObjectReference struct {
 	// +patchStrategy=merge,retainKeys
 	// +listType=map
 	// +listMapKey=name
-	Parameters []ParameterSetting `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	Parameters []ParameterSetting `json:"parameters,omitempty" yaml:"parameters,omitempty" `
 }
 
 // ContainerCondition expresses a condition that

@@ -75,7 +75,7 @@ func Schedule(ctx context.Context) error {
 	}
 	log.Info("creating FIFOs", "pipeline-fifo", pipelineFIFOPath, "search-fifo", searchFIFOPath)
 
-	targets, crawlers := make(chan v1beta1.Target), make(chan v1beta1.ParameterizedObjectReference)
+	targets, crawlers := make(chan v1beta1.Target), make(chan v1beta1.ParameterizedLocalObjectReference)
 
 	if err = createFIFO(ctx, pipelineFIFOPath); err != nil {
 		return fmt.Errorf("unable to create pipeline FIFO")
@@ -140,7 +140,7 @@ func Schedule(ctx context.Context) error {
 					Scheduler: v1beta1.SearchSchedulerSpec{
 						IntervalSeconds: ptr.To(int32(sleepDuration)),
 					},
-					CrawlerRef: v1beta1.ParameterizedObjectReference{},
+					CrawlerRef: v1beta1.ParameterizedLocalObjectReference{},
 				},
 			}
 			crawler.DeepCopyInto(&search.Spec.CrawlerRef)

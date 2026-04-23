@@ -1595,6 +1595,32 @@ spec:
                 x-kubernetes-list-map-keys:
                 - name
                 x-kubernetes-list-type: map
+              imagePullSecrets:
+                description: |-
+                  ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images
+                  used by the scanner pod spec, which means containers in [Containers] and the [Downloader].
+                  If specified, these secrets will be passed to individual puller implementations for them to use.
+                  More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod
+                items:
+                  description: |-
+                    LocalObjectReference contains enough information to let you locate the
+                    referenced object inside the same namespace.
+                  properties:
+                    name:
+                      default: ""
+                      description: |-
+                        Name of the referent.
+                        This field is effectively required, but due to backwards compatibility is
+                        allowed to be empty. Instances of this type with an empty value here are
+                        almost certainly wrong.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               parameters:
                 description: |-
                   Parameters specifies a set of variables that can be configured
@@ -1635,36 +1661,17 @@ spec:
                   as command line arguments, prefixed by the argument '--' . Each [UploaderObjectReference] must specify the
                   name of the uploader and any parameters that are required.
                 items:
-                  description: ParameterizedObjectReference is a reference to a resource
-                    that will be run with parameters.
+                  description: |-
+                    ParameterizedLocalObjectReference is a reference to a resource that will be run with parameters.
+                    The reference is local to (in the same namespace) as the resource that contains the
+                    reference. In cases where a resource has a "cluster" and "non-cluster" version
+                    (e.q. Downloader, Uploader, Crawler) - Kind can be specified.
                   properties:
-                    apiVersion:
-                      description: API version of the referent.
-                      type: string
-                    fieldPath:
-                      description: |-
-                        If referring to a piece of an object instead of an entire object, this string
-                        should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
-                        For example, if the object reference is to a container within a pod, this would take on a value like:
-                        "spec.containers{name}" (where "name" refers to the name of the container that triggered
-                        the event) or if no container name is specified "spec.containers[2]" (container with
-                        index 2 in this pod). This syntax is chosen only to have some well-defined way of
-                        referencing a part of an object.
-                      type: string
                     kind:
-                      description: |-
-                        Kind of the referent.
-                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                      description: Kind is the type of resource being referenced
                       type: string
                     name:
-                      description: |-
-                        Name of the referent.
-                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                      type: string
-                    namespace:
-                      description: |-
-                        Namespace of the referent.
-                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                      description: Name is the name of resource being referenced
                       type: string
                     parameters:
                       description: |-
@@ -1686,18 +1693,9 @@ spec:
                       x-kubernetes-list-map-keys:
                       - name
                       x-kubernetes-list-type: map
-                    resourceVersion:
-                      description: |-
-                        Specific resourceVersion to which this reference is made, if any.
-                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
-                      type: string
-                    uid:
-                      description: |-
-                        UID of the referent.
-                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
-                      type: string
+                  required:
+                  - name
                   type: object
-                  x-kubernetes-map-type: atomic
                 type: array
               volumes:
                 description: |-

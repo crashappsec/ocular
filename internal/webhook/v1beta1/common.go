@@ -29,8 +29,7 @@ func parseNewRequiredParameters(old []v1beta1.ParameterDefinition, new []v1beta1
 	return introduced
 }
 
-func refMatches(ref v1beta1.ParameterizedObjectReference, obj client.Object, objKind string) bool {
+func refMatches(ref v1beta1.ParameterizedLocalObjectReference, obj client.Object, objKind string) bool {
 	return ref.Name == obj.GetName() &&
-		ref.Namespace == obj.GetNamespace() &&
 		ref.Kind == objKind
 }

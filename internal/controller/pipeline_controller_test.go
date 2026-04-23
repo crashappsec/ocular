@@ -117,17 +117,12 @@ var _ = Describe("Pipeline Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: v1beta1.PipelineSpec{
-					DownloaderRef: v1beta1.ParameterizedObjectReference{
-						ObjectReference: corev1.ObjectReference{
-							Name: downloader.Name,
-						},
+					DownloaderRef: v1beta1.ParameterizedLocalObjectReference{
+						Name: downloader.Name,
 					},
-					ProfileRef: v1beta1.ParameterizedObjectReference{
-						ObjectReference: corev1.ObjectReference{
-							Name:      profileResource.Name,
-							Namespace: namespace,
-							Kind:      "Profile",
-						},
+					ProfileRef: v1beta1.ParameterizedLocalObjectReference{
+						Name: profileResource.Name,
+						Kind: "Profile",
 						Parameters: []v1beta1.ParameterSetting{
 							{
 								Name:  "DEFAULT_SET",
@@ -279,11 +274,9 @@ var _ = Describe("Pipeline Controller", func() {
 					},
 
 					Artifacts: []string{"results.txt"},
-					UploaderRefs: []v1beta1.ParameterizedObjectReference{
-						{ObjectReference: corev1.ObjectReference{
-							Name:      uploader.Name,
-							Namespace: uploader.Namespace,
-						},
+					UploaderRefs: []v1beta1.ParameterizedLocalObjectReference{
+						{
+							Name: uploader.Name,
 							Parameters: []v1beta1.ParameterSetting{
 								{
 									Name:  "PARAM1",
@@ -300,17 +293,12 @@ var _ = Describe("Pipeline Controller", func() {
 					Namespace: namespace,
 				},
 				Spec: v1beta1.PipelineSpec{
-					DownloaderRef: v1beta1.ParameterizedObjectReference{
-						ObjectReference: corev1.ObjectReference{
-							Name: downloader.Name,
-						},
+					DownloaderRef: v1beta1.ParameterizedLocalObjectReference{
+						Name: downloader.Name,
 					},
-					ProfileRef: v1beta1.ParameterizedObjectReference{
-						ObjectReference: corev1.ObjectReference{
-							Name:      profile.Name,
-							Namespace: namespace,
-							Kind:      "Profile",
-						},
+					ProfileRef: v1beta1.ParameterizedLocalObjectReference{
+						Name: profile.Name,
+						Kind: "Profile",
 						Parameters: []v1beta1.ParameterSetting{
 							{
 								Name:  "DEFAULT_SET",

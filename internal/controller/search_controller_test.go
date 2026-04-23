@@ -115,10 +115,8 @@ var _ = Describe("Search Controller", func() {
 					},
 					Spec: v1beta1.SearchSpec{
 						ServiceAccountName: serviceAccountName,
-						CrawlerRef: v1beta1.ParameterizedObjectReference{
-							ObjectReference: corev1.ObjectReference{
-								Name: crawlerName,
-							},
+						CrawlerRef: v1beta1.ParameterizedLocalObjectReference{
+							Name: crawlerName,
 							Parameters: []v1beta1.ParameterSetting{
 								{
 									Name:  "CRAWL_TARGET",
@@ -284,10 +282,8 @@ var _ = Describe("Search Controller", func() {
 						Namespace: "default",
 					},
 					Spec: v1beta1.SearchSpec{
-						CrawlerRef: v1beta1.ParameterizedObjectReference{
-							ObjectReference: corev1.ObjectReference{
-								Name: crawlerName,
-							},
+						CrawlerRef: v1beta1.ParameterizedLocalObjectReference{
+							Name: crawlerName,
 						},
 						ServiceAccountName:      serviceAccountName,
 						TTLSecondsAfterFinished: ptr.To(int32(3600)),
@@ -318,15 +314,11 @@ var _ = Describe("Search Controller", func() {
 						},
 					},
 					Spec: v1beta1.PipelineSpec{
-						DownloaderRef: v1beta1.ParameterizedObjectReference{
-							ObjectReference: corev1.ObjectReference{
-								Name: "test",
-							},
+						DownloaderRef: v1beta1.ParameterizedLocalObjectReference{
+							Name: "test",
 						},
-						ProfileRef: v1beta1.ParameterizedObjectReference{
-							ObjectReference: corev1.ObjectReference{
-								Name: "test",
-							},
+						ProfileRef: v1beta1.ParameterizedLocalObjectReference{
+							Name: "test",
 						},
 						Target: v1beta1.Target{
 							Identifier: "test",

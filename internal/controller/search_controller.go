@@ -12,24 +12,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strconv"
 	"time"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/containers"
 	"github.com/crashappsec/ocular/internal/resources"
-	ocularRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -137,58 +136,48 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	metricLabels := prometheus.Labels{"namespace": search.Namespace, "crawler": search.Spec.CrawlerRef.Name}
-	envVars := generateBaseSearchEnvironment(search)
-	containerOpts := generateBaseContainerOptions(envVars)
-
-	desiredServiceAccount, err := r.newSearchServiceAccount(search)
+	serviceAccount := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: search.Spec.ServiceAccountName, Namespace: search.GetNamespace()}}
+	l = l.WithValues("serviceAccount", serviceAccount.Name)
+	serviceAccountOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, serviceAccount, func() error {
+		return r.populateServiceAccount(search, serviceAccount)
+	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to generate search service account: %w", err)
+		return ctrl.Result{}, fmt.Errorf("unable to generate service account: %w", err)
 	}
 
-	serviceAccount := &corev1.ServiceAccount{}
-	err = r.Get(ctx, types.NamespacedName{Name: desiredServiceAccount.Name, Namespace: desiredServiceAccount.Namespace}, serviceAccount)
-	if apierrors.IsNotFound(err) {
-		l.Info("creating search service account", "name", desiredServiceAccount.Name, "namespace", desiredServiceAccount.Namespace)
-		err = r.Create(ctx, &desiredServiceAccount)
-		return ctrl.Result{}, err
-	} else if err != nil {
-		return ctrl.Result{}, err
+	if serviceAccountOp == controllerutil.OperationResultCreated ||
+		serviceAccountOp == controllerutil.OperationResultUpdated {
+		l.Info("serivce account was modified")
+		return ctrl.Result{}, nil
 	}
-	l = l.WithValues("serviceaccount", serviceAccount.Name)
 
-	desiredRoleBinding, err := r.newSearchRoleBinding(search, serviceAccount)
+	roleBinding := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: search.GetName() + searchResourceSuffix, Namespace: search.Namespace}}
+	l = l.WithValues("roleBinding", roleBinding.Name)
+	roleBindingOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, roleBinding, func() error {
+		return r.populateRoleBinding(search, serviceAccount, roleBinding)
+	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to generate search role binding: %w", err)
+		return ctrl.Result{}, fmt.Errorf("unable to generate role binding: %w", err)
+	}
+	if roleBindingOp == controllerutil.OperationResultCreated ||
+		roleBindingOp == controllerutil.OperationResultUpdated {
+		l.Info("serivce account was modified")
+		return ctrl.Result{}, nil
 	}
 
-	roleBinding := &rbacv1.RoleBinding{}
-	err = r.Get(ctx, types.NamespacedName{Name: desiredRoleBinding.Name, Namespace: desiredRoleBinding.Namespace}, roleBinding)
-	if apierrors.IsNotFound(err) {
-		l.Info("creating search role binding", "name", desiredRoleBinding.Name, "namespace", desiredRoleBinding.Namespace)
-		return ctrl.Result{}, r.Create(ctx, &desiredRoleBinding)
-	} else if err != nil {
-		return ctrl.Result{}, err
-	}
-	l = l.WithValues("rolebinding", roleBinding.Name)
-
-	desiredSearchPod, err := r.newSearchPod(search, crawler, containerOpts...)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to generate search pod: %w", err)
-	}
-
-	searchPod := &corev1.Pod{}
-	err = r.Get(ctx, types.NamespacedName{Name: desiredSearchPod.Name, Namespace: desiredSearchPod.Namespace}, searchPod)
-	if apierrors.IsNotFound(err) {
-		err = r.Create(ctx, &desiredSearchPod)
-		if err == nil {
-			searchPodsCreated.With(metricLabels).Add(1)
-		}
-		return ctrl.Result{}, err
-	} else if err != nil {
-		return ctrl.Result{}, err
-	}
+	searchPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: search.Name + searchResourceSuffix, Namespace: search.Namespace}}
 	l = l.WithValues("pod", searchPod.Name)
+	searchPodOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, searchPod, func() error {
+		return r.populateSearchPod(search, searchPod, crawler)
+	})
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("unable to generate search pod: %w", err)
+	}
+	if searchPodOp == controllerutil.OperationResultCreated ||
+		searchPodOp == controllerutil.OperationResultUpdated {
+		l.Info("serivce account was modified")
+		return ctrl.Result{}, nil
+	}
 
 	// Update status to reflect pods have been created
 	if search.Status.StartTime == nil {
@@ -211,174 +200,127 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return r.handleCompletion(ctx, search, searchPod)
 }
 
-func (r *SearchReconciler) newSearchServiceAccount(search *v1beta1.Search) (corev1.ServiceAccount, error) {
-	saLabels := map[string]string{
-		v1beta1.SearchLabelKey: search.GetName(),
-		v1beta1.TypeLabelKey:   v1beta1.ServiceAccountTypeSearch,
+func (r *SearchReconciler) populateServiceAccount(search *v1beta1.Search, sa *corev1.ServiceAccount) error {
+	if sa.Labels == nil {
+		sa.Labels = make(map[string]string)
 	}
-
-	sa := corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      search.Spec.ServiceAccountName,
-			Namespace: search.GetNamespace(),
-			Labels:    saLabels,
-		},
-	}
-	err := ctrl.SetControllerReference(search, &sa, r.Scheme)
-	return sa, err
+	sa.Labels[v1beta1.SearchLabelKey] = search.GetName()
+	sa.Labels[v1beta1.TypeLabelKey] = v1beta1.ServiceAccountTypeSearch
+	return ctrl.SetControllerReference(search, sa, r.Scheme)
 }
 
-func (r *SearchReconciler) newSearchRoleBinding(search *v1beta1.Search, sa *corev1.ServiceAccount) (rbacv1.RoleBinding, error) {
-	rbLabels := map[string]string{
-		v1beta1.SearchLabelKey: search.GetName(),
-		v1beta1.TypeLabelKey:   v1beta1.RoleBindingTypeSearch,
+func (r *SearchReconciler) populateRoleBinding(search *v1beta1.Search, sa *corev1.ServiceAccount, rb *rbacv1.RoleBinding) error {
+	if rb.Labels == nil {
+		rb.Labels = make(map[string]string)
 	}
+	rb.Labels[v1beta1.SearchLabelKey] = search.GetName()
+	rb.Labels[v1beta1.TypeLabelKey] = v1beta1.RoleBindingTypeSearch
 
-	rb := rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      search.GetName() + searchResourceSuffix,
-			Namespace: search.GetNamespace(),
-			Labels:    rbLabels,
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     r.SearchClusterRole,
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      "ServiceAccount",
-				Name:      sa.GetName(),
-				Namespace: sa.GetNamespace(),
-			},
+	rb.RoleRef = rbacv1.RoleRef{
+		APIGroup: "rbac.authorization.k8s.io",
+		Kind:     "ClusterRole",
+		Name:     r.SearchClusterRole,
+	}
+	rb.Subjects = []rbacv1.Subject{
+		{
+			Kind:      "ServiceAccount",
+			Name:      sa.GetName(),
+			Namespace: sa.GetNamespace(),
 		},
 	}
-	err := ctrl.SetControllerReference(search, &rb, r.Scheme)
-	return rb, err
+	return ctrl.SetControllerReference(search, rb, r.Scheme)
 
 }
 
-func (r *SearchReconciler) newSearchPod(search *v1beta1.Search, crawler resources.Invocation[v1beta1.CrawlerSpec], containerOpts ...containers.Option) (corev1.Pod, error) {
-	envVars := make([]corev1.EnvVar, 0, len(crawler.Spec.Parameters))
+func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1.Pod, crawler resources.Invocation[v1beta1.CrawlerSpec]) error {
+	// Once a pod is created not much can change
+	// and to avoid conflicts with defaulted values
+	// we skip if the pod is created
+	if pod.CreationTimestamp.IsZero() {
 
-	// this loop does not check for duplicate parameters NOR
-	// required parameters to be set. This is done during
-	// profile admission validation.
-	var setParams = map[string]struct{}{}
-	for _, paramDef := range search.Spec.CrawlerRef.Parameters {
-		setParams[paramDef.Name] = struct{}{}
-		envVarName := ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name)
-		envVars = append(envVars, corev1.EnvVar{
-			Name:  envVarName,
-			Value: paramDef.Value,
-		})
-	}
+		envVars := generateBaseSearchEnvironment(search)
+		containerOpts := generateBaseContainerOptions(envVars)
 
-	for _, paramDef := range crawler.Spec.Parameters {
-		if _, exists := setParams[paramDef.Name]; !exists {
-			if paramDef.Default != nil {
-				envVars = append(envVars, corev1.EnvVar{
-					Name:  ocularRuntime.ParameterToEnvironmentVariable(paramDef.Name),
-					Value: *paramDef.Default,
-				})
-			}
-		}
-	}
+		crawlerContainer := crawler.Spec.Container
+		crawlerContainer.Env = containers.ParseParameterEnvVars(crawler.Spec.Parameters, crawler.Parameters)
 
-	templateVolume := corev1.Volume{
-		Name: "pipeline-template",
-		VolumeSource: corev1.VolumeSource{
-			DownwardAPI: &corev1.DownwardAPIVolumeSource{
-				Items: []corev1.DownwardAPIVolumeFile{
-					{
-						Path: pipelineTemplateFile,
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: "metadata.annotations['" + v1beta1.PipelineTemplateAnnotation + "']",
-						},
-					},
+		templateVolume := corev1.Volume{
+			Name: "pipeline-template",
+			VolumeSource: corev1.VolumeSource{
+				DownwardAPI: &corev1.DownwardAPIVolumeSource{
+					Items: []corev1.DownwardAPIVolumeFile{{
+						Path:     pipelineTemplateFile,
+						FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.annotations['" + v1beta1.PipelineTemplateAnnotation + "']"}}},
 				},
 			},
-		},
+		}
+		socketVolume := corev1.Volume{
+			Name:         "pipeline-socket",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory}},
+		}
+
+		pipelineTemplateJSON, err := json.Marshal(search.Spec.Scheduler.PipelineTemplate)
+		if err != nil {
+			return fmt.Errorf("unable to marshal pipeline template: %w", err)
+		}
+
+		containerOpts = append(containerOpts,
+			containers.WithAdditionalEnvVars(
+				corev1.EnvVar{
+					Name: v1beta1.EnvVarSchedulerSearchTTL,
+					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.annotations['" + v1beta1.TTLSecondsAnnotation + "']",
+					}}},
+				corev1.EnvVar{
+					Name: v1beta1.EnvVarSchedulerServiceAccount,
+					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.annotations['" + v1beta1.ServiceAccountNameAnnotation + "']",
+					}}},
+			),
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+				Name:      templateVolume.Name,
+				MountPath: pipelineTemplateDir,
+			}, corev1.VolumeMount{
+				Name:      socketVolume.Name,
+				MountPath: ocularFIFODir,
+			}))
+
+		schedulerSidecarContainer := r.generateSchedulerSidecarContainer(search)
+		keepaliveSidecarContainer := r.generateKeepaliveSidecarContainer(search)
+		initSidecarContainer := r.generateInitSidecarContainer(search)
+
+		if pod.Labels == nil {
+			pod.Labels = make(map[string]string)
+		}
+		maps.Copy(pod.Labels, resources.PropagateMetadata(search.Labels, crawler.Metadata.Labels))
+		pod.Labels[v1beta1.SearchLabelKey] = search.GetName()
+		pod.Labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeSearch
+		pod.Labels[v1beta1.CrawlerLabelKey] = search.Spec.CrawlerRef.Name
+
+		if pod.Annotations == nil {
+			pod.Annotations = make(map[string]string)
+		}
+		maps.Copy(pod.Annotations, resources.PropagateMetadata(search.Annotations, crawler.Metadata.Annotations))
+		pod.Annotations[v1beta1.PipelineTemplateAnnotation] = string(pipelineTemplateJSON)
+		pod.Annotations[v1beta1.ServiceAccountNameAnnotation] = search.Spec.ServiceAccountName
+		if search.Spec.TTLSecondsAfterFinished != nil {
+			pod.Annotations[v1beta1.TTLSecondsAnnotation] = strconv.Itoa(int(*search.Spec.TTLSecondsAfterFinished))
+		} else {
+			pod.Annotations[v1beta1.TTLSecondsAnnotation] = ""
+		}
+
+		pod.Spec.ServiceAccountName = search.Spec.ServiceAccountName
+		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
+		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{schedulerSidecarContainer, initSidecarContainer, crawler.Spec.Container}, containerOpts...)
+		pod.Spec.Containers = containers.ApplyOptions([]corev1.Container{keepaliveSidecarContainer}, containerOpts...)
+		pod.Spec.Volumes = append(crawler.Spec.Volumes, templateVolume, socketVolume)
+		pod.Spec.SecurityContext = &corev1.PodSecurityContext{
+			// TODO(fix)
+			RunAsUser: ptr.To(int64(0)),
+		}
+		pod.Spec.ImagePullSecrets = crawler.Spec.ImagePullSecrets
 	}
-	socketVolume := corev1.Volume{
-		Name: "pipeline-socket",
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{
-				Medium: corev1.StorageMediumMemory,
-			},
-		},
-	}
-
-	pipelineTemplateJSON, err := json.Marshal(search.Spec.Scheduler.PipelineTemplate)
-	if err != nil {
-		return corev1.Pod{}, fmt.Errorf("unable to marshal pipeline template: %w", err)
-	}
-
-	podLabels := generateChildLabels(search)
-	podLabels[v1beta1.SearchLabelKey] = search.GetName()
-	podLabels[v1beta1.TypeLabelKey] = v1beta1.PodTypeSearch
-	podLabels[v1beta1.CrawlerLabelKey] = search.Spec.CrawlerRef.Name
-
-	annotations := make(map[string]string)
-	annotations[v1beta1.PipelineTemplateAnnotation] = string(pipelineTemplateJSON)
-	annotations[v1beta1.ServiceAccountNameAnnotation] = search.Spec.ServiceAccountName
-	if search.Spec.TTLSecondsAfterFinished != nil {
-		annotations[v1beta1.TTLSecondsAnnotation] = strconv.Itoa(int(*search.Spec.TTLSecondsAfterFinished))
-	} else {
-		annotations[v1beta1.TTLSecondsAnnotation] = ""
-	}
-
-	envVars = append(envVars, corev1.EnvVar{
-		Name: v1beta1.EnvVarSchedulerSearchTTL,
-		ValueFrom: &corev1.EnvVarSource{
-			FieldRef: &corev1.ObjectFieldSelector{
-				FieldPath: "metadata.annotations['" + v1beta1.TTLSecondsAnnotation + "']",
-			},
-		},
-	}, corev1.EnvVar{
-		Name: v1beta1.EnvVarSchedulerServiceAccount,
-		ValueFrom: &corev1.EnvVarSource{
-			FieldRef: &corev1.ObjectFieldSelector{
-				FieldPath: "metadata.annotations['" + v1beta1.ServiceAccountNameAnnotation + "']",
-			},
-		},
-	})
-
-	schedulerSidecarContainer := r.generateSchedulerSidecarContainer(search)
-	keepaliveSidecarContainer := r.generateKeepaliveSidecarContainer(search)
-	initSidecarContainer := r.generateInitSidecarContainer(search)
-
-	containerOpts = append(containerOpts,
-		containers.WithAdditionalEnvVars(envVars...),
-		containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
-			Name:      templateVolume.Name,
-			MountPath: pipelineTemplateDir,
-		}, corev1.VolumeMount{
-			Name:      socketVolume.Name,
-			MountPath: ocularFIFODir,
-		}))
-
-	pod := corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        search.GetName() + searchResourceSuffix,
-			Namespace:   search.GetNamespace(),
-			Labels:      podLabels,
-			Annotations: annotations,
-		},
-		Spec: corev1.PodSpec{
-			ServiceAccountName: search.Spec.ServiceAccountName,
-			RestartPolicy:      corev1.RestartPolicyNever,
-			InitContainers:     containers.ApplyOptions([]corev1.Container{schedulerSidecarContainer, initSidecarContainer, crawler.Spec.Container}, containerOpts...),
-			Containers:         containers.ApplyOptions([]corev1.Container{keepaliveSidecarContainer}, containerOpts...),
-			Volumes:            append(crawler.Spec.Volumes, templateVolume, socketVolume),
-			SecurityContext: &corev1.PodSecurityContext{
-				RunAsUser: ptr.To(int64(0)),
-			},
-		},
-	}
-
-	err = ctrl.SetControllerReference(search, &pod, r.Scheme)
-	return pod, err
+	return ctrl.SetControllerReference(search, pod, r.Scheme)
 }
 
 func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1.Search, pod *corev1.Pod) (ctrl.Result, error) {

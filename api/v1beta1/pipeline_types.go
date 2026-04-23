@@ -40,12 +40,12 @@ type PipelineSpec struct {
 	// It should point to a valid Downloader resource in the same namespace, or a ClusterDownloader
 	// by setting kind to "ClusterDownloader".
 	// +required
-	DownloaderRef ParameterizedObjectReference `json:"downloaderRef" protobuf:"bytes,1,opt,name=downloaderRef"`
+	DownloaderRef ParameterizedLocalObjectReference `json:"downloaderRef" protobuf:"bytes,1,opt,name=downloaderRef"`
 
 	// ProfileRef is a reference to the profile that will be used in this pipeline.
 	// It should point to a valid Profile resource in the same namespace.
 	// +required
-	ProfileRef ParameterizedObjectReference `json:"profileRef" protobuf:"bytes,2,opt,name=profileRef"`
+	ProfileRef ParameterizedLocalObjectReference `json:"profileRef" protobuf:"bytes,2,opt,name=profileRef"`
 
 	// Target is the actual software asset that will be processed by this pipeline.
 	// It is up to the Downloader to interpret the target correctly.

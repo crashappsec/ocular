@@ -70,19 +70,13 @@ var _ = Describe("Downloader Webhook", func() {
 				Namespace: namespace,
 			},
 			Spec: v1beta1.PipelineSpec{
-				ProfileRef: v1beta1.ParameterizedObjectReference{
-					ObjectReference: corev1.ObjectReference{
-						Name:      profile.Name,
-						Namespace: profile.Namespace,
-						Kind:      "Profile",
-					},
+				ProfileRef: v1beta1.ParameterizedLocalObjectReference{
+					Name: profile.Name,
+					Kind: "Profile",
 				},
-				DownloaderRef: v1beta1.ParameterizedObjectReference{
-					ObjectReference: corev1.ObjectReference{
-						Name:      obj.Name,
-						Namespace: obj.Namespace,
-						Kind:      "Downloader",
-					},
+				DownloaderRef: v1beta1.ParameterizedLocalObjectReference{
+					Name: obj.Name,
+					Kind: "Downloader",
 				},
 				Target: v1beta1.Target{
 					Identifier: "some-identifier",

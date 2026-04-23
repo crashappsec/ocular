@@ -50,13 +50,10 @@ var _ = Describe("Uploader Webhook", func() {
 				Namespace: namespace,
 			},
 			Spec: v1beta1.ProfileSpec{
-				UploaderRefs: []v1beta1.ParameterizedObjectReference{
+				UploaderRefs: []v1beta1.ParameterizedLocalObjectReference{
 					{
-						ObjectReference: v1.ObjectReference{
-							Name:      obj.Name,
-							Namespace: obj.Namespace,
-							Kind:      "Uploader",
-						},
+						Name: obj.Name,
+						Kind: "Uploader",
 					},
 				},
 				Containers: []v1beta1.ConditionalContainer{
@@ -105,13 +102,10 @@ var _ = Describe("Uploader Webhook", func() {
 			var uploader v1beta1.Uploader
 			Expect(k8sClient.Get(ctx, ctrlclient.ObjectKeyFromObject(obj), &uploader)).To(Succeed())
 
-			profile.Spec.UploaderRefs = []v1beta1.ParameterizedObjectReference{
+			profile.Spec.UploaderRefs = []v1beta1.ParameterizedLocalObjectReference{
 				{
-					ObjectReference: v1.ObjectReference{
-						Name:      obj.Name,
-						Namespace: obj.Namespace,
-						Kind:      "Uploader",
-					},
+					Name: obj.Name,
+					Kind: "Uploader",
 					Parameters: []v1beta1.ParameterSetting{
 						{Name: "param1", Value: "value1"},
 					},

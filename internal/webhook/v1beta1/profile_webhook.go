@@ -50,7 +50,7 @@ func (d *ProfileCustomDefaulter) Default(_ context.Context, profile *v1beta1.Pro
 	profilelog.Info("defaulting for profile", "name", profile.GetName())
 
 	for i, uploaderRef := range profile.Spec.UploaderRefs {
-		uploaderRef = resources.ReferenceDefaulter(uploaderRef, "Uploader", profile.GetNamespace())
+		uploaderRef = resources.ReferenceDefaulter(uploaderRef, "Uploader")
 		profile.Spec.UploaderRefs[i] = uploaderRef
 	}
 	return nil
@@ -131,11 +131,7 @@ func (v *ProfileCustomValidator) getPipelineReferences(ctx context.Context, prof
 
 	var pipelines []v1beta1.Pipeline
 	for _, pipeline := range pipelinesInNamespace.Items {
-		namespace := pipeline.Spec.ProfileRef.Namespace
-		if namespace == "" {
-			namespace = pipeline.Namespace
-		}
-		if pipeline.Spec.ProfileRef.Name == profile.Name && namespace == profile.Namespace {
+		if pipeline.Spec.ProfileRef.Name == profile.Name && pipeline.Namespace == profile.Namespace {
 			pipelines = append(pipelines, pipeline)
 		}
 	}

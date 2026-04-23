@@ -11,10 +11,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	"maps"
-	"strings"
 
-	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/containers"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,19 +43,4 @@ func generateBaseContainerOptions(envVars []corev1.EnvVar) []containers.Option {
 		containers.WithAdditionalEnvVars(envVars...),
 		containers.WithPodSecurityStandardRestricted(),
 	}
-}
-
-func generateChildLabels(parents ...client.Object) map[string]string {
-	childLabels := make(map[string]string)
-	for _, parent := range parents {
-		maps.Copy(childLabels, parent.GetLabels())
-	}
-	// we want to remove any existing ocular controller labels to avoid conflicts
-	// or incorrect labeling
-	maps.DeleteFunc(childLabels, func(k string, _ string) bool {
-		return strings.HasPrefix(k, v1beta1.Group)
-	})
-
-	childLabels["app.kubernetes.io/managed-by"] = "ocular-controller"
-	return childLabels
 }

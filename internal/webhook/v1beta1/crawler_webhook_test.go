@@ -13,7 +13,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -56,12 +55,9 @@ var _ = Describe("Crawler Webhook", func() {
 				Namespace: namespace,
 			},
 			Spec: ocularcrashoverriderunv1beta1.SearchSpec{
-				CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
-					ObjectReference: v1.ObjectReference{
-						Name:      obj.Name,
-						Namespace: obj.Namespace,
-						Kind:      "Crawler",
-					},
+				CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedLocalObjectReference{
+					Name: obj.Name,
+					Kind: "Crawler",
 				},
 			},
 		}
@@ -95,10 +91,8 @@ var _ = Describe("Crawler Webhook", func() {
 			}
 			Expect(k8sClient.Create(ctx, oldObj)).To(Succeed())
 
-			search.Spec.CrawlerRef = ocularcrashoverriderunv1beta1.ParameterizedObjectReference{
-				ObjectReference: v1.ObjectReference{
-					Name: oldObj.Name,
-				},
+			search.Spec.CrawlerRef = ocularcrashoverriderunv1beta1.ParameterizedLocalObjectReference{
+				Name: oldObj.Name,
 				Parameters: []ocularcrashoverriderunv1beta1.ParameterSetting{
 					{Name: "param1", Value: "value1"},
 				},
