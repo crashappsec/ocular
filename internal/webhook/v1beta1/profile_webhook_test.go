@@ -17,7 +17,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -75,7 +74,7 @@ var _ = Describe("Profile Webhook", func() {
 					},
 					{
 						Name:    "UPLOADER_1_PARAM_2",
-						Default: ptr.To("uploader 1 param 2"),
+						Default: new("uploader 1 param 2"),
 					},
 				},
 			},
@@ -90,7 +89,7 @@ var _ = Describe("Profile Webhook", func() {
 				Parameters: []v1beta1.ParameterDefinition{
 					{
 						Name:    "UPLOADER_2_PARAM_1",
-						Default: ptr.To("default-value"),
+						Default: new("default-value"),
 					},
 					{
 						Name: "UPLOADER_2_PARAM_2",

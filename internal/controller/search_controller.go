@@ -316,7 +316,7 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 		pod.Spec.Volumes = append(crawler.Spec.Volumes, templateVolume, socketVolume)
 		pod.Spec.SecurityContext = &corev1.PodSecurityContext{
 			// TODO(fix)
-			RunAsUser: ptr.To(int64(0)),
+			RunAsUser: new(int64(0)),
 		}
 		pod.Spec.ImagePullSecrets = crawler.Spec.ImagePullSecrets
 	}
@@ -340,7 +340,7 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 		l.Info("search pod has failed", "name", search.GetName(), "pod", pod.GetName())
 		if search.Status.CompletionTime == nil {
 			t := metav1.NewTime(time.Now())
-			search.Status.CompletionTime = ptr.To(t)
+			search.Status.CompletionTime = new(t)
 			search.Status.Conditions = append(search.Status.Conditions, metav1.Condition{
 				Type:               v1beta1.CompletedSuccessfullyConditionType,
 				Status:             metav1.ConditionFalse,
@@ -353,7 +353,7 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 		l.Info("search pod has succeeded", "name", search.GetName(), "pod", pod.GetName())
 		if search.Status.CompletionTime == nil {
 			t := metav1.NewTime(time.Now())
-			search.Status.CompletionTime = ptr.To(t)
+			search.Status.CompletionTime = new(t)
 			search.Status.Conditions = append(search.Status.Conditions, metav1.Condition{
 				Type:               v1beta1.CompletedSuccessfullyConditionType,
 				Status:             metav1.ConditionTrue,

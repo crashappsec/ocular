@@ -15,7 +15,6 @@ import (
 	. "github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -87,7 +86,7 @@ var _ = Describe("Crawler Webhook", func() {
 			By("creating a Search that references the Crawler, then updating Crawler to add a new required param")
 			oldObj.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{
 				{Name: "param1"},
-				{Name: "param2", Default: ptr.To("default_value")},
+				{Name: "param2", Default: new("default_value")},
 			}
 			Expect(k8sClient.Create(ctx, oldObj)).To(Succeed())
 
@@ -101,7 +100,7 @@ var _ = Describe("Crawler Webhook", func() {
 
 			obj.Spec.Parameters = []ocularcrashoverriderunv1beta1.ParameterDefinition{
 				{Name: "param1"},
-				{Name: "param2", Default: ptr.To("default_value")},
+				{Name: "param2", Default: new("default_value")},
 				{Name: "param3"},
 			}
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).Error().To(HaveOccurred(), "Expected validation to fail due to new required parameter not being set in Search reference")

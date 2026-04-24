@@ -192,10 +192,16 @@ lint-fix: golangci-lint license-eye ## Run golangci-lint linter and perform fixe
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
+.PHONY: license-fix
 license-fix: ## Fix license headers
 	@echo "Formatting license headers ..."
 	@"$(LICENSE_EYE)" header fix
 
+GHASOURCEDIR := ./.github/workflows
+GHASOURCES := $(shell find $(GHASOURCEDIR) -name '*.yaml')
+.PHONY: gha-upgrade
+gha-upgrade: ratchet ## upgrades all pinned github actions used in any workflows
+	@"$(RATCHET)" upgrade $(GHASOURCES)
 
 ##@ Build
 
@@ -308,8 +314,8 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 YQ ?= $(LOCALBIN)/yq
 CLIENT_GEN ?= $(LOCALBIN)/client-gen
 LICENSE_EYE ?= $(LOCALBIN)/license-eye
-FRIZBEEE ?= $(LOCALBIN)/frizbee
 KUBEBUILDER ?= $(LOCALBIN)/kubebuilder
+RATCHET ?= $(LOCALBIN)/ratchet
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
@@ -318,12 +324,12 @@ CONTROLLER_TOOLS_VERSION ?= v0.20.1
 ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-GOLANGCI_LINT_VERSION ?= v2.8.0
-YQ_VERSION ?= v4.47.1
-CODE_GENERATOR_VERSION ?= v0.34.0
+GOLANGCI_LINT_VERSION ?= v2.11.4
+YQ_VERSION ?= v4.53.2
+CODE_GENERATOR_VERSION ?= v0.36.0
 LICENSE_EYE_VERSION ?= v0.8.0
-FRIZBEEE_VERSION ?=  v0.1.7
-KUBEBUILDER_VERSION ?= v4.13.0
+KUBEBUILDER_VERSION ?= v4.13.1
+RATCHET_VERSION ?= v0.11.4
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -381,9 +387,10 @@ license-eye: $(LICENSE_EYE) ## Download skywalking-eyes locally if necessary.
 $(LICENSE_EYE): $(LOCALBIN)
 	$(call go-install-tool,$(LICENSE_EYE),github.com/apache/skywalking-eyes/cmd/license-eye,$(LICENSE_EYE_VERSION))
 
-frizbee: $(FRIZBEEE) ## Download frizbee locally if necessary.
-$(FRIZBEEE): $(LOCALBIN)
-	$(call go-install-tool,$(FRIZBEEE),github.com/stacklok/frizbee,$(FRIZBEEE_VERSION))
+ratchet: $(RATCHET) ## Download ratchet locally if necessary.
+$(RATCHET): $(LOCALBIN)
+	$(call go-install-tool,$(RATCHET),github.com/sethvargo/ratchet,$(RATCHET_VERSION))
+
 
 kubebuilder: $(KUBEBUILDER) ## Download kubebuilder locally if necessary.
 $(KUBEBUILDER): $(LOCALBIN)

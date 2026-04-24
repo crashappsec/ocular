@@ -353,9 +353,9 @@ func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.P
 		ImagePullPolicy: r.SidecarPullPolicy,
 		Args:            append([]string{sidecarCommand}, artifactsArgs...),
 		Env:             sidecarEnvVars,
-		RestartPolicy:   ptr.To(corev1.ContainerRestartPolicyAlways),
+		RestartPolicy:   new(corev1.ContainerRestartPolicyAlways),
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot: ptr.To(true),
+			RunAsNonRoot: new(true),
 		},
 	}
 }
@@ -391,7 +391,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		pipeline.Status.StageStatuses.ScanStatus = v1beta1.PipelineStageCompleted
 		if pipeline.Status.ScanPodOnly {
 			pipeline.Status.Phase = v1beta1.PipelineSucceeded
-			pipeline.Status.CompletionTime = ptr.To(t)
+			pipeline.Status.CompletionTime = new(t)
 			pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 				metav1.Condition{
 					Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
@@ -406,7 +406,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 			case corev1.PodSucceeded:
 				pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageCompleted
 				pipeline.Status.Phase = v1beta1.PipelineSucceeded
-				pipeline.Status.CompletionTime = ptr.To(t)
+				pipeline.Status.CompletionTime = new(t)
 				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 					metav1.Condition{
 						Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
@@ -416,7 +416,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 						LastTransitionTime: t,
 					})
 			case corev1.PodFailed:
-				pipeline.Status.CompletionTime = ptr.To(t)
+				pipeline.Status.CompletionTime = new(t)
 				pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageFailed
 				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 					metav1.Condition{
@@ -444,7 +444,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		pipeline.Status.StageStatuses.DownloadStatus = downloaderStatus
 		pipeline.Status.StageStatuses.ScanStatus = scanStatus
 		pipeline.Status.Phase = v1beta1.PipelineFailed
-		pipeline.Status.CompletionTime = ptr.To(t)
+		pipeline.Status.CompletionTime = new(t)
 		pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 			metav1.Condition{
 				Type:               v1beta1.CompletedSuccessfullyConditionType,
@@ -572,7 +572,7 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 			},
 			// RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
 			SecurityContext: &corev1.SecurityContext{
-				RunAsNonRoot: ptr.To(true),
+				RunAsNonRoot: new(true),
 			},
 		}
 		pod.Spec.ServiceAccountName = pipeline.Spec.UploadServiceAccountName

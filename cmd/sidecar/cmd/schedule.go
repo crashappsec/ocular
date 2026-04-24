@@ -31,7 +31,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-	"k8s.io/utils/ptr"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
@@ -99,7 +98,7 @@ func Schedule(ctx context.Context) error {
 		Kind:       "Search",
 		APIVersion: v1beta1.GroupVersion.String(),
 		Name:       searchName,
-		Controller: ptr.To(true),
+		Controller: new(true),
 	}
 
 	log.Info("starting workers")
@@ -113,8 +112,8 @@ func Schedule(ctx context.Context) error {
 		var ttlSeconds *int32
 		if ttlEnv := os.Getenv(v1beta1.EnvVarSchedulerSearchTTL); ttlEnv != "" {
 			ttl, err := strconv.Atoi(ttlEnv)
-			if err == nil {
-				ttlSeconds = ptr.To(int32(ttl))
+			if err == nil && ttl != 0 {
+				ttlSeconds = new(int32(ttl))
 			}
 		}
 		serviceAccount := os.Getenv(v1beta1.EnvVarSchedulerServiceAccount)
@@ -138,7 +137,7 @@ func Schedule(ctx context.Context) error {
 					TTLSecondsAfterFinished: ttlSeconds,
 					ServiceAccountName:      serviceAccount,
 					Scheduler: v1beta1.SearchSchedulerSpec{
-						IntervalSeconds: ptr.To(int32(sleepDuration)),
+						IntervalSeconds: new(int32(sleepDuration)),
 					},
 					CrawlerRef: v1beta1.ParameterizedLocalObjectReference{},
 				},

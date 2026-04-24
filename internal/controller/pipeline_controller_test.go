@@ -16,7 +16,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -101,11 +100,11 @@ var _ = Describe("Pipeline Controller", func() {
 					Parameters: []v1beta1.ParameterDefinition{
 						{
 							Name:    "DEFAULT_SET",
-							Default: ptr.To("1"),
+							Default: new("1"),
 						},
 						{
 							Name:    "DEFAULT_EMPTY",
-							Default: ptr.To(""),
+							Default: new(""),
 						},
 					},
 					Artifacts: []string{"results.txt"},
@@ -265,11 +264,11 @@ var _ = Describe("Pipeline Controller", func() {
 					Parameters: []v1beta1.ParameterDefinition{
 						{
 							Name:    "DEFAULT_SET",
-							Default: ptr.To("1"),
+							Default: new("1"),
 						},
 						{
 							Name:    "DEFAULT_EMPTY",
-							Default: ptr.To(""),
+							Default: new(""),
 						},
 					},
 
@@ -370,7 +369,7 @@ var _ = Describe("Pipeline Controller", func() {
 			uploadPod.Status.InitContainerStatuses = append(uploadPod.Status.InitContainerStatuses,
 				corev1.ContainerStatus{
 					Name:    sidecarReceiverContainerName,
-					Started: ptr.To(true),
+					Started: new(true),
 				})
 			err = k8sClient.Status().Update(ctx, uploadPod)
 			Expect(err).NotTo(HaveOccurred())

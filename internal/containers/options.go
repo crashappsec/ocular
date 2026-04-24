@@ -11,7 +11,6 @@ package containers
 import (
 	"github.com/crashappsec/ocular/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/ptr"
 )
 
 type Option = func(*corev1.Container)
@@ -67,7 +66,7 @@ func WithPodSecurityStandardRestricted() Option {
 			c.SecurityContext = &corev1.SecurityContext{}
 		}
 
-		c.SecurityContext.AllowPrivilegeEscalation = ptr.To(false)
+		c.SecurityContext.AllowPrivilegeEscalation = new(false)
 		c.SecurityContext.Capabilities = &corev1.Capabilities{
 			Drop: []corev1.Capability{"ALL"},
 		}

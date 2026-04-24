@@ -14,7 +14,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -95,7 +94,7 @@ var _ = Describe("Uploader Webhook", func() {
 			By("creating a Profile that references the Uploader, then updating Uploader to add a new required param")
 			obj.Spec.Parameters = []v1beta1.ParameterDefinition{
 				{Name: "param1"},
-				{Name: "param2", Default: ptr.To("default_value")},
+				{Name: "param2", Default: new("default_value")},
 			}
 			Expect(k8sClient.Create(ctx, obj)).To(Succeed())
 
@@ -116,7 +115,7 @@ var _ = Describe("Uploader Webhook", func() {
 			oldObj := uploader.DeepCopy()
 			uploader.Spec.Parameters = []v1beta1.ParameterDefinition{
 				{Name: "param1"},
-				{Name: "param2", Default: ptr.To("default_value")},
+				{Name: "param2", Default: new("default_value")},
 				{Name: "param3"},
 			}
 			_, err := validator.ValidateUpdate(ctx, oldObj, &uploader)

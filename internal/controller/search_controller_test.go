@@ -20,7 +20,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -124,7 +123,7 @@ var _ = Describe("Search Controller", func() {
 								},
 							},
 						},
-						TTLSecondsAfterFinished: ptr.To(int32(3600)),
+						TTLSecondsAfterFinished: new(int32(3600)),
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -286,7 +285,7 @@ var _ = Describe("Search Controller", func() {
 							Name: crawlerName,
 						},
 						ServiceAccountName:      serviceAccountName,
-						TTLSecondsAfterFinished: ptr.To(int32(3600)),
+						TTLSecondsAfterFinished: new(int32(3600)),
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -404,7 +403,7 @@ var _ = Describe("Search Controller", func() {
 			Expect(search.Status.CompletionTime).To(BeNil())
 
 			By("Updating the child resource to complete")
-			pipeline.Status.CompletionTime = ptr.To(metav1.NewTime(time.Now()))
+			pipeline.Status.CompletionTime = new(metav1.NewTime(time.Now()))
 			Expect(k8sClient.Status().Update(ctx, pipeline)).Error().ToNot(HaveOccurred())
 
 			Expect(controllerReconciler.Reconcile(ctx, reconcile.Request{

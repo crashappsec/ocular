@@ -17,7 +17,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -48,11 +47,11 @@ var _ = Describe("Search Webhook", func() {
 					},
 					{
 						Name:    "PARAM_2",
-						Default: ptr.To("parameter 2"),
+						Default: new("parameter 2"),
 					},
 					{
 						Name:    "PARAM_3",
-						Default: ptr.To("parameter 3"),
+						Default: new("parameter 3"),
 					},
 				},
 			},
