@@ -201,12 +201,17 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *SearchReconciler) populateServiceAccount(search *v1beta1.Search, sa *corev1.ServiceAccount) error {
-	if sa.Labels == nil {
-		sa.Labels = make(map[string]string)
+	// we only set the controller reference if we are creating the role, since users can
+	// bring their own roles, owned by other controllers.
+	if sa.CreationTimestamp.IsZero() {
+		if sa.Labels == nil {
+			sa.Labels = make(map[string]string)
+		}
+		sa.Labels[v1beta1.SearchLabelKey] = search.GetName()
+		sa.Labels[v1beta1.TypeLabelKey] = v1beta1.ServiceAccountTypeSearch
+		return ctrl.SetControllerReference(search, sa, r.Scheme)
 	}
-	sa.Labels[v1beta1.SearchLabelKey] = search.GetName()
-	sa.Labels[v1beta1.TypeLabelKey] = v1beta1.ServiceAccountTypeSearch
-	return ctrl.SetControllerReference(search, sa, r.Scheme)
+	return nil
 }
 
 func (r *SearchReconciler) populateRoleBinding(search *v1beta1.Search, sa *corev1.ServiceAccount, rb *rbacv1.RoleBinding) error {
