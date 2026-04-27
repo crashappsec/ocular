@@ -20,4 +20,4 @@ spec:
   parameters:
     - name: "LOG_MSG"
       description: "Log message to print."
-      required: true
+      # no default means required

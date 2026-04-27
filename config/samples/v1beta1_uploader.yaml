@@ -22,6 +22,7 @@ spec:
   parameters:
     - name: "REQUIRED_PARAM"
       description: "My example parameter."
+      # no default means required
     - name: "OPTIONAL_PARAM"
       description: "An optional parameter."
       default: "not-set"

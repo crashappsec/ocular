@@ -1,6 +1,6 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
-# [v0.3.0](https://github.com/crashappsec/ocular/releases/tag/v0.3.0) - **April 23th, 2026**
+# [v0.3.0](https://github.com/crashappsec/ocular/releases/tag/v0.3.0) - **April 27th, 2026**
 
 ### Added
 
@@ -25,7 +25,8 @@
   - bump kubebuilder scaffoling version
   - use [`controllerutil`](sigs.k8s.io/controller-runtime/pkg/controller/controllerutil) package
 - Improve docker build speed for emulated platforms
-- Force sidecar containers run as non-root
+- Force sidecar containers run as non-root for pipeline
+
 
 # [v0.2.6](https://github.com/crashappsec/ocular/releases/tag/v0.2.6) - **February 17th, 2026**
 

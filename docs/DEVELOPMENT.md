@@ -63,6 +63,8 @@ make undeploy
 
 ### To Deploy with custom images
 
+*NOTE*: be sure to run `make undeploy` first if comint from the previous section
+
 **Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG` and `OCULAR_SIDECAR_IMG`:**
 
 ```sh

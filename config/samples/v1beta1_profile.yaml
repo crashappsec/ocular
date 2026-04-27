@@ -10,20 +10,21 @@ spec:
     - name: trufflehog
       image: trufflesecurity/trufflehog:latest
       imagePullPolicy: IfNotPresent
-      command: [ /bin/sh, -c ]
-      args: [ "trufflehog git file://. -j --no-update > $OCULAR_RESULTS_DIR/trufflehog.json" ]
+      command: [/bin/sh, -c]
+      args: ["trufflehog git file://. -j --no-update > $OCULAR_RESULTS_DIR/trufflehog.json"]
     - name: semgrep
       image: semgrep/semgrep:latest-nonroot
       imagePullPolicy: IfNotPresent
-      command: [ /bin/sh, -c ]
-      args: [ "semgrep scan --config=auto --json . > $OCULAR_RESULTS_DIR/semgrep.json" ]
+      command: [/bin/sh, -c]
+      args: ["semgrep scan --config=auto --json . > $OCULAR_RESULTS_DIR/semgrep.json"]
   artifacts:
     - trufflehog.json
     - semgrep.json
   uploaderRefs:
     - name: uploader-sample
+      kind: "Uploader"
       parameters:
         - name: EXAMPLE
           value: example value
     - name: clusteruploader-sample
-      kind: "ClusterUploader"
+      kind: "ClusterUploader" # Can be Uploader or ClusterUploader, empty defaults to Uploader

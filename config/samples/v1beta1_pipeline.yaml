@@ -7,8 +7,11 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
 spec:
   downloaderRef:
-    name: clusterdownloader-sample
-    kind: "ClusterDownloader" # can be Downloader or ClusterDownloader
+    name: downloader-sample
+    kind: "Downloader" # can be Downloader or ClusterDownloader. empty defaults to 'Downloader'
+    parameters:
+      - name: "BARE_CLONE"
+        value: "1"
   profileRef:
     name: profile-sample
   target:

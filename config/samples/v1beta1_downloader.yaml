@@ -13,14 +13,19 @@ spec:
     command: [ /bin/sh, -c ]
     args:
       - |
-        if [ -f /etc/ocular/gitconfig ]; then
-          git config --global include.path /etc/ocular/gitconfig
+        GIT_ARGS=""
+        if [ -z "$BARE_CLONE" ]; then
+          GIT_ARGS="--bare"
         fi
-        git clone $OCULAR_TARGET_IDENTIFIER $OCULAR_TARGET_DIR
+        git clone $GIT_ARGS $OCULAR_TARGET_IDENTIFIER $OCULAR_TARGET_DIR
     volumeMounts:
-      - name:  downloader-secrets
+      - name: downloader-secrets
         mountPath: /etc/ocular/
         readOnly: true
+  parameter:
+    - name: "BARE_CLONE"
+      default: ""
+      description: "If set to non-empty value, will use --bare to clone"
   volumes:
     - name: downloader-secrets
       secret:

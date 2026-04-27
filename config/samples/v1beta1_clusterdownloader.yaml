@@ -6,4 +6,13 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: clusterdownloader-sample
 spec:
-  # TODO(user): Add fields here
+  # See `v1beta1_downloader.yaml`
+  # for a better example since
+  # the 'spec' types are the same
+  container:
+    image: ubuntu:latest
+    command: ['echo']
+    args: ['hello', '$(OCULAR_PARAM_NAME)']
+  paramters:
+    - name: "NAME"
+      description: "the name to say hello to"

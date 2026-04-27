@@ -15,3 +15,6 @@ spec:
           - name: LOG_MSG
             value: "Hello from CronSearch!"
       ttlSecondsAfterFinished: 30
+    pipelineTemplate:
+      downloaderRef:
+        name: downloader-sample
