@@ -73,9 +73,16 @@ type ParameterSetting struct {
 	Value string `json:"value" yaml:"value" description:"The value to set the parameter to."`
 }
 
-// ParameterizedObjectReference is a reference to a resource that will be run with parameters.
-type ParameterizedObjectReference struct {
-	v1.ObjectReference `json:",inline"`
+// ParameterizedLocalObjectReference is a reference to a resource that will be run with parameters.
+// The reference is local to (in the same namespace) as the resource that contains the
+// reference. In cases where a resource has a "cluster" and "non-cluster" version
+// (e.q. Downloader, Uploader, Crawler) - Kind can be specified.
+type ParameterizedLocalObjectReference struct {
+	// Name is the name of resource being referenced
+	// +required
+	Name string `json:"name" protobuf:"bytes,2,opt,name=name"`
+	// Kind is the type of resource being referenced
+	Kind string `json:"kind,omitempty" protobuf:"bytes,1,opt,name=kind"`
 
 	// Parameters is a list of parameters to pass to the referenced resource.
 	// as environment variables.
@@ -84,7 +91,18 @@ type ParameterizedObjectReference struct {
 	// +patchStrategy=merge,retainKeys
 	// +listType=map
 	// +listMapKey=name
-	Parameters []ParameterSetting `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	Parameters []ParameterSetting `json:"parameters,omitempty" yaml:"parameters,omitempty" `
+}
+
+// ContainerCondition expresses a condition that
+// should be met before including a container
+// definition
+type ContainerCondition struct {
+	// WhenParamSet specifies that the container should
+	// only be created if the given parameter is set to
+	// a non empty value.
+	// +optional
+	WhenParamSet string `json:"whenParamSet,omitempty" yaml:"parameterSet,omitempty"`
 }
 
 // ParameterDefinition is a definition of a parameter that can be passed to a container.
@@ -102,14 +120,10 @@ type ParameterDefinition struct {
 	// +optional
 	Description string `json:"description,omitempty" protobuf:"bytes,2,opt,name=description" yaml:"description,omitempty" description:"A description of the parameter."`
 
-	// Required is true if the parameter is required.
-	// If true, the execution will fail to start if the parameter is not provided.
-	// +required
-	Required bool `json:"required" protobuf:"varint,3,opt,name=required" yaml:"required" description:"Whether or not the parameter is required. If true, the execution will fail to start if the parameter is not provided."`
-
 	// Default is the default value for the parameter.
-	// It is only valid if Required is false.
-	// A null value indicates that if there is no value provided, the environment variable will be unset.
+	// If default is not set, the parameter is assumed to
+	// be required - and will cause an error if parameter
+	// is not set via [ParameterizedObjectReference]
 	// +optional
 	Default *string `json:"default,omitempty" protobuf:"bytes,4,opt,name=default" yaml:"default,omitempty" description:"The default value for the parameter. It is only valid if Required is false."`
 }
@@ -130,14 +144,4 @@ type ServiceAccountDefinition struct {
 	// TokenProjection is the projection of the service account token that will be mounted into the pod.
 	// +optional
 	Token v1.ServiceAccountTokenProjection `json:"token,omitempty" yaml:"token,omitempty" description:"The projection of the service account token that will be mounted into the pod. If not specified, the token will not be mounted."`
-}
-
-type AdditionalPodMetadata struct {
-	// Annotations are key-value pairs that will be added to the pod running the scanners.
-	// +optional
-	Annotations map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty" description:"Annotations of the object."`
-
-	// Labels are key-value pairs that will be added to the pod running the scanners.
-	// +optional
-	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty" description:"Labels of the object."`
 }

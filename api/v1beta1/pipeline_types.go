@@ -9,7 +9,6 @@
 package v1beta1
 
 import (
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -38,14 +37,15 @@ const (
 
 type PipelineSpec struct {
 	// DownloaderRef is a reference to the downloader that will be used in this pipeline.
-	// It should point to a valid Downloader resource in the same namespace.
+	// It should point to a valid Downloader resource in the same namespace, or a ClusterDownloader
+	// by setting kind to "ClusterDownloader".
 	// +required
-	DownloaderRef ParameterizedObjectReference `json:"downloaderRef" protobuf:"bytes,1,opt,name=downloaderRef"`
+	DownloaderRef ParameterizedLocalObjectReference `json:"downloaderRef" protobuf:"bytes,1,opt,name=downloaderRef"`
 
 	// ProfileRef is a reference to the profile that will be used in this pipeline.
 	// It should point to a valid Profile resource in the same namespace.
 	// +required
-	ProfileRef v1.ObjectReference `json:"profileRef" protobuf:"bytes,2,opt,name=profileRef"`
+	ProfileRef ParameterizedLocalObjectReference `json:"profileRef" protobuf:"bytes,2,opt,name=profileRef"`
 
 	// Target is the actual software asset that will be processed by this pipeline.
 	// It is up to the Downloader to interpret the target correctly.
@@ -66,6 +66,7 @@ type PipelineSpec struct {
 	// If set, the pipeline and its associated resources will be automatically deleted
 	// after the specified number of seconds have passed since the pipeline finished.
 	// +optional
+	// +kubebuilder:validation:Minimum=0
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"  protobuf:"bytes,6,opt,name=ttlSecondsAfterFinished"`
 
 	// TTLSecondsMaxLifetime
@@ -73,7 +74,17 @@ type PipelineSpec struct {
 	// after the specified number of seconds have passed since the pipeline was created,
 	// regardless of its state.
 	// +optional
+	// +kubebuilder:validation:Minimum=0
 	TTLSecondsMaxLifetime *int32 `json:"ttlSecondsMaxLifetime,omitempty" protobuf:"bytes,7,opt,name=TTLSecondsMaxLifetime" description:"If set, the pipeline and its associated resources will be automatically deleted after the specified number of seconds have passed since the pipeline was created, regardless of its state."`
+
+	// Parameters is a list of ParameterDefinition that can be used to define "parameters"
+	// that the user can specify in a downloader reference that can configure how to download targets.
+	// +optional
+	// +patchMergeKey=name
+	// +patchStrategy=merge,retainKeys
+	// +listType=map
+	// +listMapKey=name
+	Parameters []ParameterDefinition `json:"parameters,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,3,rep,name=parameters"`
 }
 
 // PipelinePhase is a label for the condition of a pipeline at the current time.

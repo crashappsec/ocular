@@ -41,7 +41,7 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
-LDFLAGS ?= -X main.version=$(OCULAR_VERSION) -X main.buildTime=$(shell date -Iseconds) -X main.gitCommit=$(shell git rev-parse --short HEAD)
+
 
 .PHONY: all
 all: build
@@ -83,7 +83,17 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" apply -f -
 
 deploy-%: manifests kustomize ## Specify which config folder (%) to deploy to the K8s cluster specified in ~/.kube/config.
-	"$(KUSTOMIZE)" build config/$(@:deploy-%=%) | "$(KUBECTL)" apply -f -
+	"$(KUSTOMIZE)" build config/$* | "$(KUBECTL)" apply -f -
+
+run-e2e-test-%:
+	"$(KUSTOMIZE)" build config/e2e-test/$* | "$(KUBECTL)" apply -f -
+
+stop-e2e-test-%:
+	@"$(KUSTOMIZE)" build config/e2e-test/$* | \
+		"$(YQ)" ea '[.] | reverse | .[]'  | \
+		sed '/^apiVersion:/i ---' | \
+		"$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+
 
 .PHONY: refresh-deployment
 refresh-deployment: ## Refresh the controller deployment in the K8s cluster specified in ~/.kube/config.
@@ -94,7 +104,7 @@ undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 undeploy-%: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	"$(KUSTOMIZE)" build config/$(@:undeploy-%=%) | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+	"$(KUSTOMIZE)" build config/$* | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 
 ##@ Development
@@ -126,6 +136,14 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: update-github-actions
+update-github-actions: frizbee ## Update GitHub action versions in workflows
+	@echo "Updating GitHub workflows ..."
+	@"$(FRIZBEEE)" actions .github/workflows
+
+
+##@ Testing
+
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
@@ -145,7 +163,7 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 		*"$(KIND_CLUSTER)"*) \
 			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
 		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
+			echo "Creating Kind cluster '$(KIND_CLUSTER)'... $(DOCKER_DEFAULT_PLATFORM)"; \
 			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
 	esac
 
@@ -157,6 +175,8 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+
+##@ Linting
 
 .PHONY: lint
 lint: golangci-lint license-eye ## Run golangci-lint linter
@@ -172,19 +192,18 @@ lint-fix: golangci-lint license-eye ## Run golangci-lint linter and perform fixe
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
-CURRENT_DIR := $(shell pwd)
-
+.PHONY: license-fix
 license-fix: ## Fix license headers
 	@echo "Formatting license headers ..."
 	@"$(LICENSE_EYE)" header fix
 
-update-github-actions: frizbee ## Update GitHub action versions in workflows
-	@echo "Updating GitHub workflows ..."
-	@"$(FRIZBEEE)" actions .github/workflows
-
+GHASOURCEDIR := ./.github/workflows
+GHASOURCES := $(shell find $(GHASOURCEDIR) -name '*.yaml')
+.PHONY: gha-upgrade
+gha-upgrade: ratchet ## upgrades all pinned github actions used in any workflows
+	@"$(RATCHET)" upgrade $(GHASOURCES)
 
 ##@ Build
-COMMANDS := controller sidecar
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
@@ -194,20 +213,32 @@ build: manifests generate fmt vet ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/manager/main.go
 
-# If you wish to build the manager image targeting other platforms you can use the --platform flag.
-# (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
-# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build-all
-docker-build-all: docker-build-controller docker-build-sidecar ## Build docker image with the manager.
+docker-build-all: docker-build-controller docker-build-sidecar ## Builds all docker images
 
+# PLATFORMS is a list of platforms to
+# build for. Production Ocular images are built
+# with: 'linux/arm64,linux/amd64,linux/s390x,linux/ppc64le'
+PLATFORMS ?= linux/arm64,linux/amd64
+
+# Additionally, docker args can be set,
+# adding --push will push the image
+DOCKER_ARGS ?= --platform=$(PLATFORMS)
+
+LDFLAGS ?= -X main.version=$(OCULAR_VERSION) -X main.buildTime=$(shell date -Iseconds) -X main.gitCommit=$(shell git rev-parse --short HEAD)
 .PHONY: docker-build-controller
-docker-build-controller:  docker-build-img-controller ## Build docker image with the manager.
+docker-build-controller:  docker-build-img-controller ## Build docker image for the manager.
 
 .PHONY: docker-build-sidecar
-docker-build-sidecar: docker-build-img-sidecar ## Build docker image with the sidecar.
+docker-build-sidecar: docker-build-img-sidecar ## Build docker image for the sidecar.
 
-docker-build-img-%:
-	$(CONTAINER_TOOL) build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-build-img-%=%) -t $(OCULAR_$(shell echo '$(@:docker-build-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) .
+docker-build-img-%: ## Builds the docker image
+	$(CONTAINER_TOOL) build \
+		--build-arg LDFLAGS="$(LDFLAGS)" \
+		--build-arg COMMAND=$* \
+		--tag $(OCULAR_$(shell echo '$*' | tr '[:lower:]' '[:upper:]')_IMG) \
+		$(DOCKER_ARGS) \
+		-f Dockerfile .
 
 .PHONY: docker-push-all
 docker-push-all: docker-push-controller docker-push-sidecar ## Push docker both manager and sidecar images.
@@ -219,35 +250,7 @@ docker-push-controller: docker-push-img-controller ## Push docker image with the
 docker-push-sidecar: docker-push-img-sidecar ## Push docker image with the sidecar.
 
 docker-push-img-%: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push $(OCULAR_$(shell echo '$(@:docker-build-%=%)' | tr '[:lower:]' '[:upper:]')_IMG)
-
-# PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
-# architectures. (i.e. make docker-buildx OCULAR_CONTROLLER_IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
-# - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
-# - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-# - be able to push the image to your registry (i.e. if you do not set a valid value via OCULAR_CONTROLLER_IMG=<myregistry/image:<tag>> then the export will fail)
-# To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
-PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
-.PHONY: docker-buildx-all
-docker-buildx-all: docker-buildx-controller  docker-buildx-sidecar ## Build and push docker images for both manager and sidecar for cross-platform support.
-
-.PHONY: docker-buildx-controller
-docker-buildx-controller: docker-buildx-img-controller ## Build and push docker image for the manager for cross-platform support
-
-.PHONY: docker-buildx-sidecar
-docker-buildx-sidecar: docker-buildx-img-sidecar ## Build and push docker image for the sidecar for cross-platform support
-
-docker-buildx-img-%: ## Build and push docker image for the manager for cross-platform support
-	@echo -e "This will build and \e[31m$$(tput bold)push$$(tput sgr0)\e[0m the image $(OCULAR_$(shell echo '$(@:docker-buildx-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) for platforms: ${PLATFORMS}."
-	@read -p "press enter to continue, or ctrl-c to abort: "
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name ocular-builder
-	$(CONTAINER_TOOL) buildx use ocular-builder
-	- $(CONTAINER_TOOL) buildx build --build-arg LDFLAGS="$(LDFLAGS)" --build-arg COMMAND=$(@:docker-buildx-img-%=%) --push --platform=$(PLATFORMS) --tag $(OCULAR_$(shell echo '$(@:docker-buildx-img-%=%)' | tr '[:lower:]' '[:upper:]')_IMG) -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm ocular-builder
-	rm Dockerfile.cross
-
+	$(CONTAINER_TOOL) push $(OCULAR_$(shell echo '$*' | tr '[:lower:]' '[:upper:]')_IMG)
 .PHONY: build-installer
 build-installer: manifests generate kustomize yq ## Generate a consolidated YAML with CRDs and deployment.
 	@mkdir -p dist
@@ -278,17 +281,17 @@ build-helm: kubebuilder ## Generate a helm-chart using kubebuilder
 	@mkdir -p dist
 	@"$(KUBEBUILDER)" edit --plugins=helm/v2-alpha
 	@# update manfiests with any templating or customizations TODO(bryce): have this be one script
-	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1    {{- range $$key, $$val := .Values.manager.labels }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)env: \[\]/\1env:\n\1  {{- with .Values.manager.env }}\n\1  {{- toYaml . | nindent 20 }}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)annotations:/\1annotations:\n\1    {{- range $$key, $$val := .Values.manager.annotations }}\n    \1{{ $$key }}: {{ $$val | quote }}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1  {{- with .Values.manager.volumeMounts }}\n\1  {{- toYaml . | nindent 20}}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
-	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1    {{- with .Values.manager.volumes }}\n\1    {{- toYaml . | nindent 16}}\n\1    {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)labels:/\1labels:\n\1  {{- range $$key, $$val := .Values.manager.labels }}\n  \1{{ $$key }}: {{ $$val | quote }}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)env: \[\]/\1env: {{- toYaml .Values.manager.env | nindent 10 }}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)annotations:/\1annotations:\n\1  {{- range $$key, $$val := .Values.manager.annotations }}\n  \1{{ $$key }}: {{ $$val | quote }}\n\1  {{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumeMounts:/\1volumeMounts:\n\1{{- with .Values.manager.volumeMounts }}\n\1{{- toYaml . | nindent 8}}\n\1{{- end}}/g' dist/chart/templates/manager/manager.yaml
+	@sed -i.bak -r 's/^([ ]+)volumes:/\1volumes:\n\1{{- with .Values.manager.volumes }}\n\1{{- toYaml . | nindent 6}}\n\1{{- end}}/g' dist/chart/templates/manager/manager.yaml
 	@sed -i.bak -r 's/^([ ]+OCULAR_SIDECAR_IMG:)[^\n]+/\1 "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"/g' dist/chart/templates/extras/controller-manager-config.yaml
 	@sed -i.bak -r 's/^([ ]+value:[ ]+)["]?IfNotPresent["]?$$/\1 "{{ .Values.sidecar.image.pullPolicy }}"/g' dist/chart/templates/manager/manager.yaml
 	@rm dist/chart/templates/manager/manager.yaml.bak dist/chart/templates/extras/controller-manager-config.yaml.bak # cleanup backup file from sed
-	@yq -ie '.manager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
-	@yq -ie '.sidecar.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
-	@yq -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
+	@"$(YQ)" -ie '.manager.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
+	@"$(YQ)" -ie '.sidecar.image.tag = strenv(OCULAR_VERSION)' dist/chart/values.yaml
+	@"$(YQ)" -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' dist/chart/Chart.yaml
 
 .PHONY: clean-helm
 clean-helm: ## Clean up the helm chart generated files
@@ -311,22 +314,18 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 YQ ?= $(LOCALBIN)/yq
 CLIENT_GEN ?= $(LOCALBIN)/client-gen
 LICENSE_EYE ?= $(LOCALBIN)/license-eye
-FRIZBEEE ?= $(LOCALBIN)/frizbee
 KUBEBUILDER ?= $(LOCALBIN)/kubebuilder
+RATCHET ?= $(LOCALBIN)/ratchet
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
-#ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
-ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
-#ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
-ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
-GOLANGCI_LINT_VERSION ?= v2.8.0
-YQ_VERSION ?= v4.47.1
-CODE_GENERATOR_VERSION ?= v0.34.0
+GOLANGCI_LINT_VERSION ?= v2.11.4
+YQ_VERSION ?= v4.53.2
+CODE_GENERATOR_VERSION ?= v0.36.0
 LICENSE_EYE_VERSION ?= v0.8.0
-FRIZBEEE_VERSION ?=  v0.1.7
-KUBEBUILDER_VERSION ?= v4.13.0
+KUBEBUILDER_VERSION ?= v4.13.1
+RATCHET_VERSION ?= v0.11.4
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -338,7 +337,7 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
-GOLANGCI_LINT_VERSION ?= v2.8.0
+
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
@@ -384,9 +383,9 @@ license-eye: $(LICENSE_EYE) ## Download skywalking-eyes locally if necessary.
 $(LICENSE_EYE): $(LOCALBIN)
 	$(call go-install-tool,$(LICENSE_EYE),github.com/apache/skywalking-eyes/cmd/license-eye,$(LICENSE_EYE_VERSION))
 
-frizbee: $(FRIZBEEE) ## Download frizbee locally if necessary.
-$(FRIZBEEE): $(LOCALBIN)
-	$(call go-install-tool,$(FRIZBEEE),github.com/stacklok/frizbee,$(FRIZBEEE_VERSION))
+ratchet: $(RATCHET) ## Download ratchet locally if necessary.
+$(RATCHET): $(LOCALBIN)
+	$(call go-install-tool,$(RATCHET),github.com/sethvargo/ratchet,$(RATCHET_VERSION))
 
 kubebuilder: $(KUBEBUILDER) ## Download kubebuilder locally if necessary.
 $(KUBEBUILDER): $(LOCALBIN)

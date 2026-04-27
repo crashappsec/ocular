@@ -48,10 +48,16 @@ type CrawlerSpec struct {
 	// +listMapKey=name
 	Parameters []ParameterDefinition `json:"parameters,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,3,rep,name=parameters"`
 
-	// AdditionalPodMetadata defines additional specifications to be added to the pod
-	// running the scanners, such as annotations and labels.
+	// ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images used the search
+	// pod that runs this CrawlerSpec.
+	// If specified, these secrets will be passed to individual puller implementations for them to use.
+	// More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod
 	// +optional
-	AdditionalPodMetadata AdditionalPodMetadata `json:"podSpecAdditions,omitempty,omitzero" yaml:"podSpecAdditions,omitempty,omitzero" description:"Additional specifications to be added to the pod running the crawler, such as annotations and labels."`
+	// +patchMergeKey=name
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=name
+	ImagePullSecrets []v1.LocalObjectReference `json:"imagePullSecrets,omitempty" patchStrategy:"merge" patchMergeKey:"name" protobuf:"bytes,15,rep,name=imagePullSecrets"`
 }
 
 // +kubebuilder:object:root=true

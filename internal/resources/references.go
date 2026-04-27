@@ -13,9 +13,23 @@ import (
 	"fmt"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
-	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// Invocation represents the invocation of an Ocular resource
+// (profile, downloader, crawler, uploader). It contains the spec
+// of the resource, the metadata and the parameters that should be set.
+// This is done since some resources additionally have a cluster wide
+// version that share the same spec.
+type Invocation[S any] struct {
+	// Spec is the spec of the resource
+	Spec S
+	// Parameters is the parameter settings of the resource
+	Parameters []v1beta1.ParameterSetting
+	// Metadata is the metadata of the resource
+	Metadata metav1.ObjectMeta
+}
 
 type InvalidObjectReference struct {
 	Message string
@@ -25,89 +39,124 @@ func (i InvalidObjectReference) Error() string {
 	return i.Message
 }
 
-func UploaderSpecFromReference(ctx context.Context, c client.Client, namespace string, ref corev1.ObjectReference) (v1beta1.UploaderSpec, error) {
+func UploaderInvocationFromReference(ctx context.Context, c client.Client, namespace string, ref v1beta1.ParameterizedLocalObjectReference) (Invocation[v1beta1.UploaderSpec], error) {
 	var (
-		spec v1beta1.UploaderSpec
-		err  error
+		err error
+		r   Invocation[v1beta1.UploaderSpec]
 	)
 	switch ref.Kind {
 	case "Uploader", "":
-		if ref.Namespace != "" && namespace != ref.Namespace {
-			err = InvalidObjectReference{
-				Message: fmt.Sprintf("invalid namespace '%s', reference should same as parent namespace '%s' or empty", ref.Namespace, namespace),
-			}
-		} else {
-			var u v1beta1.Uploader
-			err = c.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: namespace}, &u)
-			spec = u.Spec
+		var u v1beta1.Uploader
+		err = c.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: namespace}, &u)
+		r = Invocation[v1beta1.UploaderSpec]{
+			Spec:       u.Spec,
+			Metadata:   u.ObjectMeta,
+			Parameters: ref.Parameters,
 		}
 	case "ClusterUploader":
 		var u v1beta1.ClusterUploader
 		err = c.Get(ctx, client.ObjectKey{Name: ref.Name}, &u)
-		spec = u.Spec
+		r = Invocation[v1beta1.UploaderSpec]{
+			Spec:       u.Spec,
+			Metadata:   u.ObjectMeta,
+			Parameters: ref.Parameters,
+		}
 	default:
 		err = InvalidObjectReference{
 			Message: fmt.Sprintf("invalid kind for uploader ref '%s', should either be 'Uploader' or 'ClusterUploader'", ref.Kind),
 		}
 	}
 
-	return spec, err
+	return r, err
 }
 
-func DownloaderSpecFromReference(ctx context.Context, c client.Client, namespace string, ref corev1.ObjectReference) (v1beta1.DownloaderSpec, error) {
+func ProfileInvocationFromReference(ctx context.Context, c client.Client, namespace string, ref v1beta1.ParameterizedLocalObjectReference) (Invocation[v1beta1.ProfileSpec], error) {
 	var (
-		spec v1beta1.DownloaderSpec
-		err  error
+		p v1beta1.Profile
+		r Invocation[v1beta1.ProfileSpec]
+	)
+	if ref.Kind != "Profile" && ref.Kind != "" {
+		return r, InvalidObjectReference{
+			Message: fmt.Sprintf("invalid kind for crawler reference '%s', should either be 'Crawler' or 'ClusterCrawler'", ref.Kind),
+		}
+	}
+
+	err := c.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: namespace}, &p)
+	r = Invocation[v1beta1.ProfileSpec]{
+		Spec:       p.Spec,
+		Metadata:   p.ObjectMeta,
+		Parameters: ref.Parameters,
+	}
+	return r, err
+}
+
+func DownloaderInvocationFromReference(ctx context.Context, c client.Client, namespace string, ref v1beta1.ParameterizedLocalObjectReference) (Invocation[v1beta1.DownloaderSpec], error) {
+	var (
+		err error
+		r   Invocation[v1beta1.DownloaderSpec]
 	)
 	switch ref.Kind {
 	case "Downloader", "":
-		if ref.Namespace != "" && namespace != ref.Namespace {
-			err = InvalidObjectReference{
-				Message: fmt.Sprintf("invalid namespace '%s', reference should same as parent namespace '%s' or empty", ref.Namespace, namespace),
-			}
-		} else {
-			var u v1beta1.Downloader
-			err = c.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: namespace}, &u)
-			spec = u.Spec
+		var u v1beta1.Downloader
+		err = c.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: namespace}, &u)
+		r = Invocation[v1beta1.DownloaderSpec]{
+			Spec:       u.Spec,
+			Metadata:   u.ObjectMeta,
+			Parameters: ref.Parameters,
 		}
 	case "ClusterDownloader":
 		var u v1beta1.ClusterDownloader
 		err = c.Get(ctx, client.ObjectKey{Name: ref.Name}, &u)
-		spec = u.Spec
+		r = Invocation[v1beta1.DownloaderSpec]{
+			Spec:       u.Spec,
+			Metadata:   u.ObjectMeta,
+			Parameters: ref.Parameters,
+		}
 	default:
 		err = InvalidObjectReference{
 			Message: fmt.Sprintf("invalid kind for downloader reference '%s', should either be 'Downloader' or 'ClusterDownloader'", ref.Kind),
 		}
 	}
 
-	return spec, err
+	return r, err
 }
 
-func CrawlerSpecFromReference(ctx context.Context, c client.Client, namespace string, ref corev1.ObjectReference) (v1beta1.CrawlerSpec, error) {
+func CrawlerInvocationFromReference(ctx context.Context, c client.Client, namespace string, ref v1beta1.ParameterizedLocalObjectReference) (Invocation[v1beta1.CrawlerSpec], error) {
 	var (
-		spec v1beta1.CrawlerSpec
-		err  error
+		err error
+		r   Invocation[v1beta1.CrawlerSpec]
 	)
 	switch ref.Kind {
 	case "Crawler", "":
-		if ref.Namespace != "" && namespace != ref.Namespace {
-			err = InvalidObjectReference{
-				Message: fmt.Sprintf("invalid namespace '%s', reference should same as parent namespace '%s' or empty", ref.Namespace, namespace),
-			}
-		} else {
-			var u v1beta1.Crawler
-			err = c.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: namespace}, &u)
-			spec = u.Spec
+		var u v1beta1.Crawler
+		err = c.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: namespace}, &u)
+		r = Invocation[v1beta1.CrawlerSpec]{
+			Spec:       u.Spec,
+			Metadata:   u.ObjectMeta,
+			Parameters: ref.Parameters,
 		}
+
 	case "ClusterCrawler":
 		var u v1beta1.ClusterCrawler
 		err = c.Get(ctx, client.ObjectKey{Name: ref.Name}, &u)
-		spec = u.Spec
+		r = Invocation[v1beta1.CrawlerSpec]{
+			Spec:       u.Spec,
+			Metadata:   u.ObjectMeta,
+			Parameters: ref.Parameters,
+		}
 	default:
 		err = InvalidObjectReference{
 			Message: fmt.Sprintf("invalid kind for crawler reference '%s', should either be 'Crawler' or 'ClusterCrawler'", ref.Kind),
 		}
 	}
 
-	return spec, err
+	return r, err
+}
+
+func ReferenceDefaulter(ref v1beta1.ParameterizedLocalObjectReference, defaultKind string) v1beta1.ParameterizedLocalObjectReference {
+	if ref.Kind == "" {
+		ref.Kind = defaultKind
+	}
+
+	return ref
 }

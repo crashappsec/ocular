@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/internal/resources"
 )
 
 // nolint:unused
@@ -66,22 +67,24 @@ func (d *CronSearchCustomDefaulter) Default(_ context.Context, cronSearch *v1bet
 }
 
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-cronsearch,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=cronsearches,verbs=create;update,versions=v1beta1,name=vcronsearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
-func (d *CronSearchCustomDefaulter) applyDefaults(cronJob *v1beta1.CronSearch) {
-	if cronJob.Spec.ConcurrencyPolicy == "" {
-		cronJob.Spec.ConcurrencyPolicy = d.DefaultConcurrencyPolicy
+func (d *CronSearchCustomDefaulter) applyDefaults(cronSearch *v1beta1.CronSearch) {
+	if cronSearch.Spec.ConcurrencyPolicy == "" {
+		cronSearch.Spec.ConcurrencyPolicy = d.DefaultConcurrencyPolicy
 	}
-	if cronJob.Spec.Suspend == nil {
-		cronJob.Spec.Suspend = new(bool)
-		*cronJob.Spec.Suspend = d.DefaultSuspend
+	if cronSearch.Spec.Suspend == nil {
+		cronSearch.Spec.Suspend = new(bool)
+		*cronSearch.Spec.Suspend = d.DefaultSuspend
 	}
-	if cronJob.Spec.SuccessfulJobsHistoryLimit == nil {
-		cronJob.Spec.SuccessfulJobsHistoryLimit = new(int32)
-		*cronJob.Spec.SuccessfulJobsHistoryLimit = d.DefaultSuccessfulJobsHistoryLimit
+	if cronSearch.Spec.SuccessfulJobsHistoryLimit == nil {
+		cronSearch.Spec.SuccessfulJobsHistoryLimit = new(int32)
+		*cronSearch.Spec.SuccessfulJobsHistoryLimit = d.DefaultSuccessfulJobsHistoryLimit
 	}
-	if cronJob.Spec.FailedJobsHistoryLimit == nil {
-		cronJob.Spec.FailedJobsHistoryLimit = new(int32)
-		*cronJob.Spec.FailedJobsHistoryLimit = d.DefaultFailedJobsHistoryLimit
+	if cronSearch.Spec.FailedJobsHistoryLimit == nil {
+		cronSearch.Spec.FailedJobsHistoryLimit = new(int32)
+		*cronSearch.Spec.FailedJobsHistoryLimit = d.DefaultFailedJobsHistoryLimit
 	}
+
+	cronSearch.Spec.SearchTemplate.Spec.CrawlerRef = resources.ReferenceDefaulter(cronSearch.Spec.SearchTemplate.Spec.CrawlerRef, "Crawler")
 }
 
 // NOTE: currently the cronsearch is only configured to run as a validating webhook
@@ -126,9 +129,18 @@ func validateCronSearch(cronSearch *v1beta1.CronSearch) error {
 	if err := validateCronSearchName(cronSearch); err != nil {
 		allErrs = append(allErrs, err)
 	}
-	if err := validateCronSearchSpec(cronSearch); err != nil {
+
+	if _, err := validateCronSearchSpec(cronSearch); err != nil {
 		allErrs = append(allErrs, err)
 	}
+
+	if cronSearch.Spec.SearchTemplate.Spec.TTLSecondsAfterFinished != nil {
+		allErrs = append(allErrs, field.Invalid(
+			field.NewPath("spec.searchTemplate.spec.ttlSecondsAfterFinished"),
+			cronSearch.Spec.SearchTemplate.Spec.TTLSecondsAfterFinished,
+			"ttlSecondsAfterFinished should not be set for CronSearch template"))
+	}
+
 	if len(allErrs) == 0 {
 		return nil
 	}
@@ -138,19 +150,12 @@ func validateCronSearch(cronSearch *v1beta1.CronSearch) error {
 		cronSearch.Name, allErrs)
 }
 
-func validateCronSearchSpec(cronSearch *v1beta1.CronSearch) *field.Error {
-	// The field helpers from the kubernetes API machinery help us return nicely
-	// structured validation errors.
-	return validateScheduleFormat(
-		cronSearch.Spec.Schedule,
-		field.NewPath("spec").Child("schedule"))
-}
-
-func validateScheduleFormat(schedule string, fldPath *field.Path) *field.Error {
-	if _, err := cron.ParseStandard(schedule); err != nil {
-		return field.Invalid(fldPath, schedule, err.Error())
+func validateCronSearchSpec(cronSearch *v1beta1.CronSearch) (cron.Schedule, *field.Error) {
+	schedule, err := cron.ParseStandard(cronSearch.Spec.Schedule)
+	if err != nil {
+		return nil, field.Invalid(field.NewPath("spec").Child("schedule"), schedule, err.Error())
 	}
-	return nil
+	return schedule, nil
 }
 
 func validateCronSearchName(cronSearch *v1beta1.CronSearch) *field.Error {

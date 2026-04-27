@@ -1554,6 +1554,32 @@ spec:
                 required:
                 - name
                 type: object
+              imagePullSecrets:
+                description: |-
+                  ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images
+                  used by a [Pipeline] scanner pod.
+                  If specified, these secrets will be passed to individual puller implementations for them to use.
+                  More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod
+                items:
+                  description: |-
+                    LocalObjectReference contains enough information to let you locate the
+                    referenced object inside the same namespace.
+                  properties:
+                    name:
+                      default: ""
+                      description: |-
+                        Name of the referent.
+                        This field is effectively required, but due to backwards compatibility is
+                        allowed to be empty. Instances of this type with an empty value here are
+                        almost certainly wrong.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               metadataFiles:
                 description: |-
                   MetadataFiles is a list of metadata files that the downloader will produce
@@ -1567,8 +1593,8 @@ spec:
                 x-kubernetes-list-type: set
               parameters:
                 description: |-
-                  Parameters is a list of ParameterDefinition that can be used to define "parameters"
-                  that the user can specify in a downloader reference that can configure how to download targets.
+                  Parameters specifies a set of variables that can be configured
+                  and supplied to the scanner containers.
                 items:
                   description: |-
                     ParameterDefinition is a definition of a parameter that can be passed to a container.
@@ -1578,8 +1604,9 @@ spec:
                     default:
                       description: |-
                         Default is the default value for the parameter.
-                        It is only valid if Required is false.
-                        A null value indicates that if there is no value provided, the environment variable will be unset.
+                        If default is not set, the parameter is assumed to
+                        be required - and will cause an error if parameter
+                        is not set via [ParameterizedObjectReference]
                       type: string
                     description:
                       description: Description is the description of the parameter.
@@ -1590,14 +1617,8 @@ spec:
                       minLength: 1
                       pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                       type: string
-                    required:
-                      description: |-
-                        Required is true if the parameter is required.
-                        If true, the execution will fail to start if the parameter is not provided.
-                      type: boolean
                   required:
                   - name
-                  - required
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:

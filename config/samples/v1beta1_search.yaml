@@ -12,3 +12,10 @@ spec:
       - name: "LOG_MSG"
         value: "Hello from Search!"
   ttlSecondsAfterFinished: 180 # delete 3 minutes after finished
+  pipelineTemplate:
+    # This specifies the template pipelines created
+    # via sidecare will be copied from
+    downloaderRef:
+      name: downloader-sample
+    profileRef:
+      name: profile-sample

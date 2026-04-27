@@ -47,7 +47,7 @@ var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
 	projectImageTagArg := fmt.Sprintf("OCULAR_CONTROLLER_IMG=%s", projectImage)
 	sidecarImageTagArg := fmt.Sprintf("OCULAR_SIDECAR_IMG=%s", sidecarImage)
-	cmd := exec.Command("make", "docker-build-all", projectImageTagArg, sidecarImageTagArg)
+	cmd := exec.Command("make", "docker-build-all", "DOCKER_ARGS=", projectImageTagArg, sidecarImageTagArg)
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 	By("loading the manager(Operator) image on Kind")

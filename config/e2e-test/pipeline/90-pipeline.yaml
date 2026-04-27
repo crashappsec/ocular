@@ -1,0 +1,27 @@
+---
+# Will run the uploader, profile and downloader validators
+# Requires Profile 'validate' and downloader 'git-clone'
+# to be created
+---
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Pipeline
+metadata:
+  name: e2e-test
+  namespace: e2e-test-pipeline
+spec:
+  target:
+    identifier: "https://github.com/crashappsec/ocular"
+    version: 84462a71dea813105ce746718d7618aeda8923b8
+  profileRef:
+    name: validate-scanners
+    parameters:
+      - name: "TEST_INCLUDE"
+        value: ""
+      - name: "SCANNER_TEST"
+        value: "PASS"
+  downloaderRef:
+    name: git-clone
+    parameters:
+      - name: TEST_PARAM
+        value: "PASS"
+  ttlSecondsMaxLifetime: 3600 # delete after an hour in case test isnt cleaned up

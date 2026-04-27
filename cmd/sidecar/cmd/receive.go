@@ -28,7 +28,7 @@ import (
 
 func Receive(ctx context.Context, files []string) error {
 	logger := logf.FromContext(ctx)
-	port := os.Getenv(v1beta1.EnvVarSidecarExtractorPort)
+	port := os.Getenv(v1beta1.EnvVarExtractorPort)
 	var (
 		mux             = http.NewServeMux()
 		downloadedFiles = map[string]bool{}

@@ -1,0 +1,34 @@
+resources:
+  - 10-uploaders.yaml
+  - 20-downloaders.yaml
+  - 50-profiles.yaml
+  - 90-pipeline.yaml
+
+configMapGenerator:
+- name: validate-scripts
+  namespace: e2e-test-pipeline
+  files:
+    - scripts/common.sh
+    - scripts/validate-downloader.sh
+    - scripts/validate-scanner-env.sh
+    - scripts/validate-scanner-git.sh
+    - scripts/validate-uploader-files.sh
+    - scripts/validate-uploader-env.sh
+  options:
+    disableNameSuffixHash: true
+
+# this is a bit hacky but TLDR
+# the order that the resources are
+# created and deleted matter. It should
+# be created 00 -> 99 and deleted 99 -> 00
+# so the 'fifo' option handles creation
+# and the 'legacy' option handles deletion
+# (and 'legacy' is set via CLI)
+sortOptions:
+  order: legacy
+  legacySortOptions:
+    orderFirst:
+      - ConfigMap
+    orderLast:
+      - Profile
+      - Pipeline

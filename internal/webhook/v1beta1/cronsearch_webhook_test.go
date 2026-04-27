@@ -49,8 +49,8 @@ var _ = Describe("CronSearch Webhook", func() {
 			Spec: v1beta1.CronSearchSpec{
 				Schedule:                   schedule,
 				ConcurrencyPolicy:          v1beta1.AllowConcurrent,
-				SuccessfulJobsHistoryLimit: ptr.To(int32(3)),
-				FailedJobsHistoryLimit:     ptr.To(int32(1)),
+				SuccessfulJobsHistoryLimit: new(int32(3)),
+				FailedJobsHistoryLimit:     new(int32(1)),
 			},
 		}
 		*obj.Spec.SuccessfulJobsHistoryLimit = 3
@@ -60,8 +60,8 @@ var _ = Describe("CronSearch Webhook", func() {
 			Spec: v1beta1.CronSearchSpec{
 				Schedule:                   schedule,
 				ConcurrencyPolicy:          v1beta1.AllowConcurrent,
-				SuccessfulJobsHistoryLimit: ptr.To(int32(3)),
-				FailedJobsHistoryLimit:     ptr.To(int32(1)),
+				SuccessfulJobsHistoryLimit: new(int32(3)),
+				FailedJobsHistoryLimit:     new(int32(1)),
 			},
 		}
 		*oldObj.Spec.SuccessfulJobsHistoryLimit = 3
@@ -104,9 +104,9 @@ var _ = Describe("CronSearch Webhook", func() {
 		It("Should not overwrite fields that are already set", func() {
 			By("setting fields that would normally get a default")
 			obj.Spec.ConcurrencyPolicy = v1beta1.ForbidConcurrent
-			obj.Spec.Suspend = ptr.To(true)
-			obj.Spec.SuccessfulJobsHistoryLimit = ptr.To(int32(5))
-			obj.Spec.FailedJobsHistoryLimit = ptr.To(int32(2))
+			obj.Spec.Suspend = new(true)
+			obj.Spec.SuccessfulJobsHistoryLimit = new(int32(5))
+			obj.Spec.FailedJobsHistoryLimit = new(int32(2))
 
 			By("calling the Default method to apply defaults")
 			_ = defaulter.Default(ctx, obj)
@@ -173,6 +173,16 @@ var _ = Describe("CronSearch Webhook", func() {
 			By("validating an update")
 			Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil(),
 				"Expected validation to pass for a valid update")
+		})
+	})
+
+	Context("When creating a CronSearch with a search TTL under Validting Webhook", func() {
+		It("Should deny creation", func() {
+			obj.Name = validCronSearchName
+			obj.Spec.Schedule = "0 0 * * *"
+			obj.Spec.SearchTemplate.Spec.TTLSecondsAfterFinished = ptr.To[int32](60)
+			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred(),
+				"Expected validation to fail for TTL")
 		})
 	})
 

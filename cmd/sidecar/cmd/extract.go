@@ -31,7 +31,7 @@ func Extract(ctx context.Context, files []string) error {
 	l.Info("awaiting sigterm")
 	<-ctx.Done()
 	l.Info("beginning file extraction", "file_count", len(files))
-	uploaderURL := os.Getenv(v1beta1.EnvVarSidecarExtractorHost)
+	uploaderURL := os.Getenv(v1beta1.EnvVarExtractorHost)
 	err := uploadFiles(ctx, uploaderURL, files)
 	if err != nil {
 		l.Error(err, "error uploading files, failing receiver")

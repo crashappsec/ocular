@@ -1,5 +1,32 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
+# [v0.3.0](https://github.com/crashappsec/ocular/releases/tag/v0.3.0) - **April 27th, 2026**
+
+### Added
+
+- Various profile features
+  - Now have parameters which are feed to scanner containers
+  - Scanner containers have a new `includeIf` field, which can conditionally specify a container
+  - Imrpove validation of user profile spec
+
+- Image pull secrets added for all container resources
+  
+- Pipelines & Search pods inherit labels from resource, and from references:
+  - Pipeline scan pod will inherit from Downloader and Profile resources
+  - Pipeline upload pod will inherit from Uploaders and Profile resources
+  - Search pod will inherit from Crawler
+
+- E2E Tests
+  - added pipeline E2E tests
+
+### Fixes
+
+- Align reconcile loops with k8s best practices
+  - bump kubebuilder scaffoling version
+  - use [`controllerutil`](sigs.k8s.io/controller-runtime/pkg/controller/controllerutil) package
+- Improve docker build speed for emulated platforms
+- Force sidecar containers run as non-root for pipeline
+
 
 # [v0.2.6](https://github.com/crashappsec/ocular/releases/tag/v0.2.6) - **February 17th, 2026**
 

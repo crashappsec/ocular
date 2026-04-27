@@ -37,14 +37,25 @@ type DownloaderSpec struct {
 	// +listType=set
 	MetadataFiles []string `json:"metadataFiles,omitempty" protobuf:"bytes,3,opt,name=metadataFiles" patchStrategy:"merge"`
 
-	// Parameters is a list of ParameterDefinition that can be used to define "parameters"
-	// that the user can specify in a downloader reference that can configure how to download targets.
+	// Parameters specifies a set of variables that can be configured
+	// and supplied to the scanner containers.
 	// +optional
 	// +patchMergeKey=name
 	// +patchStrategy=merge,retainKeys
 	// +listType=map
 	// +listMapKey=name
 	Parameters []ParameterDefinition `json:"parameters,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,3,rep,name=parameters"`
+
+	// ImagePullSecrets is an optional list of references to secrets in the same namespace to use for pulling any of the images
+	// used by a [Pipeline] scanner pod.
+	// If specified, these secrets will be passed to individual puller implementations for them to use.
+	// More info: https://kubernetes.io/docs/concepts/containers/images#specifying-imagepullsecrets-on-a-pod
+	// +optional
+	// +patchMergeKey=name
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=name
+	ImagePullSecrets []v1.LocalObjectReference `json:"imagePullSecrets,omitempty" patchStrategy:"merge" patchMergeKey:"name" protobuf:"bytes,15,rep,name=imagePullSecrets"`
 }
 
 type DownloaderStatus struct {

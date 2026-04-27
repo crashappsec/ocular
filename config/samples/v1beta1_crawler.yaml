@@ -9,8 +9,15 @@ spec:
   container:
     name: example-uploader
     image: bitnami/kubectl:latest
-    command: [ "/bin/bash", "-c", "echo running search $OCULAR_SEARCH_NAME; echo message: $OCULAR_PARAM_LOG_MSG ; kubectl auth whoami; echo ---; kubectl auth can-i create pipelines; echo ---; kubectl auth can-i create searches" ]
+    command: ["/bin/bash", "-c"]
+    args:
+      - |
+         echo "== STARTING SEARCH ${OCULAR_SEARCH_NAME} =="
+         echo "PARAMETER (LOG_MSG): ${OCULAR_PARAM_LOG_MSG}"
+         echo "WHOAMI: $(kubectl auth whoami)"
+         echo "CREATE PIPELINE?: $(kubectl auth can-i create pipelines)"
+         echo "CREATE SEARCHES?: $(kubectl auth can-i create searches)"
   parameters:
     - name: "LOG_MSG"
       description: "Log message to print."
-      required: true
+      # no default means required

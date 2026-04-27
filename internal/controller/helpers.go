@@ -11,18 +11,9 @@ package controller
 import (
 	"context"
 	"fmt"
-	"maps"
-	"strings"
 
-	"github.com/crashappsec/ocular/api/v1beta1"
 	"github.com/crashappsec/ocular/internal/containers"
-	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -38,112 +29,18 @@ func updateStatus(ctx context.Context, c client.Client, obj client.Object, error
 	return nil
 }
 
+func patchStatus(ctx context.Context, c client.Client, obj client.Object, patch client.Patch) error {
+	l := logf.FromContext(ctx)
+	if patchErr := c.Status().Patch(ctx, obj, patch); patchErr != nil {
+		l.Error(patchErr, fmt.Sprintf("failed to patch status of %s", obj.GetName()))
+		return patchErr
+	}
+	return nil
+}
+
 func generateBaseContainerOptions(envVars []corev1.EnvVar) []containers.Option {
 	return []containers.Option{
 		containers.WithAdditionalEnvVars(envVars...),
 		containers.WithPodSecurityStandardRestricted(),
 	}
-}
-
-func reconcilePodFromLabel[T client.Object](
-	ctx context.Context,
-	k8sclient client.Client,
-	scheme *runtime.Scheme,
-	owner T,
-	pod *corev1.Pod,
-	selectorLabels []string,
-	metric prometheus.Counter,
-) (*corev1.Pod, error) {
-	if pod == nil {
-		return nil, nil
-	}
-
-	l := logf.FromContext(ctx)
-	l.Info("reconciling pod", "labels", selectorLabels)
-
-	var podList corev1.PodList
-
-	labelSet := make(labels.Set)
-	for _, label := range selectorLabels {
-		labelSet[label] = pod.Labels[label]
-	}
-
-	listOpts := &client.ListOptions{
-		Namespace:     owner.GetNamespace(),
-		LabelSelector: labels.SelectorFromSet(labelSet),
-	}
-
-	if err := k8sclient.List(ctx, &podList, listOpts); err != nil {
-		l.Error(err, "error listing pods", "labels", selectorLabels)
-		return nil, err
-	}
-	if len(podList.Items) == 0 {
-		l.Info("no pods found matching labels, creating pod", "labels", selectorLabels)
-		if err := ctrl.SetControllerReference(owner, pod, scheme); err != nil {
-			l.Error(err, "error setting controller reference on pod", "name", pod.GetName())
-			return nil, err
-		}
-		if err := k8sclient.Create(ctx, pod, &client.CreateOptions{}); err != nil {
-			l.Error(err, "error creating pod", "name", pod.GetName())
-			return nil, err
-		}
-		metric.Add(1)
-		return pod, nil
-	} else if len(podList.Items) > 1 {
-		l.Info("multiple pods found matching labels, using the first one and deleting others", "count", len(podList.Items), "labels", selectorLabels)
-		// delete all but the first one
-		for _, p := range podList.Items[1:] {
-			if err := k8sclient.Delete(ctx, &p, &client.DeleteOptions{}); err != nil {
-				l.Error(err, "error deleting extra pod", "name", p.GetName())
-				return nil, err
-			}
-		}
-		return &podList.Items[0], nil
-	}
-	return &podList.Items[0], nil
-}
-
-func generateChildLabels(parents ...client.Object) map[string]string {
-	childLabels := make(map[string]string)
-	for _, parent := range parents {
-		maps.Copy(childLabels, parent.GetLabels())
-	}
-	// we want to remove any existing ocular controller labels to avoid conflicts
-	// or incorrect labeling
-	maps.DeleteFunc(childLabels, func(k string, _ string) bool {
-		return strings.HasPrefix(k, v1beta1.Group)
-	})
-
-	childLabels["app.kubernetes.io/managed-by"] = "ocular-controller"
-	return childLabels
-}
-
-type reconcileFunc[T client.Object] func(ctx context.Context, c client.Client, actual, desired T) error
-
-func reconcileChildResource[T client.Object](ctx context.Context, c client.Client, desired, owner client.Object, scheme *runtime.Scheme, reconciler reconcileFunc[T]) error {
-	if desired == nil {
-		return nil
-	}
-
-	if owner != nil {
-		if err := ctrl.SetControllerReference(owner, desired, scheme); err != nil {
-			return err
-		}
-	}
-
-	found := desired.DeepCopyObject().(client.Object)
-
-	// Check if the child resource already exists.
-	err := c.Get(ctx, types.NamespacedName{Name: desired.GetName(), Namespace: desired.GetNamespace()}, found)
-	if err != nil && errors.IsNotFound(err) {
-		return c.Create(ctx, desired)
-	} else if err != nil {
-		return err
-	}
-
-	if reconciler != nil {
-		return reconciler(ctx, c, found.(T), desired.(T))
-	}
-
-	return nil
 }

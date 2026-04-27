@@ -6,7 +6,9 @@
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-FROM golang:1.26@sha256:9edf71320ef8a791c4c33ec79f90496d641f306a91fb112d3d060d5c1cee4e20 AS builder
+ARG BUILDPLATFORM
+
+FROM --platform=${BUILDPLATFORM} golang:1.26@sha256:1e598ea5752ae26c093b746fd73c5095af97d6f2d679c43e83e0eac484a33dc3 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -18,8 +20,7 @@ ENV GOFLAGS="${GOFLAGS} -trimpath"
 
 WORKDIR /workspace
 
-COPY go.mod go.mod
-COPY go.sum go.sum
+COPY go.mod go.sum .
 
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
@@ -31,7 +32,7 @@ COPY pkg/ pkg/
 RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -ldflags="${LDFLAGS}" -o entrypoint cmd/$COMMAND/main.go
 
-FROM gcr.io/distroless/static:nonroot@sha256:f512d819b8f109f2375e8b51d8cfd8aafe81034bc3e319740128b7d7f70d5036
+FROM gcr.io/distroless/static:nonroot@sha256:e3f945647ffb95b5839c07038d64f9811adf17308b9121d8a2b87b6a22a80a39
 
 WORKDIR /
 COPY --from=builder /workspace/entrypoint .
