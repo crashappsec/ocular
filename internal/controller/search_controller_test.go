@@ -92,11 +92,17 @@ var _ = Describe("Search Controller", func() {
 							Image:   "alpine:latest",
 							Command: []string{"/bin/sh", "-c"},
 							Args:    []string{"echo crawling $CRAWL_TARGET ...; sleep 10; echo done."},
+							Env:     []corev1.EnvVar{{Name: "FROM_DEF", Value: "true"}},
 						},
 						Parameters: []v1beta1.ParameterDefinition{
 							{
 								Name:        "CRAWL_TARGET",
 								Description: "The search query to execute",
+							},
+							{
+								Name:        "OPTIONAL",
+								Description: "optional",
+								Default:     new("not-set"),
 							},
 						},
 					},
@@ -198,6 +204,15 @@ var _ = Describe("Search Controller", func() {
 			Expect(searchPod.Spec.InitContainers[0].Name).To(Equal(sidecarSchedulerContainerName))
 			Expect(searchPod.Spec.InitContainers[1].Name).To(Equal(sidecarInitContainerName))
 			Expect(searchPod.Spec.InitContainers[2].Name).To(Equal(crawlerContainerName))
+			crawlerContainer := searchPod.Spec.InitContainers[2]
+			Expect(crawlerContainer.Env).To(ContainElement(
+				corev1.EnvVar{Name: "FROM_DEF", Value: "true"},
+			), "should contain env from definition")
+			Expect(crawlerContainer.Env).To(ContainElements([]corev1.EnvVar{
+				{Name: "OCULAR_PARAM_CRAWL_TARGET", Value: "example search query"},
+				{Name: "OCULAR_PARAM_OPTIONAL", Value: "not-set"},
+			}), "should have params")
+
 			// check containers
 			Expect(searchPod.Spec.Containers).To(HaveLen(1)) // sidecar-keepalive
 			Expect(searchPod.Spec.Containers[0].Name).To(Equal(sidecarKeepaliveContainerName))

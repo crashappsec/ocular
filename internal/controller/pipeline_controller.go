@@ -519,7 +519,7 @@ func (r *PipelineReconciler) populateUploadService(svc *corev1.Service, pipeline
 
 	svc.Spec.Selector = map[string]string{
 		v1beta1.PipelineLabelKey: pipeline.GetName(),
-		v1beta1.TypeLabelKey:     "upload",
+		v1beta1.TypeLabelKey:     v1beta1.PodTypeUpload,
 	}
 	svc.Spec.PublishNotReadyAddresses = true
 	svc.Spec.Ports = []corev1.ServicePort{

@@ -246,9 +246,11 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 		envVars := generateBaseSearchEnvironment(search)
 		containerOpts := generateBaseContainerOptions(envVars)
 
-		crawlerContainer := crawler.Spec.Container
-		crawlerContainer.Env = containers.ParseParameterEnvVars(crawler.Spec.Parameters, crawler.Parameters)
+		var crawlerContainer corev1.Container
+		crawler.Spec.Container.DeepCopyInto(&crawlerContainer)
 
+		crawlerContainer.Env = append(crawlerContainer.Env,
+			containers.ParseParameterEnvVars(crawler.Spec.Parameters, crawler.Parameters)...)
 		templateVolume := corev1.Volume{
 			Name: "pipeline-template",
 			VolumeSource: corev1.VolumeSource{
@@ -316,7 +318,14 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 
 		pod.Spec.ServiceAccountName = search.Spec.ServiceAccountName
 		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
-		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{schedulerSidecarContainer, initSidecarContainer, crawler.Spec.Container}, containerOpts...)
+		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{
+			// 1. we start the side car scheduler
+			schedulerSidecarContainer,
+			// then wait till the scheduler is ready
+			initSidecarContainer,
+			// then let the user container run
+			crawlerContainer,
+		}, containerOpts...)
 		pod.Spec.Containers = containers.ApplyOptions([]corev1.Container{keepaliveSidecarContainer}, containerOpts...)
 		pod.Spec.Volumes = append(crawler.Spec.Volumes, templateVolume, socketVolume)
 		pod.Spec.SecurityContext = &corev1.PodSecurityContext{
