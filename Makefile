@@ -206,12 +206,12 @@ gha-upgrade: ratchet ## upgrades all pinned github actions used in any workflows
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/manager/main.go
+build: manifests generate fmt vet ## Build controller binary.
+	go build -o bin/controller cmd/controller/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/manager/main.go
+	go run ./cmd/controller/main.go
 
 .PHONY: docker-build-all
 docker-build-all: docker-build-controller docker-build-sidecar ## Builds all docker images

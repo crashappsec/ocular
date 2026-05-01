@@ -576,6 +576,7 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 			},
 		}
 		pod.Spec.ServiceAccountName = pipeline.Spec.UploadServiceAccountName
+		pod.Spec.RuntimeClassName = pipeline.Spec.RuntimeClassName
 		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
 		pod.Spec.Containers = containers.ApplyOptions(uploaderContainers, containerOpts...)
 		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{
@@ -630,6 +631,7 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 		scannerContainers := containers.FilterConditionalContainers(profile.Spec.Containers, pipeline.Spec.ProfileRef.Parameters)
 
 		pod.Spec.ServiceAccountName = pipeline.Spec.ScanServiceAccountName
+		pod.Spec.RuntimeClassName = pipeline.Spec.RuntimeClassName
 		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
 		pod.Spec.Containers = containers.ApplyOptions(scannerContainers, append(containerOpts,
 			containers.WithParameters(profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters))...,

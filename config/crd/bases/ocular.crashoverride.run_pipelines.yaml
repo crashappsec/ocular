@@ -141,6 +141,11 @@ spec:
                 required:
                 - name
                 type: object
+              runtimeClassName:
+                description: |-
+                  RuntimeClassName is the name of the RuntimeClass that will be used to run the scan and upload pods.
+                  If not set, the cluster's default runtime handler will be used.
+                type: string
               scanServiceAccountName:
                 description: |-
                   ScanServiceAccountName is the name of the service account that will be used to run the scan job.

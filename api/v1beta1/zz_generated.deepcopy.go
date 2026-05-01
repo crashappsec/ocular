@@ -780,6 +780,11 @@ func (in *PipelineSpec) DeepCopyInto(out *PipelineSpec) {
 	in.DownloaderRef.DeepCopyInto(&out.DownloaderRef)
 	in.ProfileRef.DeepCopyInto(&out.ProfileRef)
 	out.Target = in.Target
+	if in.RuntimeClassName != nil {
+		in, out := &in.RuntimeClassName, &out.RuntimeClassName
+		*out = new(string)
+		**out = **in
+	}
 	if in.TTLSecondsAfterFinished != nil {
 		in, out := &in.TTLSecondsAfterFinished, &out.TTLSecondsAfterFinished
 		*out = new(int32)
@@ -1093,6 +1098,11 @@ func (in *SearchSpec) DeepCopyInto(out *SearchSpec) {
 	if in.TTLSecondsAfterFinished != nil {
 		in, out := &in.TTLSecondsAfterFinished, &out.TTLSecondsAfterFinished
 		*out = new(int32)
+		**out = **in
+	}
+	if in.RuntimeClassName != nil {
+		in, out := &in.RuntimeClassName, &out.RuntimeClassName
+		*out = new(string)
 		**out = **in
 	}
 	in.Scheduler.DeepCopyInto(&out.Scheduler)

@@ -37,6 +37,7 @@ var _ = Describe("Search Controller", func() {
 			crawlerContainerName = "crawler-container"
 			searchClusterRole    = "test-search-cluster-role"
 		)
+		runtimeClassName := "kata"
 
 		ctx := context.Background()
 
@@ -120,6 +121,7 @@ var _ = Describe("Search Controller", func() {
 					},
 					Spec: v1beta1.SearchSpec{
 						ServiceAccountName: serviceAccountName,
+						RuntimeClassName:   &runtimeClassName,
 						CrawlerRef: v1beta1.ParameterizedLocalObjectReference{
 							Name: crawlerName,
 							Parameters: []v1beta1.ParameterSetting{
@@ -216,6 +218,7 @@ var _ = Describe("Search Controller", func() {
 			// check containers
 			Expect(searchPod.Spec.Containers).To(HaveLen(1)) // sidecar-keepalive
 			Expect(searchPod.Spec.Containers[0].Name).To(Equal(sidecarKeepaliveContainerName))
+			Expect(searchPod.Spec.RuntimeClassName).To(Equal(search.Spec.RuntimeClassName))
 
 			// check annotations
 			templateJSON, err := json.Marshal(search.Spec.Scheduler.PipelineTemplate)
