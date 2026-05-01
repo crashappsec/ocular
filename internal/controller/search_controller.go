@@ -317,6 +317,7 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 		}
 
 		pod.Spec.ServiceAccountName = search.Spec.ServiceAccountName
+		pod.Spec.RuntimeClassName = search.Spec.RuntimeClassName
 		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
 		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{
 			// 1. we start the side car scheduler

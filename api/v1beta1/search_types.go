@@ -60,6 +60,11 @@ type SearchSpec struct {
 	// +optional
 	ServiceAccountName string `json:"serviceAccountName,omitempty" protobuf:"bytes,4,opt,name=serviceAccountName" description:"The name of the service account that will be used to run the search job."`
 
+	// RuntimeClassName is the name of the RuntimeClass that will be used to run the search pod.
+	// If not set, the cluster's default runtime handler will be used.
+	// +optional
+	RuntimeClassName *string `json:"runtimeClassName,omitempty" protobuf:"bytes,5,opt,name=runtimeClassName" description:"The name of the RuntimeClass that will be used to run the search pod."`
+
 	// Scheduler represents the configuration of the scheduler sidecar
 	// +optional
 	Scheduler SearchSchedulerSpec `json:"scheduler,omitempty"`

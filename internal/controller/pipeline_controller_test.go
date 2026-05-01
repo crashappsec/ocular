@@ -27,9 +27,10 @@ import (
 var _ = Describe("Pipeline Controller", func() {
 	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
-		namespace    = "default"
-		sidecarImage = testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet) + ":latest"
-		downloader   *v1beta1.Downloader
+		namespace        = "default"
+		runtimeClassName = "kata"
+		sidecarImage     = testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet) + ":latest"
+		downloader       *v1beta1.Downloader
 	)
 	BeforeEach(func() {
 		downloader = &v1beta1.Downloader{
@@ -137,6 +138,7 @@ var _ = Describe("Pipeline Controller", func() {
 						Identifier: "https://example.com/samplefile.txt",
 					},
 					ScanServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
+					RuntimeClassName:       &runtimeClassName,
 				},
 			}
 			Expect(k8sClient.Create(ctx, profileResource)).To(Succeed())
@@ -314,6 +316,7 @@ var _ = Describe("Pipeline Controller", func() {
 					},
 					ScanServiceAccountName:   testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
 					UploadServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
+					RuntimeClassName:         &runtimeClassName,
 				},
 			}
 			Expect(k8sClient.Create(ctx, uploader)).To(Succeed())
@@ -437,6 +440,7 @@ func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
 	Expect(*podSpec.InitContainers[1].RestartPolicy).To(Equal(corev1.ContainerRestartPolicyAlways)) // is a sidecar
 
 	Expect(podSpec.ServiceAccountName).To(Equal(pipeline.Spec.ScanServiceAccountName))
+	Expect(podSpec.RuntimeClassName).To(Equal(pipeline.Spec.RuntimeClassName))
 	for _, container := range podSpec.Containers {
 		Expect(container.Env).To(ContainElements(
 			corev1.EnvVar{
@@ -492,6 +496,7 @@ func ValidatePipelineUploadPodSpec(podSpec corev1.PodSpec,
 	Expect(podSpec.InitContainers[0].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
 
 	Expect(podSpec.ServiceAccountName).To(Equal(pipeline.Spec.UploadServiceAccountName))
+	Expect(podSpec.RuntimeClassName).To(Equal(pipeline.Spec.RuntimeClassName))
 	for _, container := range podSpec.Containers {
 		Expect(container.Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
 		Expect(container.Env).To(ContainElements(

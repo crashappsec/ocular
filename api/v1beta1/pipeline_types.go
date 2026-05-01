@@ -62,6 +62,11 @@ type PipelineSpec struct {
 	// +optional
 	UploadServiceAccountName string `json:"uploadServiceAccountName,omitempty" protobuf:"bytes,5,opt,name=uploadServiceAccountName" description:"The name of the service account that will be used to run the upload job."`
 
+	// RuntimeClassName is the name of the RuntimeClass that will be used to run the scan and upload pods.
+	// If not set, the cluster's default runtime handler will be used.
+	// +optional
+	RuntimeClassName *string `json:"runtimeClassName,omitempty" protobuf:"bytes,8,opt,name=runtimeClassName" description:"The name of the RuntimeClass that will be used to run the scan and upload pods."`
+
 	// TTLSecondsAfterFinished
 	// If set, the pipeline and its associated resources will be automatically deleted
 	// after the specified number of seconds have passed since the pipeline finished.
