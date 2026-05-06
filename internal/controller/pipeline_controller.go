@@ -627,7 +627,7 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 		downloaderContainer := downloader.Spec.Container
 		downloaderContainer.Env = append(downloaderContainer.Env, containers.ParseParameterEnvVars(downloader.Spec.Parameters, pipeline.Spec.DownloaderRef.Parameters)...)
 
-		scannerContainers := containers.FilterConditionalContainers(profile.Spec.Containers, pipeline.Spec.ProfileRef.Parameters)
+		scannerContainers := containers.FilterConditionalContainers(profile.Spec.Containers, profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters)
 
 		pod.Spec.ServiceAccountName = pipeline.Spec.ScanServiceAccountName
 		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
