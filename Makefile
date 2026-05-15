@@ -443,10 +443,10 @@ helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify
 	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
 		--namespace $(HELM_NAMESPACE) \
 		--create-namespace \
-		--set manager.image.repository=$${OCULAR_CONTROLLER_REPOSITORY%:*} \
-		--set manager.image.tag=$${OCULAR_VERSION##*:} \
-		--set sidecar.image.repository=$${OCULAR_SIDECAR_REPOSITORY%:*} \
-		--set sidecar.image.tag=$${OCULAR_VERSION##*:} \
+		--set manager.image.repository=$${OCULAR_CONTROLLER_IMG%:*} \
+		--set manager.image.tag=$${OCULAR_CONTROLLER_IMG##*:} \
+		--set sidecar.image.repository=$${OCULAR_SIDECAR_IMG%:*} \
+		--set sidecar.image.tag=$${OCULAR_SIDECAR_IMG##*:} \
 		--wait \
 		--timeout 5m \
 		$(HELM_EXTRA_ARGS)
