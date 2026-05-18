@@ -156,7 +156,3 @@ type SearchList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Search `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Search{}, &SearchList{})
-}

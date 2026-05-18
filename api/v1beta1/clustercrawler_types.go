@@ -54,7 +54,3 @@ type ClusterCrawlerList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []ClusterCrawler `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ClusterCrawler{}, &ClusterCrawlerList{})
-}
