@@ -178,6 +178,44 @@ var _ = Describe("Pipeline Webhook", func() {
 			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
 			Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
 		})
+		It("Should deny creation if profile uses a 'ValueFrom' parameter is not found", func() {
+			By("creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			By("adding a parameter that has a ValueFrom")
+			clonedObj := obj.DeepCopy()
+			clonedObj.Spec.ProfileRef.Parameters = append(obj.Spec.ProfileRef.Parameters,
+				v1beta1.ParameterSetting{
+					Name: "Parent",
+					ValueFrom: &v1beta1.ParameterSource{
+						ParentParam: "PARENT",
+					},
+				},
+			)
+			Expect(validator.ValidateCreate(ctx, clonedObj)).Error().To(HaveOccurred())
+		})
+		It("Should deny creation if downloader uses a 'ValueFrom' parameter is not found", func() {
+			By("creating the profile")
+			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
+			By("creating the downloader")
+			Expect(k8sClient.Create(ctx, downloader)).To(Succeed())
+			By("creating the default service account")
+			Expect(k8sClient.Create(ctx, svcAccount)).To(Succeed())
+			By("adding a parameter that has a ValueFrom")
+			clonedObj := obj.DeepCopy()
+			clonedObj.Spec.DownloaderRef.Parameters = append(obj.Spec.DownloaderRef.Parameters,
+				v1beta1.ParameterSetting{
+					Name: "Parent",
+					ValueFrom: &v1beta1.ParameterSource{
+						ParentParam: "PARENT",
+					},
+				},
+			)
+			Expect(validator.ValidateCreate(ctx, clonedObj)).Error().To(HaveOccurred())
+		})
 
 		It("Should admit creation if downloader, profile and service account exist", func() {
 			By("creating the profile")

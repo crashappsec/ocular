@@ -100,9 +100,22 @@ spec:
                                   description: Value is the value to set the parameter
                                     to.
                                   type: string
+                                valueFrom:
+                                  description: ValueFrom is the source of a value
+                                  properties:
+                                    parentParam:
+                                      description: |-
+                                        ParentParam indicates the value of this parameter should be derived
+                                        from the value of another. This setting can only be applied for resources
+                                        That reference another resource using [ParameterizedLocalObjectReference]
+                                        and are also invocated with parameters themselves (i.e. uploader references in
+                                        profiles)
+                                      type: string
+                                  required:
+                                  - parentParam
+                                  type: object
                               required:
                               - name
-                              - value
                               type: object
                             type: array
                             x-kubernetes-list-map-keys:
@@ -168,9 +181,23 @@ spec:
                                               description: Value is the value to set
                                                 the parameter to.
                                               type: string
+                                            valueFrom:
+                                              description: ValueFrom is the source
+                                                of a value
+                                              properties:
+                                                parentParam:
+                                                  description: |-
+                                                    ParentParam indicates the value of this parameter should be derived
+                                                    from the value of another. This setting can only be applied for resources
+                                                    That reference another resource using [ParameterizedLocalObjectReference]
+                                                    and are also invocated with parameters themselves (i.e. uploader references in
+                                                    profiles)
+                                                  type: string
+                                              required:
+                                              - parentParam
+                                              type: object
                                           required:
                                           - name
-                                          - value
                                           type: object
                                         type: array
                                         x-kubernetes-list-map-keys:
@@ -240,9 +267,23 @@ spec:
                                               description: Value is the value to set
                                                 the parameter to.
                                               type: string
+                                            valueFrom:
+                                              description: ValueFrom is the source
+                                                of a value
+                                              properties:
+                                                parentParam:
+                                                  description: |-
+                                                    ParentParam indicates the value of this parameter should be derived
+                                                    from the value of another. This setting can only be applied for resources
+                                                    That reference another resource using [ParameterizedLocalObjectReference]
+                                                    and are also invocated with parameters themselves (i.e. uploader references in
+                                                    profiles)
+                                                  type: string
+                                              required:
+                                              - parentParam
+                                              type: object
                                           required:
                                           - name
-                                          - value
                                           type: object
                                         type: array
                                         x-kubernetes-list-map-keys:

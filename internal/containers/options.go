@@ -53,8 +53,8 @@ func ApplyOptions(
 
 // WithParameters creates an Option for applying pararmeter settings to a container.
 // This function assumes the settings have been checked for which parameters are required.
-func WithParameters(definitions []v1beta1.ParameterDefinition, settings []v1beta1.ParameterSetting) Option {
-	env := ParseParameterEnvVars(definitions, settings)
+func WithParameters(definitions []v1beta1.ParameterDefinition, settings []v1beta1.ParameterSetting, parent map[string]string) Option {
+	env := ParseParameterEnvVars(definitions, settings, parent)
 	return func(c *corev1.Container) {
 		c.Env = append(c.Env, env...)
 	}

@@ -88,3 +88,50 @@ func ValidateParameterReference(ctx context.Context, refPath *field.Path, ref v1
 
 	return paramErrors
 }
+
+func ValidateNoParentParameters(refPath *field.Path, ref v1beta1.ParameterizedLocalObjectReference) field.ErrorList {
+	var paramErrors field.ErrorList
+	for i, setting := range ref.Parameters {
+		if setting.ValueFrom != nil {
+			paramErrors = append(paramErrors, field.Invalid(
+				refPath.Child("parameters").Index(i),
+				setting,
+				"parameter setting 'ValueFrom' is not allowed for this resource"),
+			)
+		}
+	}
+	return paramErrors
+
+}
+
+// ValidateParentParameters will validate that references to parent parameters via ValueFrom
+// in a parameter definition
+func ValidateParentParameters(ctx context.Context, refPath *field.Path, ref v1beta1.ParameterizedLocalObjectReference, parentDefs []v1beta1.ParameterDefinition) field.ErrorList {
+	var paramErrors field.ErrorList
+
+	parent := make(map[string]bool)
+	for _, parentDef := range parentDefs {
+		parent[parentDef.Name] = parentDef.Default == nil
+	}
+
+	// TODO(bthuilot): eventually check for
+	// optional params passed to a required
+	for i, setting := range ref.Parameters {
+		if setting.ValueFrom != nil {
+			parentParam := setting.ValueFrom.ParentParam
+			if setting.Value != "" {
+				paramErrors = append(paramErrors, field.Invalid(
+					refPath.Child("parameters").Index(i),
+					setting,
+					fmt.Sprintf("Either one of 'ValueFrom' or 'Value' may be set for the parameter %s", setting.Name)))
+			} else if _, ok := parent[parentParam]; !ok {
+				paramErrors = append(paramErrors, field.Invalid(
+					refPath.Child("parameters").Index(i),
+					setting,
+					fmt.Sprintf("No parent parameter with name %s found", parentParam)))
+			}
+		}
+	}
+
+	return paramErrors
+}

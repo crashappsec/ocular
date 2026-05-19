@@ -237,6 +237,15 @@ var _ = Describe("Pipeline Controller", func() {
 							Name:        "PARAM1",
 							Description: "A sample parameter for the uploader",
 						},
+						{
+							Name:        "INHERIT",
+							Description: "Inheritted from Profile",
+						},
+						{
+							Name:        "INHERIT_DEFAULT",
+							Description: "Inheritted from Profile default value",
+							Default:     new("uploader-default"),
+						},
 					},
 				},
 			}
@@ -283,6 +292,14 @@ var _ = Describe("Pipeline Controller", func() {
 							Name:    "DEFAULT_EMPTY",
 							Default: new(""),
 						},
+						{
+							Name:    "PARENT",
+							Default: new("profile-param"),
+						},
+						{
+							Name:    "PARENT_DEFAULT",
+							Default: new("profile-default"),
+						},
 					},
 
 					Artifacts: []string{"results.txt"},
@@ -293,6 +310,18 @@ var _ = Describe("Pipeline Controller", func() {
 								{
 									Name:  "PARAM1",
 									Value: "value1",
+								},
+								{
+									Name: "INHERIT",
+									ValueFrom: &v1beta1.ParameterSource{
+										ParentParam: "PARENT",
+									},
+								},
+								{
+									Name: "INHERIT_DEFAULT",
+									ValueFrom: &v1beta1.ParameterSource{
+										ParentParam: "PARENT_DEFAULT",
+									},
 								},
 							},
 						},
@@ -319,6 +348,10 @@ var _ = Describe("Pipeline Controller", func() {
 							{
 								Name:  "DEFAULT_EMPTY",
 								Value: "1",
+							},
+							{
+								Name:  "PARENT",
+								Value: "profile-invocation",
 							},
 						},
 					},
@@ -407,7 +440,16 @@ var _ = Describe("Pipeline Controller", func() {
 					{
 						Name:  "OCULAR_PARAM_DEFAULT_SET",
 						Value: "",
-					}},
+					},
+					{
+						Name:  "OCULAR_PARAM_PARENT",
+						Value: "profile-invocation",
+					},
+					{
+						Name:  "OCULAR_PARAM_PARENT_DEFAULT",
+						Value: "profile-default",
+					},
+				},
 			)
 
 			// finally, set status as running
@@ -658,6 +700,18 @@ func ValidatePipelineUploadPodSpec(podSpec corev1.PodSpec,
 	for _, container := range podSpec.Containers {
 		Expect(container.Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
 		Expect(container.Env).To(ContainElements(
+			corev1.EnvVar{
+				Name:  "OCULAR_PARAM_PARAM1",
+				Value: "value1",
+			},
+			corev1.EnvVar{
+				Name:  "OCULAR_PARAM_INHERIT",
+				Value: "profile-invocation",
+			},
+			corev1.EnvVar{
+				Name:  "OCULAR_PARAM_INHERIT_DEFAULT",
+				Value: "profile-default",
+			},
 			corev1.EnvVar{
 				Name:  "OCULAR_TARGET_IDENTIFIER",
 				Value: pipeline.Spec.Target.Identifier,
