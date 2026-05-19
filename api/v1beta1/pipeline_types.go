@@ -237,7 +237,3 @@ type PipelineList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Pipeline `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Pipeline{}, &PipelineList{})
-}

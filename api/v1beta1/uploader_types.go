@@ -88,7 +88,3 @@ type UploaderList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Uploader `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Uploader{}, &UploaderList{})
-}

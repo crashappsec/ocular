@@ -95,7 +95,3 @@ type DownloaderList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Downloader `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Downloader{}, &DownloaderList{})
-}
