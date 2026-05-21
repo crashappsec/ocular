@@ -33,6 +33,8 @@ import (
 	"github.com/crashappsec/ocular/api/v1beta1"
 )
 
+const metricsFinalizer = "ocular.crashoverride.run/metrics"
+
 var (
 	pipelinesCompleted = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -135,13 +137,22 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	l = l.WithValues("pipeline", pipeline.Name, "namespace", pipeline.Namespace)
 
-	metricLabels := prometheus.Labels{
-		"namespace":  pipeline.Namespace,
-		"downloader": pipeline.Spec.DownloaderRef.Name,
-		"profile":    pipeline.Spec.ProfileRef.Name}
+	metricLabels := metricLabelsForPipeline(pipeline)
+
+	isComplete := pipeline.Status.CompletionTime != nil
+	wasDeleted := !pipeline.DeletionTimestamp.IsZero()
+
+	if (wasDeleted || isComplete) && controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
+		controllerutil.RemoveFinalizer(pipeline, metricsFinalizer)
+		if err := r.Update(ctx, pipeline); err != nil {
+			return ctrl.Result{}, err
+		}
+		pipelinesRunning.With(metricLabels).Dec()
+		return ctrl.Result{}, nil
+	}
 
 	// If the pipeline has a completion time, handle post-completion logic
-	if pipeline.Status.CompletionTime != nil {
+	if isComplete {
 		return r.handlePostCompletion(ctx, pipeline)
 	}
 
@@ -157,13 +168,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	l = l.WithValues("downloader", pipeline.Spec.DownloaderRef)
 
-	var uploaders []resources.Invocation[v1beta1.UploaderSpec]
-	for _, uploaderRef := range profile.Spec.UploaderRefs {
-		uploader, err := resources.UploaderInvocationFromReference(ctx, r.Client, pipeline.Namespace, uploaderRef)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("unable to get uploader spec for %s/%s: %w", pipeline.Namespace, uploaderRef.Name, err)
-		}
-		uploaders = append(uploaders, uploader)
+	uploaders, err := uploaderInvocationsFromProfile(ctx, r.Client, pipeline.Namespace, profile.Spec.UploaderRefs)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// In the case where no artifacts or uploaders are defined and the pipeline hasn't started
@@ -234,17 +241,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, nil
 		}
 
-		if pipeline.Status.StartTime == nil {
+		if pipeline.Status.StartTime == nil && !uploadPodStarted(uploadPod) {
 			l.Info("upload pod and service created, awaiting upload pod ready")
-			// check if uploader is running & can accept artifacts
-			for _, status := range uploadPod.Status.InitContainerStatuses {
-				if status.Name == sidecarReceiverContainerName && status.Started != nil {
-					if !*status.Started {
-						return ctrl.Result{RequeueAfter: time.Second * 5}, nil
-					}
-					break
-				}
-			}
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
 		}
 
 	}
@@ -281,16 +280,16 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Update status to reflect pods have been created
 	if pipeline.Status.StartTime == nil {
-		patch := client.MergeFrom(pipeline.DeepCopy())
 		l.Info("marking pipeline as started")
+		startTime := metav1.Now()
+		patch := client.MergeFrom(pipeline.DeepCopy())
 		reason, message := "ScanPodSuccessfullyCreated", fmt.Sprintf("The scan pod %s has been created.", scanPod.Name)
-		startTime := metav1.NewTime(time.Now())
 		pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
 			Type:               v1beta1.PipelineScanPodCreatedConditionType,
 			Status:             metav1.ConditionTrue,
 			Reason:             reason,
 			Message:            message,
-			LastTransitionTime: startTime,
+			LastTransitionTime: startTime.Rfc3339Copy(),
 		})
 
 		if !pipeline.Status.ScanPodOnly {
@@ -311,9 +310,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
 		}
 		err := patchStatus(logf.IntoContext(ctx, l), r.Client, pipeline, patch)
-		if err == nil {
-			pipelinesRunning.With(metricLabels).Add(1)
-		}
 		return ctrl.Result{}, err
 	}
 
@@ -364,22 +360,25 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 	l := logf.FromContext(ctx)
 	l.Info("checking for scan & upload pod completion")
 
-	metricLabels := prometheus.Labels{"namespace": pipeline.Namespace, "downloader": pipeline.Spec.DownloaderRef.Name, "profile": pipeline.Spec.ProfileRef.Name}
+	metricLabels := metricLabelsForPipeline(pipeline)
+
+	if updated := controllerutil.AddFinalizer(pipeline, metricsFinalizer); updated {
+		if err := r.Update(ctx, pipeline); err == nil {
+			pipelinesRunning.With(metricLabels).Add(1)
+		}
+	}
 
 	ttlMaxSeconds := 0
 	if pipeline.Spec.TTLSecondsMaxLifetime != nil {
 		ttlMaxSeconds = int(*pipeline.Spec.TTLSecondsMaxLifetime)
 	}
 
-	markedRunning := pipeline.Status.CompletionTime == nil
+	wasRunning := pipeline.Status.CompletionTime == nil
 	t := metav1.NewTime(time.Now())
 	patch := client.MergeFrom(pipeline.DeepCopy())
 
 	if ttlMaxSeconds > 0 && time.Since(pipeline.GetCreationTimestamp().Time) > time.Duration(ttlMaxSeconds)*time.Second {
 		l.Info("pipeline has exceeded maximum allowed runtime, cleaning up", "maxTTL", ttlMaxSeconds)
-		if markedRunning {
-			pipelinesRunning.With(metricLabels).Dec()
-		}
 		err := r.Delete(ctx, pipeline)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -478,11 +477,12 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	l = l.WithValues("pipeline-status", "complete")
+	l = l.WithValues("pipeline-status", pipeline.Status.Phase)
+	markedComplete := pipeline.Status.CompletionTime != nil
 	err := patchStatus(logf.IntoContext(ctx, l), r.Client, pipeline, patch)
 
 	// checked if we marked complete during this run
-	if markedComplete := pipeline.Status.CompletionTime != nil; err == nil && markedRunning && markedComplete {
+	if err == nil && wasRunning && markedComplete {
 		pipelinesRunning.With(metricLabels).Dec()
 		metricLabels["phase"] = string(pipeline.Status.Phase)
 		pipelinesCompleted.With(metricLabels).Add(1)
@@ -497,6 +497,16 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 	}
 
 	return ctrl.Result{}, err
+}
+
+func uploadPodStarted(p *corev1.Pod) bool {
+	// check if uploader is running & can accept artifacts
+	for _, status := range p.Status.InitContainerStatuses {
+		if status.Name == sidecarReceiverContainerName && status.Started != nil {
+			return *status.Started
+		}
+	}
+	return false
 }
 
 func (r *PipelineReconciler) failPod(ctx context.Context, pod *corev1.Pod) error {
@@ -825,6 +835,26 @@ func determineScanPodStageStatuses(scanPod *corev1.Pod) (dlStatus v1beta1.Pipeli
 		}
 	}
 	return dlStatus, scanStatus
+}
+
+func uploaderInvocationsFromProfile(ctx context.Context, c client.Client, namespace string, uploaderRefs []v1beta1.ParameterizedLocalObjectReference) ([]resources.Invocation[v1beta1.UploaderSpec], error) {
+	var uploaders []resources.Invocation[v1beta1.UploaderSpec]
+	for _, uploaderRef := range uploaderRefs {
+		uploader, err := resources.UploaderInvocationFromReference(ctx, c, namespace, uploaderRef)
+		if err != nil {
+			return nil, fmt.Errorf("unable to get uploader spec for %s/%s: %w", namespace, uploaderRef.Name, err)
+		}
+		uploaders = append(uploaders, uploader)
+	}
+	return uploaders, nil
+}
+
+func metricLabelsForPipeline(pipeline *v1beta1.Pipeline) prometheus.Labels {
+	return prometheus.Labels{
+		"namespace":  pipeline.Namespace,
+		"downloader": pipeline.Spec.DownloaderRef.Name,
+		"profile":    pipeline.Spec.ProfileRef.Name,
+	}
 }
 
 func determineUploadPodStageStatuses(uploadPod *corev1.Pod) (status v1beta1.PipelineStageStatus) {
