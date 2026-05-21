@@ -67,8 +67,12 @@ var _ = Describe("Manager", Ordered, func() {
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
 	// and deleting the namespace.
 	AfterAll(func() {
+		By("cleaning up the metrics cluster role binding")
+		cmd := exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName)
+		_, _ = utils.Run(cmd)
+
 		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+		cmd = exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
 		_, _ = utils.Run(cmd)
 
 		By("undeploying the controller-manager")

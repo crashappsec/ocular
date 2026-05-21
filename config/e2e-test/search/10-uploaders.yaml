@@ -2,7 +2,7 @@ apiVersion: ocular.crashoverride.run/v1beta1
 kind: Uploader
 metadata:
   name: validate-uploader-env
-  namespace: e2e-test-pipeline
+  namespace: e2e-test-search
 spec:
   parameters:
     - name: TEST_PARAM
@@ -26,7 +26,7 @@ apiVersion: ocular.crashoverride.run/v1beta1
 kind: Uploader
 metadata:
   name: validate-uploader-files
-  namespace: e2e-test-pipeline
+  namespace: e2e-test-search
 spec:
   container:
     image: alpine/git:latest

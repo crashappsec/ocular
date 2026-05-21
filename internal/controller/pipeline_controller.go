@@ -370,6 +370,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 	if pipeline.Spec.TTLSecondsMaxLifetime != nil {
 		ttlMaxSeconds = int(*pipeline.Spec.TTLSecondsMaxLifetime)
 	}
+
 	t := metav1.NewTime(time.Now())
 	patch := client.MergeFrom(pipeline.DeepCopy())
 

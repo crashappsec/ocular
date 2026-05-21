@@ -23,7 +23,7 @@ finalize() {
 
 trap finalize EXIT
 
-validate-common-env
+validate-common-pipeline-env
 
 validate-pwd "$OCULAR_TARGET_DIR"
 

@@ -2,7 +2,7 @@ apiVersion: ocular.crashoverride.run/v1beta1
 kind: Downloader
 metadata:
   name: git-clone
-  namespace: e2e-test-pipeline
+  namespace: e2e-test-search
 spec:
   parameters:
     - name: TEST_PARAM

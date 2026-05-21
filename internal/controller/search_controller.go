@@ -258,6 +258,7 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 					Items: []corev1.DownwardAPIVolumeFile{{
 						Path:     pipelineTemplateFile,
 						FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.annotations['" + v1beta1.PipelineTemplateAnnotation + "']"}}},
+					DefaultMode: new(int32(0744)),
 				},
 			},
 		}
@@ -330,8 +331,9 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 		pod.Spec.Containers = containers.ApplyOptions([]corev1.Container{keepaliveSidecarContainer}, containerOpts...)
 		pod.Spec.Volumes = append(crawler.Spec.Volumes, templateVolume, socketVolume)
 		pod.Spec.SecurityContext = &corev1.PodSecurityContext{
-			// TODO(fix)
-			RunAsUser: new(int64(0)),
+			RunAsNonRoot:        new(true),
+			FSGroup:             new(int64(65532)), // this should match the USER in the Docker image
+			FSGroupChangePolicy: new(corev1.FSGroupChangeAlways),
 		}
 		pod.Spec.ImagePullSecrets = crawler.Spec.ImagePullSecrets
 	}
@@ -511,6 +513,16 @@ func (r *SearchReconciler) generateSchedulerSidecarContainer(_ *v1beta1.Search) 
 		Args:            []string{"scheduler"},
 		Env:             sidecarEnvVars,
 		RestartPolicy:   ptr.To(corev1.ContainerRestartPolicyAlways),
+		SecurityContext: &corev1.SecurityContext{
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+			AllowPrivilegeEscalation: new(false),
+			RunAsNonRoot:             new(true),
+		},
 	}
 }
 
@@ -521,6 +533,16 @@ func (r *SearchReconciler) generateKeepaliveSidecarContainer(_ *v1beta1.Search) 
 		Image:           r.SidecarImage,
 		ImagePullPolicy: r.SidecarPullPolicy,
 		Args:            []string{"scheduler-keepalive"},
+		SecurityContext: &corev1.SecurityContext{
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+			AllowPrivilegeEscalation: new(false),
+			RunAsNonRoot:             new(true),
+		},
 	}
 }
 
@@ -531,6 +553,16 @@ func (r *SearchReconciler) generateInitSidecarContainer(_ *v1beta1.Search) corev
 		Image:           r.SidecarImage,
 		ImagePullPolicy: r.SidecarPullPolicy,
 		Args:            []string{"scheduler-init"},
+		SecurityContext: &corev1.SecurityContext{
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+			AllowPrivilegeEscalation: new(false),
+			RunAsNonRoot:             new(true),
+		},
 	}
 }
 

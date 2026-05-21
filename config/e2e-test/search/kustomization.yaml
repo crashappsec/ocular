@@ -1,14 +1,16 @@
 resources:
   - 10-uploaders.yaml
   - 20-downloaders.yaml
+  - 30-crawlers.yaml
   - 50-profiles.yaml
-  - 70-pipeline.yaml
+  - 80-search.yaml
 
 configMapGenerator:
 - name: validate-scripts
-  namespace: e2e-test-pipeline
+  namespace: e2e-test-search
   files:
     - scripts/common.sh
+    - scripts/validate-crawler.sh
     - scripts/validate-downloader.sh
     - scripts/validate-scanner-env.sh
     - scripts/validate-scanner-git.sh
@@ -29,6 +31,8 @@ sortOptions:
   legacySortOptions:
     orderFirst:
       - ConfigMap
+      - Crawler
     orderLast:
       - Profile
       - Pipeline
+      - Search

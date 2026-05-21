@@ -226,11 +226,11 @@ complete:
 func createFIFO(ctx context.Context, path string) error {
 	log := logf.FromContext(ctx)
 
-	if err := syscall.Mkfifo(path, 0622); err != nil {
+	if err := syscall.Mkfifo(path, 0666); err != nil {
 		return fmt.Errorf("unable to create FIFO: %w", err)
 	}
 
-	if err := os.Chmod(path, 0622); err != nil {
+	if err := os.Chmod(path, 0666); err != nil {
 		log.Error(err, "failed to change permissions of FIFO", "path", path)
 	}
 	return nil

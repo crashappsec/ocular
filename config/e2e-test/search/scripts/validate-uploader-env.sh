@@ -7,26 +7,18 @@
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
+set -e
 
 SCRIPTS_DIR="/scripts"
 
 source "$SCRIPTS_DIR/common.sh"
 
-finalize() {
-    result_file="$OCULAR_RESULTS_DIR/env.test"
-    if [ "$?" -eq 0 ]; then
-	echo "PASS" > "$OCULAR_RESULTS_DIR/env.test"
-    else
-	echo "FAIL" > "$OCULAR_RESULTS_DIR/env.test"
-    fi
-}
+validate-common-pipeline-env
 
-trap finalize EXIT
+validate-pwd "$OCULAR_RESULTS_DIR"
 
-validate-common-env
+validate-parameter "TEST_PARAM" "testing-param-value"
+validate-parameter "DEFAULT" "default-value"
+validate-env-var "OCULAR_UPLOADER_NAME" "validate-uploader-env"
 
-validate-pwd "$OCULAR_TARGET_DIR"
-
-validate-parameter "SCANNER_TEST" "PASS"
-
-complete "scanner enviornment validated"
+complete "uploader env completed successfully"
