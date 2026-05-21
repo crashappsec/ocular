@@ -191,7 +191,7 @@ var _ = Describe("Pipeline Controller", func() {
 			}, pipeline)).To(Succeed())
 
 			scanPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanPodSuffix, Namespace: pipeline.Namespace}, scanPod)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanSuffix, Namespace: pipeline.Namespace}, scanPod)
 			Expect(err).NotTo(HaveOccurred())
 			ValidatePipelineScanPodSpec(scanPod.Spec, sidecarImage, pipeline, profile, downloader,
 				[]string{"should-include", "profile-container"},
@@ -207,7 +207,7 @@ var _ = Describe("Pipeline Controller", func() {
 			)
 
 			uploadPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadPodSuffix, Namespace: pipeline.Namespace}, uploadPod)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadSuffix, Namespace: pipeline.Namespace}, uploadPod)
 			Expect(err).To(HaveOccurred())
 			Expect(apierrors.IsNotFound(err)).To(BeTrue())
 		})
@@ -401,7 +401,7 @@ var _ = Describe("Pipeline Controller", func() {
 
 			// upload pod will be created, need to be ready for scan pod
 			uploadPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadPodSuffix, Namespace: pipeline.Namespace}, uploadPod)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadSuffix, Namespace: pipeline.Namespace}, uploadPod)
 			Expect(err).NotTo(HaveOccurred())
 			ValidatePipelineUploadPodSpec(uploadPod.Spec, sidecarImage, pipeline, profile)
 
@@ -413,7 +413,7 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadServiceSuffix, Namespace: pipeline.Namespace}, &corev1.Service{})).To(Succeed())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadSuffix, Namespace: pipeline.Namespace}, &corev1.Service{})).To(Succeed())
 
 			uploadPod.Status.InitContainerStatuses = append(uploadPod.Status.InitContainerStatuses,
 				corev1.ContainerStatus{
@@ -432,7 +432,7 @@ var _ = Describe("Pipeline Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			scanPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanPodSuffix, Namespace: pipeline.Namespace}, scanPod)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanSuffix, Namespace: pipeline.Namespace}, scanPod)
 			Expect(err).NotTo(HaveOccurred())
 			ValidatePipelineScanPodSpec(scanPod.Spec, sidecarImage, pipeline, profile, downloader, []string{"should-include", "profile-container"},
 				[]corev1.EnvVar{
@@ -589,7 +589,7 @@ var _ = Describe("Pipeline Controller", func() {
 			}, pipeline)).To(Succeed())
 
 			scanPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanPodSuffix, Namespace: pipeline.Namespace}, scanPod)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanSuffix, Namespace: pipeline.Namespace}, scanPod)
 			Expect(err).NotTo(HaveOccurred())
 			ValidatePipelineScanPodSpec(scanPod.Spec, sidecarImage, pipeline, profile, downloader, []string{"should-include"}, []corev1.EnvVar{
 				{
@@ -603,7 +603,7 @@ var _ = Describe("Pipeline Controller", func() {
 			)
 
 			uploadPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadPodSuffix, Namespace: pipeline.Namespace}, uploadPod)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadSuffix, Namespace: pipeline.Namespace}, uploadPod)
 			Expect(err).To(HaveOccurred())
 			Expect(apierrors.IsNotFound(err)).To(BeTrue())
 		})

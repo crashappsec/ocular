@@ -36,14 +36,14 @@ import (
 var (
 	searchPodsCreated = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "ocular_search_pods_created_total",
+			Name: "search_pods_total",
 			Help: "Number of search pods ocular has created",
 		},
 		[]string{"crawler", "namespace"},
 	)
 	searchDurationSeconds = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
-			Name: "ocular_search_duration_seconds",
+			Name: "search_duration_seconds",
 			Help: "Number of seconds it took the ocular search to complete",
 		},
 		[]string{"crawler", "namespace"},
@@ -151,7 +151,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	roleBinding := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: search.GetName() + searchResourceSuffix, Namespace: search.Namespace}}
+	roleBinding := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: search.GetName() + searchSuffix, Namespace: search.Namespace}}
 	l = l.WithValues("roleBinding", roleBinding.Name)
 	roleBindingOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, roleBinding, func() error {
 		return r.populateRoleBinding(search, serviceAccount, roleBinding)
@@ -165,7 +165,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	searchPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: search.Name + searchResourceSuffix, Namespace: search.Namespace}}
+	searchPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: search.Name + searchSuffix, Namespace: search.Namespace}}
 	l = l.WithValues("pod", searchPod.Name)
 	searchPodOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, searchPod, func() error {
 		return r.populateSearchPod(search, searchPod, crawler)
@@ -388,8 +388,10 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 		return ctrl.Result{}, err
 	}
 
-	duration := search.Status.CompletionTime.Sub(search.Status.StartTime.Time)
-	searchDurationSeconds.With(metricLabels).Observe(duration.Seconds())
+	if search.Status.CompletionTime != nil {
+		duration := search.Status.CompletionTime.Sub(search.Status.StartTime.Time)
+		searchDurationSeconds.With(metricLabels).Observe(duration.Seconds())
+	}
 
 	return ctrl.Result{}, nil
 }

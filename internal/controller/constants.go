@@ -17,12 +17,30 @@ const (
 
 	/* Ports */
 
+	// extractorPort is the port that
+	// that the ocular sidecar will run
+	// listen for extracted artifacts
 	extractorPort = 2121
 
 	/* Naming */
 
-	scanPodSuffix        = "-scan"
-	uploadPodSuffix      = "-upload"
-	uploadServiceSuffix  = "-upload-svc"
-	searchResourceSuffix = "-search"
+	// scanSuffix is the suffix for
+	// all scan resources created by a pipeline.
+	// i.e. scan pod
+	scanSuffix = "-scan"
+	// uploadSuffix is the suffix for all
+	// upload resources created by a pipeline
+	// i.e. pod and service
+	uploadSuffix = "-upload"
+
+	// searchResourceSuffix is the suffix for
+	// all search resources
+	// i.e. search pod
+	searchSuffix = "-search"
+
+	/* Finalizers */
+
+	// metricsFinalizer is a finalizer for
+	// computing metrics on resources.
+	metricsFinalizer = "ocular.crashoverride.run/metrics"
 )
