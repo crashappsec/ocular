@@ -537,6 +537,9 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 		uploaderContainers := make([]corev1.Container, 0, len(uploaders))
 		uploaderLabels := make(map[string]string)
 		uploaderAnnotations := make(map[string]string)
+
+		parentParams := resources.ParseParameters(profile.Spec.Parameters, profile.Parameters, nil)
+
 		pod.Spec.Volumes = profile.Spec.Volumes
 		pod.Spec.ImagePullSecrets = make([]corev1.LocalObjectReference, 0)
 		for _, invocation := range uploaders {
@@ -547,7 +550,7 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 			})
 
 			baseContainer.Env = append(baseContainer.Env,
-				containers.ParseParameterEnvVars(invocation.Spec.Parameters, invocation.Parameters)...)
+				containers.ParseParameterEnvVars(invocation.Spec.Parameters, invocation.Parameters, parentParams)...)
 
 			maps.Copy(uploaderLabels, invocation.Metadata.GetLabels())
 			maps.Copy(uploaderAnnotations, invocation.Metadata.GetAnnotations())
@@ -626,15 +629,15 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 	if pod.CreationTimestamp.IsZero() {
 
 		downloaderContainer := downloader.Spec.Container
-		downloaderContainer.Env = append(downloaderContainer.Env, containers.ParseParameterEnvVars(downloader.Spec.Parameters, pipeline.Spec.DownloaderRef.Parameters)...)
+		downloaderContainer.Env = append(downloaderContainer.Env, containers.ParseParameterEnvVars(downloader.Spec.Parameters, pipeline.Spec.DownloaderRef.Parameters, nil)...)
 
-		scannerContainers := containers.FilterConditionalContainers(profile.Spec.Containers, pipeline.Spec.ProfileRef.Parameters)
+		scannerContainers := containers.FilterConditionalContainers(profile.Spec.Containers, profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters)
 
 		pod.Spec.ServiceAccountName = pipeline.Spec.ScanServiceAccountName
 		pod.Spec.RuntimeClassName = pipeline.Spec.RuntimeClassName
 		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
 		pod.Spec.Containers = containers.ApplyOptions(scannerContainers, append(containerOpts,
-			containers.WithParameters(profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters))...,
+			containers.WithParameters(profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters, nil))...,
 		)
 
 		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{

@@ -81,7 +81,7 @@ type SearchSchedulerSpec struct {
 	// targets via the unix socket [EnvVarPipelineSocket], it will create a pipeline from the template
 	// with the received target set. If omitted, sidecar container will be disabled
 	// +optional
-	PipelineTemplate PipelineTemplate `json:"pipelineTemplate,omitempty"`
+	PipelineTemplate PipelineTemplate `json:"pipelineTemplate,omitzero"`
 
 	// IntervalSeconds represents the amount of time to wait
 	// between creating pipelines. If not set, scheduler defaults to
@@ -160,8 +160,4 @@ type SearchList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Search `json:"items"`
-}
-
-func init() {
-	SchemeBuilder.Register(&Search{}, &SearchList{})
 }

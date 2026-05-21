@@ -50,8 +50,9 @@ func ValidatePipeline(ctx context.Context, c client.Client, pipeline *v1beta1.Pi
 	fieldErrs = append(fieldErrs, ValidateParameterReference(ctx,
 		field.NewPath("spec").Child("profileRef"),
 		pipeline.Spec.ProfileRef, profile.Spec.Parameters)...)
+	fieldErrs = append(fieldErrs, ValidateNoParentParameters(field.NewPath("spec").Child("profileRef"), pipeline.Spec.ProfileRef)...)
 
-	scanners := containers.FilterConditionalContainers(profile.Spec.Containers, pipeline.Spec.ProfileRef.Parameters)
+	scanners := containers.FilterConditionalContainers(profile.Spec.Containers, profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters)
 	if len(scanners) == 0 {
 		fieldErrs = append(fieldErrs, field.Invalid(field.NewPath("spec").Child("profileRef"),
 			pipeline.Spec.ProfileRef, "No scanners were included, ensure that at least one scanner's `includeIf` is true"))
@@ -74,6 +75,7 @@ func ValidatePipeline(ctx context.Context, c client.Client, pipeline *v1beta1.Pi
 	fieldErrs = append(fieldErrs, ValidateParameterReference(ctx,
 		field.NewPath("spec").Child("downloaderRef"),
 		pipeline.Spec.DownloaderRef, downloader.Spec.Parameters)...)
+	fieldErrs = append(fieldErrs, ValidateNoParentParameters(field.NewPath("spec").Child("downloaderRef"), pipeline.Spec.DownloaderRef)...)
 
 	// validate no conflicting volumes
 	for _, vol := range downloader.Spec.Volumes {

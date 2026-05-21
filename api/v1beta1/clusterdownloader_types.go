@@ -54,7 +54,3 @@ type ClusterDownloaderList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []ClusterDownloader `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ClusterDownloader{}, &ClusterDownloaderList{})
-}

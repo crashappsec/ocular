@@ -89,7 +89,3 @@ type CrawlerList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Crawler `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Crawler{}, &CrawlerList{})
-}

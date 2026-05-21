@@ -37,11 +37,10 @@ func ValidateProfile(ctx context.Context, c client.Client, profile *v1beta1.Prof
 	}
 
 	for i, uploaderRef := range profile.Spec.UploaderRefs {
-		var refErr resources.InvalidObjectReference
 
 		refField := field.NewPath("spec").Child("uploaderRefs").Index(i)
 		uploader, err := resources.UploaderInvocationFromReference(ctx, c, profile.Namespace, uploaderRef)
-		if errors.As(err, &refErr) {
+		if refErr, ok := errors.AsType[resources.InvalidObjectReference](err); ok {
 			fieldErrors = append(fieldErrors, field.Invalid(refField, uploaderRef, refErr.Message))
 			continue
 		} else if apierrors.IsNotFound(err) {
@@ -52,6 +51,7 @@ func ValidateProfile(ctx context.Context, c client.Client, profile *v1beta1.Prof
 		}
 
 		fieldErrors = append(fieldErrors, ValidateParameterReference(ctx, refField, uploaderRef, uploader.Spec.Parameters)...)
+		fieldErrors = append(fieldErrors, ValidateParentParameters(ctx, refField, uploaderRef, profile.Spec.Parameters)...)
 
 		for i, vol := range uploader.Spec.Volumes {
 			if _, exists := volumeNames[vol.Name]; exists {

@@ -1,0 +1,26 @@
+apiVersion: v2 # -*- yaml -*-
+name: ocular
+version: {{.ChartVersion}}
+appVersion: {{.AppVersion}}
+kubeVersion: ">=1.26.0-0"
+description: An API for mass scanning static software assets
+type: application
+icon: "https://ocularproject.io/favicon-32x32.png"
+keywords:
+  - git
+  - kubernetes
+  - scanning
+  - sast
+  - secrets
+  - sca
+  - security
+home: https://ocularproject.io
+sources:
+  - https://github.com/crashappsec/ocular
+maintainers:
+  - name: Bryce Thuiot
+    email: bryce@crashoverride.com
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/license: GPL-3.0
+

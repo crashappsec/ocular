@@ -137,7 +137,3 @@ type CronSearchList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []CronSearch `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&CronSearch{}, &CronSearchList{})
-}

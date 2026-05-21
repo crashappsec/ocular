@@ -10,28 +10,18 @@ package containers
 
 import (
 	"github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/internal/resources"
 	ocularRuntime "github.com/crashappsec/ocular/pkg/runtime"
 	v1 "k8s.io/api/core/v1"
 )
 
-func ParseParameterEnvVars(definitions []v1beta1.ParameterDefinition, settings []v1beta1.ParameterSetting) []v1.EnvVar {
-	var params = make(map[string]string)
-	// Set parameters
-	for _, def := range definitions {
-		if def.Default != nil {
-			params[def.Name] = *def.Default
-		} else {
-			params[def.Name] = ""
-		}
-	}
+func ParseParameterEnvVars(
+	definitions []v1beta1.ParameterDefinition,
+	settings []v1beta1.ParameterSetting,
+	parentSettings map[string]string,
+) []v1.EnvVar {
+	params := resources.ParseParameters(definitions, settings, parentSettings)
 
-	// Set defaults for missing
-	for _, setting := range settings {
-		// filter out params that are not specified in the definitions
-		if _, exists := params[setting.Name]; exists {
-			params[setting.Name] = setting.Value
-		}
-	}
 	env := make([]v1.EnvVar, 0, len(params))
 	for param, value := range params {
 		env = append(env, v1.EnvVar{

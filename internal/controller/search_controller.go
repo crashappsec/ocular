@@ -250,7 +250,7 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 		crawler.Spec.Container.DeepCopyInto(&crawlerContainer)
 
 		crawlerContainer.Env = append(crawlerContainer.Env,
-			containers.ParseParameterEnvVars(crawler.Spec.Parameters, crawler.Parameters)...)
+			containers.ParseParameterEnvVars(crawler.Spec.Parameters, crawler.Parameters, nil)...)
 		templateVolume := corev1.Volume{
 			Name: "pipeline-template",
 			VolumeSource: corev1.VolumeSource{
