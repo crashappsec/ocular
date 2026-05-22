@@ -13,26 +13,41 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-func ShouldInclude(includeIf *v1beta1.ContainerCondition, params []v1beta1.ParameterSetting) bool {
+func shouldInclude(includeIf *v1beta1.ContainerCondition, setParams map[string]bool) bool {
 	if includeIf == nil {
 		return true
 	}
 
 	if expectedParam := includeIf.WhenParamSet; expectedParam != "" {
-		for _, param := range params {
-			if param.Name == expectedParam && param.Value != "" {
-				return true
-			}
-		}
-		return false
+		return setParams[expectedParam]
 	}
+
 	return true
 }
 
-func FilterConditionalContainers(cs []v1beta1.ConditionalContainer, params []v1beta1.ParameterSetting) []v1.Container {
+func FilterConditionalContainers(cs []v1beta1.ConditionalContainer, definitions []v1beta1.ParameterDefinition, settings []v1beta1.ParameterSetting) []v1.Container {
 	var result []v1.Container
+
+	var setParams = make(map[string]bool)
+	// Set parameters
+	for _, def := range definitions {
+		if def.Default != nil && *def.Default != "" {
+			setParams[def.Name] = true
+		} else {
+			setParams[def.Name] = false
+		}
+	}
+
+	// Set defaults for missing
+	for _, setting := range settings {
+		// filter out params that are not specified in the definitions
+		if _, exists := setParams[setting.Name]; exists {
+			setParams[setting.Name] = setting.Value != ""
+		}
+	}
+
 	for _, c := range cs {
-		if ShouldInclude(c.IncludeIf, params) {
+		if shouldInclude(c.IncludeIf, setParams) {
 			result = append(result, c.Container)
 		}
 	}

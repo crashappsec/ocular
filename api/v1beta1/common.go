@@ -69,8 +69,21 @@ type ParameterSetting struct {
 	// +required
 	Name string `json:"name" yaml:"name" description:"The name of the parameter to set."`
 	// Value is the value to set the parameter to.
+	// +optional
+	Value string `json:"value,omitempty" yaml:"value" description:"The value to set the parameter to."`
+	// ValueFrom is the source of a value
+	// +optional
+	ValueFrom *ParameterSource `json:"valueFrom,omitempty" protobuf:"bytes,3,opt,name=valueFrom"`
+}
+
+type ParameterSource struct {
+	// ParentParam indicates the value of this parameter should be derived
+	// from the value of another. This setting can only be applied for resources
+	// That reference another resource using [ParameterizedLocalObjectReference]
+	// and are also invocated with parameters themselves (i.e. uploader references in
+	// profiles)
 	// +required
-	Value string `json:"value" yaml:"value" description:"The value to set the parameter to."`
+	ParentParam string `json:"parentParam" description:"The value to derive the value from"`
 }
 
 // ParameterizedLocalObjectReference is a reference to a resource that will be run with parameters.

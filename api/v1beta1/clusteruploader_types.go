@@ -51,7 +51,3 @@ type ClusterUploaderList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []ClusterUploader `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ClusterUploader{}, &ClusterUploaderList{})
-}

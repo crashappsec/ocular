@@ -120,7 +120,3 @@ type ProfileList struct {
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Profile `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&Profile{}, &ProfileList{})
-}

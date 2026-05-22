@@ -1,5 +1,19 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
+# [v0.3.1](https://github.com/crashappsec/ocular/releases/tag/v0.3.1) - **May 22nd, 2026**
+
+### Added
+
+- Containers can be conditionally included in scan via parameter
+- Ability to configure runtime class for pipelines
+- Parameter settings can be inheritted from parent resource (where applicable)
+  - Uploader settings can inherit from Profile parameters
+
+### Fixes
+
+- Improve accuracy of pipeline and search metrics via finalizer
+- Deterministic helm chart generation
+
 # [v0.3.0](https://github.com/crashappsec/ocular/releases/tag/v0.3.0) - **April 27th, 2026**
 
 ### Added

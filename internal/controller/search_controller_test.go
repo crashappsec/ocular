@@ -177,7 +177,7 @@ var _ = Describe("Search Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: search.Name + searchResourceSuffix, Namespace: search.Namespace}, &rbacv1.RoleBinding{})).To(Succeed())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: search.Name + searchSuffix, Namespace: search.Namespace}, &rbacv1.RoleBinding{})).To(Succeed())
 
 			// 3rd creates pod
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -185,7 +185,7 @@ var _ = Describe("Search Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			searchPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: search.Name + searchResourceSuffix, Namespace: search.Namespace}, searchPod)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: search.Name + searchSuffix, Namespace: search.Namespace}, searchPod)
 			Expect(err).NotTo(HaveOccurred())
 
 			// 4th marks read
@@ -233,7 +233,7 @@ var _ = Describe("Search Controller", func() {
 
 			searchRB := &rbacv1.RoleBinding{}
 			searchRBName := types.NamespacedName{
-				Name:      search.GetName() + searchResourceSuffix,
+				Name:      search.GetName() + searchSuffix,
 				Namespace: search.GetNamespace(),
 			}
 			err = k8sClient.Get(ctx, searchRBName, searchRB)
@@ -404,7 +404,7 @@ var _ = Describe("Search Controller", func() {
 			Expect(search.Status.CompletionTime).To(BeNil())
 
 			searchPod := &corev1.Pod{}
-			err := k8sClient.Get(ctx, types.NamespacedName{Name: search.Name + searchResourceSuffix, Namespace: search.Namespace}, searchPod)
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: search.Name + searchSuffix, Namespace: search.Namespace}, searchPod)
 			Expect(err).NotTo(HaveOccurred())
 			searchPod.Status.Phase = corev1.PodSucceeded
 			Expect(k8sClient.Status().Update(ctx, searchPod)).Error().ToNot(HaveOccurred())

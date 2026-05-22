@@ -110,6 +110,7 @@ func validateSearch(ctx context.Context, c client.Client, search *v1beta1.Search
 
 	crawlerRefPath := field.NewPath("spec").Child("crawlerRef")
 	allErrs = append(allErrs, validators.ValidateParameterReference(ctx, crawlerRefPath, search.Spec.CrawlerRef, crawler.Spec.Parameters)...)
+	allErrs = append(allErrs, validators.ValidateNoParentParameters(field.NewPath("spec").Child("crawlerRef"), search.Spec.CrawlerRef)...)
 
 	if len(allErrs) == 0 {
 		return nil
