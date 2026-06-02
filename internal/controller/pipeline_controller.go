@@ -20,6 +20,7 @@ import (
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -137,9 +138,10 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	wasDeleted := !pipeline.DeletionTimestamp.IsZero()
 	if wasDeleted && controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
+		patch := client.MergeFrom(pipeline.DeepCopy())
 		controllerutil.RemoveFinalizer(pipeline, metricsFinalizer)
-		if err := r.Update(ctx, pipeline); err != nil {
-			return ctrl.Result{}, err
+		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to remove metrics finalizer upon deletion: %w", err)
 		}
 		pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Dec()
 		return ctrl.Result{}, nil
@@ -218,26 +220,27 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			uploadPodsCreated.With(metricLabelsForPipeline(pipeline)).Inc()
 			fallthrough
 		case controllerutil.OperationResultUpdated:
+			l.Info("upload pod was created or modified", "op", uploadPodOp)
 			return ctrl.Result{}, nil
 		}
 
 		uploadServiceOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, uploadService, func() error {
 			return r.populateUploadService(uploadService, pipeline)
 		})
-		if err != nil {
+		if err != nil && !apierrors.IsAlreadyExists(err) {
 			return ctrl.Result{}, fmt.Errorf("unable to generate new upload service: %w", err)
 		}
 
 		l = l.WithValues("uploadService", uploadService.Name)
 		if uploadServiceOp == controllerutil.OperationResultCreated ||
 			uploadServiceOp == controllerutil.OperationResultUpdated {
-			l.Info("upload service was modified")
-			return ctrl.Result{}, nil
+			l.Info("upload service was created or modified", "op", uploadServiceOp)
+			return ctrl.Result{}, nil // small delay since
 		}
 
 		if pipeline.Status.StartTime == nil && !uploadPodStarted(uploadPod) {
 			l.Info("upload pod and service created, awaiting upload pod ready")
-			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 3}, nil
 		}
 
 	}
@@ -311,12 +314,13 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	if !controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
+		patch := client.MergeFrom(pipeline.DeepCopy())
 		controllerutil.AddFinalizer(pipeline, metricsFinalizer)
-		err := r.Update(ctx, pipeline)
-		if err == nil {
-			pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Inc()
+		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add metrics finalizer: %w", err)
 		}
-		return ctrl.Result{}, err
+		pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Inc()
+		return ctrl.Result{}, nil
 	}
 
 	// Check for completion of pods and update status accordingly
@@ -746,22 +750,23 @@ func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline) []corev1.EnvVar
 func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline *v1beta1.Pipeline) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
 	if controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
+		patch := client.MergeFrom(pipeline)
 		controllerutil.RemoveFinalizer(pipeline, metricsFinalizer)
-		err := r.Update(ctx, pipeline)
-		if err == nil {
-			metricLabels := metricLabelsForPipeline(pipeline)
-			pipelinesRunning.With(metricLabels).Dec()
-			metricLabels["phase"] = string(pipeline.Status.Phase)
-			duration := pipeline.Status.CompletionTime.Sub(pipeline.Status.StartTime.Time)
-			pipelinesCompleted.With(metricLabels).Add(1)
-			pipelineDurationSeconds.With(metricLabels).Observe(duration.Seconds())
-			l.Info("pipeline completed",
-				"pipeline", pipeline.Name, "namespace", pipeline.Namespace,
-				"profile", pipeline.Spec.ProfileRef.Name, "downloader", pipeline.Spec.DownloaderRef.Name,
-				"target", pipeline.Spec.Target,
-				"start_time", pipeline.Status.StartTime, "completion_time", pipeline.Status.CompletionTime)
+		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to remove finalizer at completion: %w", err)
 		}
-		return ctrl.Result{}, err
+		metricLabels := metricLabelsForPipeline(pipeline)
+		pipelinesRunning.With(metricLabels).Dec()
+		metricLabels["phase"] = string(pipeline.Status.Phase)
+		duration := pipeline.Status.CompletionTime.Sub(pipeline.Status.StartTime.Time)
+		pipelinesCompleted.With(metricLabels).Add(1)
+		pipelineDurationSeconds.With(metricLabels).Observe(duration.Seconds())
+		l.Info("pipeline completed",
+			"pipeline", pipeline.Name, "namespace", pipeline.Namespace,
+			"profile", pipeline.Spec.ProfileRef.Name, "downloader", pipeline.Spec.DownloaderRef.Name,
+			"target", pipeline.Spec.Target,
+			"start_time", pipeline.Status.StartTime, "completion_time", pipeline.Status.CompletionTime)
+		return ctrl.Result{}, nil
 	}
 
 	if pipeline.Spec.TTLSecondsAfterFinished != nil {
@@ -783,7 +788,7 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 			return ctrl.Result{RequeueAfter: time.Until(deleteTime)}, nil
 		}
 	}
-	l.Info("pipeline has completed, skipping reconciliation",
+	l.Info("pipeline has completed",
 		"name", pipeline.GetName(),
 		"completionTime", pipeline.Status.CompletionTime)
 	return ctrl.Result{}, nil
