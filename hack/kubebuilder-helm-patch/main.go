@@ -75,12 +75,12 @@ const helmPluginName = "helm.kubebuilder.io/v2-alpha"
 
 func getOutputDir(req *external.PluginRequest) (string, error) {
 	log.Print("getting output dir from config kubebuilder helm config")
-	plugins, ok := req.Config["plugins"].(map[string]interface{})
+	plugins, ok := req.Config["plugins"].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("unable to list plugins from request")
 	}
 
-	config, ok := plugins[helmPluginName].(map[string]interface{})
+	config, ok := plugins[helmPluginName].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("unable to read kubebuilder helm config '%s'", helmPluginName)
 	}

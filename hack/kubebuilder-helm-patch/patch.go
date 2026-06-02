@@ -24,8 +24,7 @@ const (
 	chartDir     = "chart/"
 	templatesDir = chartDir + "templates/"
 
-	chartPath       = chartDir + "Chart.yaml"
-	chartValuesPath = chartDir + "values.yaml"
+	chartPath = chartDir + "Chart.yaml"
 
 	managerPath   = templatesDir + "manager/manager.yaml"
 	configmapPath = templatesDir + "extras/controller-manager-config.yaml"
