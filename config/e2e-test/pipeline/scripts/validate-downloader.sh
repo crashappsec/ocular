@@ -19,6 +19,8 @@ clone-target() {
 
     git clone "$OCULAR_TARGET_IDENTIFIER" . || fail "unable to clone repository"
     git checkout "$OCULAR_TARGET_VERSION" || fail "unable to checkout git repository"
+
+    echo "$OCULAR_TARGET_VERSION" > "$OCULAR_METADATA_DIR/git.metadata"
     pass "git clone complete"
 }
 

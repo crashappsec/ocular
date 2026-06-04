@@ -136,7 +136,7 @@ var _ = Describe("Pipeline", Ordered, func() {
 
 			By("Fetching scan and upload pod logs")
 			cmd = exec.Command("kubectl", "logs", "-l", "ocular.crashoverride.run/pipeline=e2e-test",
-				"--all-containers", "-n", pipelineNamespace)
+				"--all-containers", "-n", pipelineNamespace, "--tail", "-1")
 			pipelineLogs, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Pipeline logs:\n %s", pipelineLogs)

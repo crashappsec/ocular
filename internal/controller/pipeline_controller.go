@@ -503,20 +503,26 @@ func (r *PipelineReconciler) failPod(ctx context.Context, pod *corev1.Pod) error
 }
 
 func (r *PipelineReconciler) populateUploadService(svc *corev1.Service, pipeline *v1beta1.Pipeline) error {
-	svc.Labels = map[string]string{
-		v1beta1.TypeLabelKey:       v1beta1.ServiceTypeUpload,
-		v1beta1.PipelineLabelKey:   pipeline.GetName(),
-		v1beta1.ProfileLabelKey:    pipeline.Spec.ProfileRef.Name,
-		v1beta1.DownloaderLabelKey: pipeline.Spec.DownloaderRef.Name,
+	if svc.Labels == nil {
+		svc.Labels = make(map[string]string)
 	}
 
-	svc.Spec.Selector = map[string]string{
-		v1beta1.PipelineLabelKey: pipeline.GetName(),
-		v1beta1.TypeLabelKey:     v1beta1.PodTypeUpload,
+	svc.Labels[v1beta1.TypeLabelKey] = v1beta1.ServiceTypeUpload
+	svc.Labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
+	svc.Labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
+	svc.Labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
+	if svc.Spec.Selector == nil {
+		svc.Spec.Selector = make(map[string]string)
 	}
+
+	svc.Spec.Selector[v1beta1.PipelineLabelKey] = pipeline.GetName()
+	svc.Spec.Selector[v1beta1.TypeLabelKey] = v1beta1.PodTypeUpload
+
 	svc.Spec.PublishNotReadyAddresses = true
-	svc.Spec.Ports = []corev1.ServicePort{
-		{Port: extractorPort, TargetPort: intstr.FromInt32(extractorPort), Protocol: corev1.ProtocolTCP},
+	if len(svc.Spec.Ports) != 1 || svc.Spec.Ports[0].Port != extractorPort {
+		svc.Spec.Ports = []corev1.ServicePort{
+			{Port: extractorPort, TargetPort: intstr.FromInt32(extractorPort), Protocol: corev1.ProtocolTCP},
+		}
 	}
 
 	return ctrl.SetControllerReference(pipeline, svc, r.Scheme)
@@ -633,6 +639,13 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 			containers.WithParameters(profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters, nil))...,
 		)
 
+		extractorContainer.VolumeMounts = append(extractorContainer.VolumeMounts,
+			corev1.VolumeMount{
+				Name:      pipelineUploadTokenVolumeName,
+				MountPath: v1beta1.UploadTokenDir,
+				ReadOnly:  true,
+			})
+
 		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{
 			// Add the downloader as an init container
 			downloaderContainer,
@@ -652,6 +665,21 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 			}, corev1.Volume{Name: pipelineMetadataVolumeName,
 				VolumeSource: corev1.VolumeSource{
 					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			},
+			corev1.Volume{Name: pipelineUploadTokenVolumeName,
+				VolumeSource: corev1.VolumeSource{
+					Projected: &corev1.ProjectedVolumeSource{
+						Sources: []corev1.VolumeProjection{
+							{
+								ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+									Audience:          pipeline.GetName() + uploadSuffix,
+									ExpirationSeconds: new(int64(60 * 60)),
+									Path:              v1beta1.UploadTokenFile,
+								},
+							},
+						},
+					},
 				},
 			},
 		)
