@@ -45,6 +45,14 @@ const (
 	ServiceAccountTypeSearch = "search"
 	// RoleBindingTypeSearch is the value of the TypeLabelKey label for search role bindings.
 	RoleBindingTypeSearch = "search"
+
+	// UploadTokenFile is the name of the file that contains the token
+	UploadTokenFile = "token"
+	// UploadTokenDir is the directory the token file will be mounted into
+	UploadTokenDir = "/var/run/ocular/secrets"
+	// UploadTokenPath is the path at which the token file exists on
+	// scan pods
+	UploadTokenPath = UploadTokenDir + "/" + UploadTokenFile
 )
 
 // Target represents a target to be downloaded by a Downloader.
