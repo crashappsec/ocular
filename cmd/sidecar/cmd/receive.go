@@ -126,15 +126,16 @@ func uploadHandler(v *jwtValidator, wg *sync.WaitGroup, locks filelocks) func(ht
 			return
 		}
 
+		defer utils.CloseAndLog(ctx, r.Body, "closing upload request body")
+		dst, err := os.Create(file)
+		if err != nil {
+			logger.Error(err, "failed to create file", "path", file)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		defer utils.CloseAndLog(ctx, dst, "closing uploaded file writer")
+
 		if r.ContentLength > 0 {
-			defer utils.CloseAndLog(ctx, r.Body, "closing upload request body")
-			dst, err := os.Create(file)
-			if err != nil {
-				logger.Error(err, "failed to create file", "path", file)
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			defer utils.CloseAndLog(ctx, dst, "closing uploaded file writer")
 			n, err := io.Copy(dst, r.Body)
 			if err != nil && !errors.Is(err, io.EOF) {
 				logger.Error(err, "failed to write file", "path", file, "bytes", n)
@@ -143,7 +144,7 @@ func uploadHandler(v *jwtValidator, wg *sync.WaitGroup, locks filelocks) func(ht
 			}
 			logger.Info("successfully downloaded content", "path", file, "bytes", n)
 		} else {
-			logger.Info("file given with zero content length, assuming missing file and will not create", "path", file)
+			logger.Info("file given with zero content length, creating empty file", "path", file)
 		}
 		wg.Done()
 		logger.Info("file downloaded", "path", file)

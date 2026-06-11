@@ -12,6 +12,7 @@ package e2e
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -146,13 +147,13 @@ var _ = Describe("Pipeline", Ordered, func() {
 		}
 	})
 
-	SetDefaultEventuallyTimeout(5 * time.Minute)
-	SetDefaultEventuallyPollingInterval(time.Second * 5)
+	SetDefaultEventuallyTimeout(2 * time.Minute)
+	SetDefaultEventuallyPollingInterval(time.Second * 3)
 
 	Context("Pipeline", func() {
 		It("should run successfully", func() {
 			By("validating that the created pipeliene finishes with Success")
-			verifyControllerUp := func(g Gomega) {
+			verifyPipelineSuccess := func(g Gomega) {
 				// Validate the pipline's status
 				cmd := exec.Command("kubectl", "get",
 					"pipeline", "e2e-test", "-o", "jsonpath={.status.phase}",
@@ -163,7 +164,23 @@ var _ = Describe("Pipeline", Ordered, func() {
 				g.Expect(output).To(Equal("Succeeded"), "Incorrect pipeline pod status")
 
 			}
-			Eventually(verifyControllerUp).Should(Succeed())
+			Eventually(verifyPipelineSuccess).Should(Succeed())
+			cmd := exec.Command("kubectl", "patch",
+				"pipeline", "e2e-test", `--type=json`, "-p", `[{"op": "replace", "path": "/spec/ttlSecondsAfterFinished", "value": 1}]`,
+				"-n", pipelineNamespace,
+			)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			verifyPipelineTTL := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get",
+					"pipelines", "-o", "jsonpath={.items[*].metadata.name}",
+					"-n", pipelineNamespace,
+				)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(strings.TrimSpace(output)).To(BeEmpty())
+			}
+			Eventually(verifyPipelineTTL).Should(Succeed())
 		})
 	})
 })

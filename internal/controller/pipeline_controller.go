@@ -20,7 +20,6 @@ import (
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -135,6 +134,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	l = l.WithValues("pipeline", pipeline.Name, "namespace", pipeline.Namespace)
+	ctx = logf.IntoContext(ctx, l)
 
 	wasDeleted := !pipeline.DeletionTimestamp.IsZero()
 	if wasDeleted && controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
@@ -147,8 +147,17 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
+	if pipeline.Spec.TTLSecondsMaxLifetime != nil {
+		ttlMaxSeconds := float64(*pipeline.Spec.TTLSecondsMaxLifetime)
+		if time.Since(pipeline.GetCreationTimestamp().Time).Seconds() > ttlMaxSeconds {
+			l.Info("pipeline has exceeded maximum allowed runtime, cleaning up", "max-ttl", ttlMaxSeconds)
+			err := r.Delete(ctx, pipeline)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+	}
+
 	// If the pipeline has a completion time, handle post-completion logic
-	if pipeline.Status.CompletionTime != nil {
+	if !pipeline.Status.CompletionTime.IsZero() {
 		return r.handlePostCompletion(ctx, pipeline)
 	}
 
@@ -210,7 +219,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return r.populateUploadPod(uploadPod, pipeline, profile, uploaders, uploaderContainerOpts...)
 		})
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("unable to generate new upload pod: %w", err)
+			return ctrl.Result{}, client.IgnoreAlreadyExists(fmt.Errorf("unable to generate new upload pod: %w", err))
 		}
 
 		l = l.WithValues("uploadPod", uploadPod.Name)
@@ -227,20 +236,20 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		uploadServiceOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, uploadService, func() error {
 			return r.populateUploadService(uploadService, pipeline)
 		})
-		if err != nil && !apierrors.IsAlreadyExists(err) {
-			return ctrl.Result{}, fmt.Errorf("unable to generate new upload service: %w", err)
+		if err != nil {
+			return ctrl.Result{}, client.IgnoreAlreadyExists(fmt.Errorf("unable to generate new upload service: %w", err))
 		}
 
 		l = l.WithValues("uploadService", uploadService.Name)
 		if uploadServiceOp == controllerutil.OperationResultCreated ||
 			uploadServiceOp == controllerutil.OperationResultUpdated {
 			l.Info("upload service was created or modified", "op", uploadServiceOp)
-			return ctrl.Result{}, nil // small delay since
+			return ctrl.Result{}, nil
 		}
 
 		if pipeline.Status.StartTime == nil && !uploadPodStarted(uploadPod) {
 			l.Info("upload pod and service created, awaiting upload pod ready")
-			return ctrl.Result{RequeueAfter: time.Second * 3}, nil
+			return ctrl.Result{RequeueAfter: time.Second * 2}, nil
 		}
 
 	}
@@ -278,53 +287,52 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
+	if !pipeline.Status.StartTime.IsZero() {
+		if !controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
+			patch := client.MergeFrom(pipeline.DeepCopy())
+			controllerutil.AddFinalizer(pipeline, metricsFinalizer)
+			if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to add metrics finalizer: %w", err)
+			}
+			pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Inc()
+			return ctrl.Result{}, nil
+		}
+
+		// Check for completion of pods and update status accordingly
+		return r.handleCompletion(logf.IntoContext(ctx, l), pipeline, scanPod, uploadPod)
+	}
+
 	// Update status to reflect pods have been created
-	if pipeline.Status.StartTime == nil {
-		l.Info("marking pipeline as started")
-		startTime := metav1.Now()
-		patch := client.MergeFrom(pipeline.DeepCopy())
-		reason, message := "ScanPodSuccessfullyCreated", fmt.Sprintf("The scan pod %s has been created.", scanPod.Name)
+	l.Info("marking pipeline as started")
+	startTime := metav1.Now()
+	patch := client.MergeFrom(pipeline.DeepCopy())
+	reason, message := "ScanPodSuccessfullyCreated", fmt.Sprintf("The scan pod %s has been created.", scanPod.Name)
+	pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
+		Type:               v1beta1.PipelineScanPodCreatedConditionType,
+		Status:             metav1.ConditionTrue,
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: startTime.Rfc3339Copy(),
+	})
+
+	if !pipeline.Status.ScanPodOnly {
+		reason, message = "UploadPodSuccessfullyCreated", fmt.Sprintf("The upload pod %s has been created.", uploadPod.GetName())
 		pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
-			Type:               v1beta1.PipelineScanPodCreatedConditionType,
+			Type:               v1beta1.PipelineUploadPodCreatedConditionType,
 			Status:             metav1.ConditionTrue,
 			Reason:             reason,
 			Message:            message,
-			LastTransitionTime: startTime.Rfc3339Copy(),
+			LastTransitionTime: startTime,
 		})
-
-		if !pipeline.Status.ScanPodOnly {
-			reason, message = "UploadPodSuccessfullyCreated", fmt.Sprintf("The upload pod %s has been created.", uploadPod.GetName())
-			pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
-				Type:               v1beta1.PipelineUploadPodCreatedConditionType,
-				Status:             metav1.ConditionTrue,
-				Reason:             reason,
-				Message:            message,
-				LastTransitionTime: startTime,
-			})
-		}
-		pipeline.Status.StartTime = &startTime
-		pipeline.Status.Phase = v1beta1.PipelineDownloading
-		pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageInProgress
-		pipeline.Status.StageStatuses.ScanStatus = v1beta1.PipelineStageNotStarted
-		if !pipeline.Status.ScanPodOnly {
-			pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
-		}
-		err := patchStatus(logf.IntoContext(ctx, l), r.Client, pipeline, patch)
-		return ctrl.Result{}, err
+		pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
 	}
+	pipeline.Status.StartTime = &startTime
+	pipeline.Status.Phase = v1beta1.PipelineDownloading
+	pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageInProgress
+	pipeline.Status.StageStatuses.ScanStatus = v1beta1.PipelineStageNotStarted
+	err = patchStatus(logf.IntoContext(ctx, l), r.Client, pipeline, patch)
+	return ctrl.Result{}, err
 
-	if !controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
-		patch := client.MergeFrom(pipeline.DeepCopy())
-		controllerutil.AddFinalizer(pipeline, metricsFinalizer)
-		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to add metrics finalizer: %w", err)
-		}
-		pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Inc()
-		return ctrl.Result{}, nil
-	}
-
-	// Check for completion of pods and update status accordingly
-	return r.handleCompletion(logf.IntoContext(ctx, l), pipeline, scanPod, uploadPod)
 }
 
 const (
@@ -370,18 +378,8 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 	l := logf.FromContext(ctx)
 	l.Info("checking for scan & upload pod completion")
 
-	ttlMaxSeconds := 0
-	if pipeline.Spec.TTLSecondsMaxLifetime != nil {
-		ttlMaxSeconds = int(*pipeline.Spec.TTLSecondsMaxLifetime)
-	}
 	t := metav1.NewTime(time.Now())
 	patch := client.MergeFrom(pipeline.DeepCopy())
-
-	if ttlMaxSeconds > 0 && time.Since(pipeline.GetCreationTimestamp().Time) > time.Duration(ttlMaxSeconds)*time.Second {
-		l.Info("pipeline has exceeded maximum allowed runtime, cleaning up", "maxTTL", ttlMaxSeconds)
-		err := r.Delete(ctx, pipeline)
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
 
 	switch scanPod.Status.Phase {
 	case corev1.PodSucceeded:
@@ -777,8 +775,9 @@ func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline) []corev1.EnvVar
 
 func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline *v1beta1.Pipeline) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
+	l.Info("handling post completion")
 	if controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
-		patch := client.MergeFrom(pipeline)
+		patch := client.MergeFrom(pipeline.DeepCopy())
 		controllerutil.RemoveFinalizer(pipeline, metricsFinalizer)
 		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to remove finalizer at completion: %w", err)
@@ -789,37 +788,37 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 		duration := pipeline.Status.CompletionTime.Sub(pipeline.Status.StartTime.Time)
 		pipelinesCompleted.With(metricLabels).Add(1)
 		pipelineDurationSeconds.With(metricLabels).Observe(duration.Seconds())
-		l.Info("pipeline completed",
+		l.Info("pipeline metrics updated with completion",
 			"pipeline", pipeline.Name, "namespace", pipeline.Namespace,
 			"profile", pipeline.Spec.ProfileRef.Name, "downloader", pipeline.Spec.DownloaderRef.Name,
 			"target", pipeline.Spec.Target,
-			"start_time", pipeline.Status.StartTime, "completion_time", pipeline.Status.CompletionTime)
+			"start-time", pipeline.Status.StartTime, "completion-time", pipeline.Status.CompletionTime)
+	}
+	if pipeline.Spec.TTLSecondsAfterFinished == nil {
+		l.Info("pipeline has completed",
+			"name", pipeline.GetName(),
+			"completionTime", pipeline.Status.CompletionTime)
 		return ctrl.Result{}, nil
 	}
 
-	if pipeline.Spec.TTLSecondsAfterFinished != nil {
-		// check if we need to delete the pipeline
-		finishTime := pipeline.Status.CompletionTime.Time
-		ttl := time.Duration(*pipeline.Spec.TTLSecondsAfterFinished) * time.Second
-		deleteTime := finishTime.Add(ttl)
-		if time.Now().After(deleteTime) {
-			l.Info("pipeline has exceeded its TTL, deleting",
-				"name", pipeline.GetName(),
-				"completionTime", pipeline.Status.CompletionTime,
-				"ttlSecondsAfterFinished", *pipeline.Spec.TTLSecondsAfterFinished)
-			return ctrl.Result{}, r.Delete(ctx, pipeline)
-		} else {
-			l.Info("pipeline has completed, checking TTL before next reconciliation",
-				"name", pipeline.GetName(),
-				"completionTime", pipeline.Status.CompletionTime,
-				"ttlSecondsAfterFinished", *pipeline.Spec.TTLSecondsAfterFinished)
-			return ctrl.Result{RequeueAfter: time.Until(deleteTime)}, nil
-		}
+	ttl := time.Duration(*pipeline.Spec.TTLSecondsAfterFinished) * time.Second
+	wait := time.Until(pipeline.Status.CompletionTime.Add(ttl))
+	if wait <= 0 {
+		l.Info("pipeline has exceeded its TTL, deleting",
+			"name", pipeline.GetName(),
+			"completionTime", pipeline.Status.CompletionTime,
+			"ttl", ttl)
+		return ctrl.Result{}, client.IgnoreNotFound(r.Delete(ctx, pipeline))
 	}
-	l.Info("pipeline has completed",
+
+	l.Info("pipeline has completed, checking TTL before next reconciliation",
 		"name", pipeline.GetName(),
-		"completionTime", pipeline.Status.CompletionTime)
-	return ctrl.Result{}, nil
+		"completion-time", pipeline.Status.CompletionTime,
+		"ttl", ttl.Seconds(),
+		"requeue-after", wait.String(),
+	)
+
+	return ctrl.Result{RequeueAfter: wait}, nil
 }
 
 func determineScanPodStageStatuses(scanPod *corev1.Pod) (dlStatus v1beta1.PipelineStageStatus, scanStatus v1beta1.PipelineStageStatus) {

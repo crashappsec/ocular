@@ -342,7 +342,7 @@ spec:
                                       after the specified number of seconds have passed since the pipeline was created,
                                       regardless of its state.
                                     format: int32
-                                    minimum: 0
+                                    minimum: 1
                                     type: integer
                                   uploadServiceAccountName:
                                     description: |-
