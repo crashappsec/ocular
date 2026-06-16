@@ -247,7 +247,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, nil
 		}
 
-		if pipeline.Status.StartTime == nil && !uploadPodStarted(uploadPod) {
+		if pipeline.Status.StartTime.IsZero() && !uploadPodStarted(uploadPod) {
 			l.Info("upload pod and service created, awaiting upload pod ready")
 			return ctrl.Result{RequeueAfter: time.Second * 2}, nil
 		}
@@ -482,9 +482,10 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 
 func uploadPodStarted(p *corev1.Pod) bool {
 	// check if uploader is running & can accept artifacts
+	// or if its terminated (i.e. already ran)
 	for _, status := range p.Status.InitContainerStatuses {
-		if status.Name == sidecarReceiverContainerName && status.Started != nil {
-			return *status.Started
+		if status.Name == sidecarReceiverContainerName {
+			return status.State.Running != nil || status.State.Terminated != nil
 		}
 	}
 	return false

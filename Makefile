@@ -422,8 +422,8 @@ helm-build: kubebuilder helmpatch-plugin yq ## Generate a helm-chart using kubeb
 	@EXTERNAL_PLUGINS_PATH="$(LOCALBIN)" "$(KUBEBUILDER)" edit --plugins=helm.kubebuilder.io/v2-alpha,$(HELMPATCH_NAME)/$(HELMPATCH_VERSION) --output-dir=$(HELM_OUTPUT_DIR)
 	@"$(YQ)" -ie '.manager.labels = {}' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '.manager.annotations = {}' $(HELM_CHART_DIR)/values.yaml
-	@"$(YQ)" -ie '.manager.image = {"repository": strenv(OCULAR_CONTROLLER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(OCULAR_VERSION)}' $(HELM_CHART_DIR)/values.yaml
-	@"$(YQ)" -ie '.sidecar.image =  {"repository": strenv(OCULAR_SIDECAR_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": strenv(OCULAR_VERSION)}' $(HELM_CHART_DIR)/values.yaml
+	@"$(YQ)" -ie '.manager.image = {"repository": strenv(OCULAR_CONTROLLER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": "v{{ .Chart.AppVersion }}"}' $(HELM_CHART_DIR)/values.yaml
+	@"$(YQ)" -ie '.sidecar.image =  {"repository": strenv(OCULAR_SIDECAR_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": "v{{ .Chart.AppVersion }}"}' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '(.sidecar | key) head_comment="Configure Ocular sidecar image"' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' $(HELM_CHART_DIR)/Chart.yaml
 
