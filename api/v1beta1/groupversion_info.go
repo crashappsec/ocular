@@ -6,7 +6,7 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-// Package v1 contains API Schema definitions for the  v1 API group.
+// Package v1beta1 contains API Schema definitions for the  v1beta1 API group.
 // +kubebuilder:object:generate=true
 // +groupName=ocular.crashoverride.run
 package v1beta1
@@ -23,32 +23,18 @@ const (
 )
 
 var (
-	// GroupVersion is group version used to register these objects.
-	GroupVersion = schema.GroupVersion{Group: Group, Version: Version}
 	// SchemeGroupVersion is group version used to register these objects.
-	// It is the same as GroupVersion and provided for legacy compatibility.
-	SchemeGroupVersion = GroupVersion
+	// This name is used by applyconfiguration generators (e.g. controller-gen).
+	SchemeGroupVersion = schema.GroupVersion{Group: Group, Version: Version}
+
+	// GroupVersion is an alias for SchemeGroupVersion, for backward compatibility.
+	GroupVersion = SchemeGroupVersion
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme.
-	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
+	SchemeBuilder = runtime.NewSchemeBuilder(func(scheme *runtime.Scheme) error {
+		metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
+		return nil
+	})
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
-
-func addKnownTypes(scheme *runtime.Scheme) error {
-	scheme.AddKnownTypes(SchemeGroupVersion,
-		&Downloader{}, &DownloaderList{},
-		&Uploader{}, &UploaderList{},
-		&Profile{}, &ProfileList{},
-		&ClusterDownloader{}, &ClusterDownloaderList{},
-		&ClusterUploader{}, &ClusterUploaderList{},
-		&Pipeline{}, &PipelineList{},
-		&Crawler{}, &CrawlerList{},
-		&ClusterCrawler{}, &ClusterCrawlerList{},
-		&Search{}, &SearchList{},
-		&CronSearch{}, &CronSearchList{},
-	)
-
-	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
-	return nil
-}

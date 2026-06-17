@@ -43,25 +43,25 @@ var _ = Describe("Search Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default",
+			Namespace: testNamespace,
 		}
 		search := &v1beta1.Search{}
 
 		crawlerTypeNamespacedName := types.NamespacedName{
 			Name:      crawlerName,
-			Namespace: "default",
+			Namespace: testNamespace,
 		}
 		crawler := &v1beta1.Crawler{}
 
 		serviceAccountNamespacedName := types.NamespacedName{
 			Name:      serviceAccountName,
-			Namespace: "default",
+			Namespace: testNamespace,
 		}
 		serviceAccount := &corev1.ServiceAccount{}
 
 		clusterRoleNamespacedName := types.NamespacedName{
 			Name:      searchClusterRole,
-			Namespace: "default",
+			Namespace: testNamespace,
 		}
 		clusterRole := &rbacv1.ClusterRole{}
 
@@ -73,7 +73,7 @@ var _ = Describe("Search Controller", func() {
 				clusterRoleResource := &rbacv1.ClusterRole{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      searchClusterRole,
-						Namespace: "default",
+						Namespace: testNamespace,
 					},
 				}
 				Expect(k8sClient.Create(ctx, clusterRoleResource)).To(Succeed())
@@ -85,7 +85,7 @@ var _ = Describe("Search Controller", func() {
 				crawlerResource := &v1beta1.Crawler{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      crawlerName,
-						Namespace: "default",
+						Namespace: testNamespace,
 					},
 					Spec: v1beta1.CrawlerSpec{
 						Container: corev1.Container{
@@ -117,7 +117,7 @@ var _ = Describe("Search Controller", func() {
 				resource := &v1beta1.Search{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
-						Namespace: "default",
+						Namespace: testNamespace,
 					},
 					Spec: v1beta1.SearchSpec{
 						ServiceAccountName: serviceAccountName,
@@ -252,18 +252,18 @@ var _ = Describe("Search Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default",
+			Namespace: testNamespace,
 		}
 		search := &v1beta1.Search{}
 
 		crawlerTypeNamespacedName := types.NamespacedName{
 			Name:      crawlerName,
-			Namespace: "default",
+			Namespace: testNamespace,
 		}
 		crawler := &v1beta1.Crawler{}
 		pipelineTypeNamespacedName := types.NamespacedName{
 			Name:      childPipelineName,
-			Namespace: "default",
+			Namespace: testNamespace,
 		}
 		pipeline := &v1beta1.Pipeline{}
 
@@ -276,7 +276,7 @@ var _ = Describe("Search Controller", func() {
 				crawlerResource := &v1beta1.Crawler{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      crawlerName,
-						Namespace: "default",
+						Namespace: testNamespace,
 					},
 					Spec: v1beta1.CrawlerSpec{
 						Container: corev1.Container{
@@ -296,7 +296,7 @@ var _ = Describe("Search Controller", func() {
 				resource := &v1beta1.Search{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
-						Namespace: "default",
+						Namespace: testNamespace,
 					},
 					Spec: v1beta1.SearchSpec{
 						CrawlerRef: v1beta1.ParameterizedLocalObjectReference{
@@ -317,7 +317,7 @@ var _ = Describe("Search Controller", func() {
 				pipelineResource := &v1beta1.Pipeline{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      childPipelineName,
-						Namespace: "default",
+						Namespace: testNamespace,
 						Labels: map[string]string{
 							v1beta1.ScheduledByLabelKey: search.Name,
 						},

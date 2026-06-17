@@ -10,6 +10,7 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // ClusterUploaderStatus defines the observed state of ClusterUploader.
@@ -50,4 +51,11 @@ type ClusterUploaderList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []ClusterUploader `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ClusterUploader{}, &ClusterUploaderList{})
+		return nil
+	})
 }

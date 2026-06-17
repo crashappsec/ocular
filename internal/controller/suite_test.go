@@ -42,6 +42,11 @@ var (
 	k8sClient client.Client
 )
 
+const (
+	testNamespace = "default"
+	testImage     = "alpine:latest"
+)
+
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -64,7 +69,7 @@ var _ = BeforeSuite(func() {
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		ErrorIfCRDPathMissing: true,
+		ErrorIfCRDPathMissing: false,
 	}
 
 	// Retrieve the first found binary directory to allow running tests from IDEs

@@ -146,7 +146,7 @@ func validateCronSearch(cronSearch *v1beta1.CronSearch) error {
 	}
 
 	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "CronSearch"},
+		schema.GroupKind{Group: v1beta1.Group, Kind: "CronSearch"},
 		cronSearch.Name, allErrs)
 }
 

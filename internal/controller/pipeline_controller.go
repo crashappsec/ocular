@@ -5,7 +5,6 @@
 // the FSF, either version 3 of the License, or (at your option) any later version.
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
-
 package controller
 
 import (
@@ -39,6 +38,7 @@ var (
 			Name: "pipelines_completed_total",
 			Help: "Number of ocular pipelines created",
 		},
+		// nolint:goconst
 		[]string{"profile", "downloader", "namespace", "phase"},
 	)
 	pipelinesRunning = prometheus.NewGaugeVec(

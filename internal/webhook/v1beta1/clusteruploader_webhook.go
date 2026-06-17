@@ -5,7 +5,6 @@
 // the FSF, either version 3 of the License, or (at your option) any later version.
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
-
 package v1beta1
 
 import (
@@ -82,7 +81,7 @@ func (v *ClusterUploaderCustomValidator) ValidateUpdate(ctx context.Context, old
 					missingParamNames = append(missingParamNames, u.Name)
 				}
 				return nil, apierrors.NewForbidden(
-					schema.GroupResource{Group: "ocular.crashoverride.run", Resource: oldUploader.Name},
+					schema.GroupResource{Group: v1beta1.Group, Resource: oldUploader.Name},
 					oldUploader.Name, fmt.Errorf("dependant pipeline %s/%s does not define newly required parameters: [%s]", profile.Namespace, profile.Name, strings.Join(missingParamNames, ",")))
 			}
 		}
@@ -107,7 +106,7 @@ func (v *ClusterUploaderCustomValidator) ValidateDelete(ctx context.Context, upl
 			profileNames = append(profileNames, profile.Name)
 		}
 		return nil, apierrors.NewForbidden(
-			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: uploader.Name}, uploader.Name,
+			schema.GroupResource{Group: v1beta1.Group, Resource: uploader.Name}, uploader.Name,
 			fmt.Errorf("cannot delete uploader with dependant profiles: [%s]", strings.Join(profileNames, ",")))
 	}
 

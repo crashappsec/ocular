@@ -80,7 +80,7 @@ func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler,
 				missingParamNames = append(missingParamNames, u.Name)
 			}
 			return nil, apierrors.NewForbidden(
-				schema.GroupResource{Group: "ocular.crashoverride.run", Resource: newCrawler.Name},
+				schema.GroupResource{Group: v1beta1.Group, Resource: newCrawler.Name},
 				newCrawler.Name, fmt.Errorf("dependant search %s does not define newly required parameters: [%s]", search.Name, strings.Join(missingParamNames, ",")))
 		}
 	}
@@ -98,7 +98,7 @@ func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler,
 				missingParamNames = append(missingParamNames, u.Name)
 			}
 			return nil, apierrors.NewForbidden(
-				schema.GroupResource{Group: "ocular.crashoverride.run", Resource: newCrawler.Name},
+				schema.GroupResource{Group: v1beta1.Group, Resource: newCrawler.Name},
 				newCrawler.Name, fmt.Errorf("dependant cronsearch %s does not define newly required parameters: [%s]", cronsearch.Name, strings.Join(missingParamNames, ",")))
 		}
 	}
@@ -121,7 +121,7 @@ func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *v1
 			searchNames = append(searchNames, search.Name)
 		}
 		return nil, apierrors.NewForbidden(
-			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: crawler.Name}, crawler.Name,
+			schema.GroupResource{Group: v1beta1.Group, Resource: crawler.Name}, crawler.Name,
 			fmt.Errorf("cannot delete crawler with dependant searches: [%s]", strings.Join(searchNames, ",")))
 	}
 
@@ -136,7 +136,7 @@ func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *v1
 			cronSearchNames = append(cronSearchNames, cronSearch.Name)
 		}
 		return nil, apierrors.NewForbidden(
-			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: crawler.Name}, crawler.Name,
+			schema.GroupResource{Group: v1beta1.Group, Resource: crawler.Name}, crawler.Name,
 			fmt.Errorf("cannot delete crawler with dependant cron searches: [%s]", strings.Join(cronSearchNames, ",")))
 	}
 

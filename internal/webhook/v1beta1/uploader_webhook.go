@@ -92,7 +92,7 @@ func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldUploade
 					missingParamNames = append(missingParamNames, u.Name)
 				}
 				return nil, apierrors.NewForbidden(
-					schema.GroupResource{Group: "ocular.crashoverride.run", Resource: oldUploader.Name},
+					schema.GroupResource{Group: v1beta1.Group, Resource: oldUploader.Name},
 					oldUploader.Name, fmt.Errorf("dependant profile %s does not define newly required parameters: [%s]", profile.Name, strings.Join(missingParamNames, ",")))
 			}
 		}
@@ -117,7 +117,7 @@ func (v *UploaderCustomValidator) ValidateDelete(ctx context.Context, uploader *
 			profileNames = append(profileNames, profile.Name)
 		}
 		return nil, apierrors.NewForbidden(
-			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: uploader.Name}, uploader.Name,
+			schema.GroupResource{Group: v1beta1.Group, Resource: uploader.Name}, uploader.Name,
 			fmt.Errorf("cannot delete uploader with dependant profiles: [%s]", strings.Join(profileNames, ",")))
 	}
 

@@ -5,7 +5,6 @@
 // the FSF, either version 3 of the License, or (at your option) any later version.
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
-
 package v1beta1
 
 import (
@@ -81,7 +80,7 @@ func (v *ClusterCrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldC
 				missingParamNames = append(missingParamNames, u.Name)
 			}
 			return nil, apierrors.NewForbidden(
-				schema.GroupResource{Group: "ocular.crashoverride.run", Resource: newCrawler.Name},
+				schema.GroupResource{Group: v1beta1.Group, Resource: newCrawler.Name},
 				newCrawler.Name, fmt.Errorf("dependant search %s does not define newly required parameters: [%s]", search.Name, strings.Join(missingParamNames, ",")))
 		}
 	}
@@ -99,7 +98,7 @@ func (v *ClusterCrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldC
 				missingParamNames = append(missingParamNames, u.Name)
 			}
 			return nil, apierrors.NewForbidden(
-				schema.GroupResource{Group: "ocular.crashoverride.run", Resource: newCrawler.Name},
+				schema.GroupResource{Group: v1beta1.Group, Resource: newCrawler.Name},
 				newCrawler.Name, fmt.Errorf("dependant cronsearch %s does not define newly required parameters: [%s]", cronsearch.Name, strings.Join(missingParamNames, ",")))
 		}
 	}
@@ -122,7 +121,7 @@ func (v *ClusterCrawlerCustomValidator) ValidateDelete(ctx context.Context, clus
 			searchNames = append(searchNames, search.Name)
 		}
 		return nil, apierrors.NewForbidden(
-			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: clusterCrawler.Name}, clusterCrawler.Name,
+			schema.GroupResource{Group: v1beta1.Group, Resource: clusterCrawler.Name}, clusterCrawler.Name,
 			fmt.Errorf("cannot delete cluster crawler with dependant searches: [%s]", strings.Join(searchNames, ",")))
 	}
 
@@ -137,7 +136,7 @@ func (v *ClusterCrawlerCustomValidator) ValidateDelete(ctx context.Context, clus
 			cronSearchNames = append(cronSearchNames, cronSearch.Name)
 		}
 		return nil, apierrors.NewForbidden(
-			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: clusterCrawler.Name}, clusterCrawler.Name,
+			schema.GroupResource{Group: v1beta1.Group, Resource: clusterCrawler.Name}, clusterCrawler.Name,
 			fmt.Errorf("cannot delete crawler with dependant cron searches: [%s]", strings.Join(cronSearchNames, ",")))
 	}
 

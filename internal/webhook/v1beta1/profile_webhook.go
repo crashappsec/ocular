@@ -91,7 +91,7 @@ func (v *ProfileCustomValidator) ValidateUpdate(ctx context.Context, oldProfile,
 				missingParamNames = append(missingParamNames, u.Name)
 			}
 			return nil, apierrors.NewForbidden(
-				schema.GroupResource{Group: "ocular.crashoverride.run", Resource: newProfile.Name},
+				schema.GroupResource{Group: v1beta1.Group, Resource: newProfile.Name},
 				newProfile.Name, fmt.Errorf("dependant pipeline %s does not define newly required parameters: [%s]", pipeline.Name, strings.Join(missingParamNames, ",")))
 		}
 
@@ -114,7 +114,7 @@ func (v *ProfileCustomValidator) ValidateDelete(ctx context.Context, profile *v1
 			pipelineNames = append(pipelineNames, pipeline.GetName())
 		}
 		return nil, apierrors.NewForbidden(
-			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: profile.Name},
+			schema.GroupResource{Group: v1beta1.Group, Resource: profile.Name},
 			profile.Name,
 			fmt.Errorf("cannot delete profile still used by active pipelines in namespace %s: [%s]", profile.Namespace, strings.Join(pipelineNames, ", ")),
 		)
