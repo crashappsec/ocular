@@ -15,6 +15,8 @@ const (
 	pipelineTargetVolumeName   = "target"
 	pipelineMetadataVolumeName = "metadata"
 
+	pipelineUploadTokenVolumeName = "upload-token"
+
 	/* Ports */
 
 	// extractorPort is the port that

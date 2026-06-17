@@ -24,4 +24,5 @@ spec:
     parameters:
       - name: TEST_PARAM
         value: "PASS"
-  ttlSecondsMaxLifetime: 3600 # delete after an hour in case test isnt cleaned up
+  ttlSecondsMaxLifetime: 3600  # delete after an hour
+

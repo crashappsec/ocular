@@ -39,6 +39,7 @@ var (
 			Name: "search_pods_total",
 			Help: "Number of search pods ocular has created",
 		},
+		// nolint:goconst
 		[]string{"crawler", "namespace"},
 	)
 	searchDurationSeconds = prometheus.NewSummaryVec(

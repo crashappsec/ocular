@@ -85,7 +85,7 @@ func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldSearch, n
 
 	if oldSearch.Spec.ServiceAccountName != newSearch.Spec.ServiceAccountName {
 		return nil, apierrors.NewInvalid(
-			schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
+			schema.GroupKind{Group: v1beta1.Group, Kind: "Search"},
 			newSearch.Name,
 			field.ErrorList{
 				field.Invalid(field.NewPath("spec").Child("serviceAccountName"), newSearch.Spec.ServiceAccountName, "serviceAccountName cannot be changed once set"),
@@ -117,7 +117,7 @@ func validateSearch(ctx context.Context, c client.Client, search *v1beta1.Search
 	}
 
 	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "ocular.crashoverride.run", Kind: "Search"},
+		schema.GroupKind{Group: v1beta1.Group, Kind: "Search"},
 		search.Name, allErrs)
 }
 

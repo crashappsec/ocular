@@ -12,39 +12,50 @@ SCRIPTS_DIR="/scripts"
 
 source "$SCRIPTS_DIR/common.sh"
 
-validate-arguments() {
-          FOUND_GIT_TEST=false
-          GIT_TEST_PATH="$OCULAR_RESULTS_DIR/git.test"
-          FOUND_ENV_TEST=false
-          ENV_TEST_PATH="$OCULAR_RESULTS_DIR/env.test"
-          FOUND_GIT_METADATA=false
-          GIT_METADATA_PATH="$OCULAR_METADATA_DIR/git.metadata"
+
+FOUND_GIT_TEST=false
+GIT_TEST_PATH="$OCULAR_RESULTS_DIR/git.test"
+FOUND_ENV_TEST=false
+ENV_TEST_PATH="$OCULAR_RESULTS_DIR/env.test"
+FOUND_GIT_METADATA=false
+GIT_METADATA_PATH="$OCULAR_METADATA_DIR/git.metadata"
+
+if [ "$1" != "--" ]; then
+    fail "-- not first argument"
+fi
+shift 1
+
+if [ "$#" -ne 3 ]; then
+    fail "expected 3 arguments, got $#"
+fi
+
+while [ "$#" -gt 0 ]; do
+    echo "checking file $1"
+    case "$1" in
+        $GIT_TEST_PATH)
+            if $FOUND_GIT_TEST; then fail "duplicate entry for git test"; fi
+            FOUND_GIT_TEST=true
+
+	    validate-file-contents "$GIT_TEST_PATH" "PASS"
+            ;;
+        $ENV_TEST_PATH)
+            if $FOUND_ENV_TEST; then fail "duplicate entry for env test"; else FOUND_ENV_TEST=true; fi
+
+	    validate-file-contents "$ENV_TEST_PATH" "PASS"
+            ;;
+        $GIT_METADATA_PATH)
+            if $FOUND_GIT_METADATA; then fail "duplicate entry for env test"; fi
+            FOUND_GIT_METADATA=true
+	    validate-file-contents "$GIT_METADATA_PATH" "84462a71dea813105ce746718d7618aeda8923b8"
+            ;;
+        *)
+            fail "unknown argument given via CLI: $1";;
+    esac
+    shift 1
+done
 
 
-          while [ "$#" -gt 0 ]; do
-              case "$1" in
-                  $GIT_TEST_PATH)
-                    if $FOUND_VALIDATE_GIT; then fail "duplicate entry for git test"; fi
-                    FOUND_VALIDATE_GIT=true
 
-		    validate-file-contents "$GIT_TEST_PATH" "PASS"
-                    ;;
-                  $ENV_TEST_PATH)
-                    if $FOUND_ENV_TEST; then fail "duplicate entry for env test"; else FOUND_ENV_TEST=true; fi
-
-		    validate-file-contents "$ENV_TEST_PATH" "PASS"
-                    ;;
-                  $GIT_METADATA_PATH)
-                    if $FOUND_GIT_METADATA; then fail "duplicate entry for env test"; fi
-                    FOUND_GIT_METADATA=true
-		    validate-file-contents "$GIT_METADATA_PATH" "84462a71dea813105ce746718d7618aeda8923b8"
-                    ;;
-                  *)
-                    fail "unknown argument given via CLI: $1";;
-              esac
-              shift 1
-          done
-}
 
 validate-common-env
 

@@ -30,7 +30,7 @@ var _ = Describe("CronSearch Controller", func() {
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default",
+			Namespace: testNamespace,
 		}
 		cronsearch := &ocularcrashoverriderunv1beta1.CronSearch{}
 
@@ -41,7 +41,7 @@ var _ = Describe("CronSearch Controller", func() {
 				resource := &ocularcrashoverriderunv1beta1.CronSearch{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
-						Namespace: "default",
+						Namespace: testNamespace,
 					},
 					Spec: ocularcrashoverriderunv1beta1.CronSearchSpec{
 						Schedule: "*/1 * * * *",

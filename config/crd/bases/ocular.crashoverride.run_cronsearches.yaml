@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: cronsearches.ocular.crashoverride.run
 spec:
   group: ocular.crashoverride.run
@@ -342,7 +342,7 @@ spec:
                                       after the specified number of seconds have passed since the pipeline was created,
                                       regardless of its state.
                                     format: int32
-                                    minimum: 0
+                                    minimum: 1
                                     type: integer
                                   uploadServiceAccountName:
                                     description: |-

@@ -18,6 +18,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,7 +30,7 @@ import (
 var _ = Describe("Pipeline Controller", func() {
 	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
-		namespace        = "default"
+		namespace        = testNamespace
 		runtimeClassName = "kata"
 		sidecarImage     = testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet) + ":latest"
 		downloader       *v1beta1.Downloader
@@ -42,8 +43,9 @@ var _ = Describe("Pipeline Controller", func() {
 			},
 			Spec: v1beta1.DownloaderSpec{
 				Container: corev1.Container{
-					Name:    "downloader-container",
-					Image:   "alpine:latest",
+					Name:  "downloader-container",
+					Image: testImage,
+					// nolint:goconst
 					Command: []string{"/bin/sh", "-c"},
 					Args:    []string{"echo Downloading...; echo $OCULAR_TARGET_IDENTIFIER > ./target.txt"},
 				},
@@ -75,7 +77,7 @@ var _ = Describe("Pipeline Controller", func() {
 					Containers: []v1beta1.ConditionalContainer{
 						{
 							Container: corev1.Container{
-								Image:   "alpine:latest",
+								Image:   testImage,
 								Name:    "profile-container",
 								Command: []string{"/bin/sh", "-c"},
 								Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
@@ -83,16 +85,18 @@ var _ = Describe("Pipeline Controller", func() {
 						},
 						{
 							Container: corev1.Container{
-								Image: "alpine:latest",
-								Name:  "do-not-include",
+								Image: testImage,
+								// nolint:goconst
+								Name: "do-not-include",
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
+								// nolint:goconst
 								WhenParamSet: "DEFAULT_SET",
 							},
 						},
 						{
 							Container: corev1.Container{
-								Image: "alpine:latest",
+								Image: testImage,
 								Name:  "should-include",
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
@@ -230,7 +234,7 @@ var _ = Describe("Pipeline Controller", func() {
 				Spec: v1beta1.UploaderSpec{
 					Container: corev1.Container{
 						Name:    "uploader-container",
-						Image:   "alpine:latest",
+						Image:   testImage,
 						Command: []string{"/bin/sh", "-c"},
 						Args:    []string{"echo uploading...; cat $OCULAR_RESULTS_DIR/results.txt; echo done."},
 					},
@@ -260,7 +264,7 @@ var _ = Describe("Pipeline Controller", func() {
 					Containers: []v1beta1.ConditionalContainer{
 						{
 							Container: corev1.Container{
-								Image:   "alpine:latest",
+								Image:   testImage,
 								Name:    "profile-container",
 								Command: []string{"/bin/sh", "-c"},
 								Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
@@ -268,7 +272,7 @@ var _ = Describe("Pipeline Controller", func() {
 						},
 						{
 							Container: corev1.Container{
-								Image: "alpine:latest",
+								Image: testImage,
 								Name:  "do-not-include",
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
@@ -277,7 +281,7 @@ var _ = Describe("Pipeline Controller", func() {
 						},
 						{
 							Container: corev1.Container{
-								Image: "alpine:latest",
+								Image: testImage,
 								Name:  "should-include",
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
@@ -415,10 +419,23 @@ var _ = Describe("Pipeline Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadSuffix, Namespace: pipeline.Namespace}, &corev1.Service{})).To(Succeed())
 
+			// Next one awaits scan pod
+			var resp controllerruntime.Result
+			resp, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      pipeline.Name,
+					Namespace: pipeline.Namespace,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.RequeueAfter).NotTo(BeZero())
+
 			uploadPod.Status.InitContainerStatuses = append(uploadPod.Status.InitContainerStatuses,
 				corev1.ContainerStatus{
-					Name:    sidecarReceiverContainerName,
-					Started: new(true),
+					Name: sidecarReceiverContainerName,
+					State: corev1.ContainerState{
+						Running: &corev1.ContainerStateRunning{},
+					},
 				})
 			err = k8sClient.Status().Update(ctx, uploadPod)
 			Expect(err).NotTo(HaveOccurred())
@@ -492,7 +509,7 @@ var _ = Describe("Pipeline Controller", func() {
 					Containers: []v1beta1.ConditionalContainer{
 						{
 							Container: corev1.Container{
-								Image: "alpine:latest",
+								Image: testImage,
 								Name:  "should-include",
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
@@ -501,8 +518,9 @@ var _ = Describe("Pipeline Controller", func() {
 						},
 						{
 							Container: corev1.Container{
-								Image: "alpine:latest",
-								Name:  "do-not-include",
+								Image: testImage,
+								// nolint:goconst
+								Name: "do-not-include",
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_EMPTY",

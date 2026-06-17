@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +67,14 @@ func uploadFiles(ctx context.Context, uploaderURL string, files []string) error 
 		merr   *multierror.Error
 		logger = log.FromContext(ctx)
 	)
+
+	rawtoken, err := os.ReadFile(v1beta1.UploadTokenPath)
+	if err != nil {
+		return fmt.Errorf("failed to read token: %w", err)
+	}
+
+	token := strings.TrimSpace(string(rawtoken))
+
 	for _, file := range files {
 		filePath := filepath.Clean(file)
 		wg.Go(func() {
@@ -85,6 +94,7 @@ func uploadFiles(ctx context.Context, uploaderURL string, files []string) error 
 			}
 
 			req.ContentLength = size
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
 			retries := 0
 			for {

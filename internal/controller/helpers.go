@@ -14,6 +14,7 @@ import (
 
 	"github.com/crashappsec/ocular/internal/containers"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -23,8 +24,26 @@ import (
 func updateStatus(ctx context.Context, c client.Client, obj client.Object, errorMsgKeysAndValues ...any) error {
 	l := logf.FromContext(ctx)
 	if updateErr := c.Status().Update(ctx, obj); updateErr != nil {
-		l.Error(updateErr, fmt.Sprintf("failed to update status of %s", obj.GetName()), errorMsgKeysAndValues...)
+		kind := schema.GroupVersionKind{Kind: "unknown"}
+		if objKind := obj.GetObjectKind(); objKind != nil {
+			kind = objKind.GroupVersionKind()
+		}
+		l.Error(updateErr, fmt.Sprintf("failed to update status for %s of type %s", obj.GetName(), kind),
+			errorMsgKeysAndValues...)
 		return updateErr
+	}
+	return nil
+}
+
+func patchResource(ctx context.Context, c client.Client, obj client.Object, patch client.Patch) error {
+	l := logf.FromContext(ctx)
+	if patchErr := c.Patch(ctx, obj, patch); patchErr != nil {
+		kind := schema.GroupVersionKind{Kind: "unknown"}
+		if objKind := obj.GetObjectKind(); objKind != nil {
+			kind = objKind.GroupVersionKind()
+		}
+		l.Error(patchErr, fmt.Sprintf("failed to patch resource %s of type %s", obj.GetName(), kind))
+		return patchErr
 	}
 	return nil
 }

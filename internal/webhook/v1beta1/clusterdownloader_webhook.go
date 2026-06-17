@@ -78,7 +78,7 @@ func (v *ClusterDownloaderCustomValidator) ValidateUpdate(ctx context.Context, o
 				missingParamNames = append(missingParamNames, u.Name)
 			}
 			return nil, apierrors.NewForbidden(
-				schema.GroupResource{Group: "ocular.crashoverride.run", Resource: newDownloader.Name},
+				schema.GroupResource{Group: v1beta1.Group, Resource: newDownloader.Name},
 				newDownloader.Name, fmt.Errorf("dependant pipeline %s/%s does not define newly required parameters: [%s]", pipeline.Namespace, pipeline.Name, strings.Join(missingParamNames, ",")))
 		}
 	}
@@ -100,7 +100,7 @@ func (v *ClusterDownloaderCustomValidator) ValidateDelete(ctx context.Context, d
 			pipelineNames = append(pipelineNames, fmt.Sprintf("%s/%s", pipeline.Namespace, pipeline.Name))
 		}
 		return nil, apierrors.NewForbidden(
-			schema.GroupResource{Group: "ocular.crashoverride.run", Resource: downloader.Name}, downloader.Name,
+			schema.GroupResource{Group: v1beta1.Group, Resource: downloader.Name}, downloader.Name,
 			fmt.Errorf("cannot delete cluster downloader with dependant pipelines: [%s]", strings.Join(pipelineNames, ",")))
 	}
 

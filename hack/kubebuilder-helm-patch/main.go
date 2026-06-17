@@ -22,7 +22,6 @@ import (
 
 func main() {
 	log.Println("starting helm patch generator")
-	pluginName := path.Base(os.Args[0])
 
 	reader := bufio.NewReader(os.Stdin)
 	input, err := io.ReadAll(reader)
@@ -37,9 +36,10 @@ func main() {
 		log.Fatalf("failed to unmarshal STDIN to JSON: %s", err)
 	}
 
-	log.Println("parsed plugin request")
+	pluginName := path.Base(os.Args[0])
+	log.Println("parsed plugin request for " + pluginName)
 
-	response := external.PluginResponse{
+	response := &external.PluginResponse{
 		APIVersion: pluginRequest.APIVersion,
 		Command:    pluginRequest.Command,
 		Universe:   make(map[string]string),
@@ -48,10 +48,11 @@ func main() {
 	case "init", "flags", "metadata":
 		// no-op
 	case "edit":
-		err = validateHelmPluginCalled(pluginName, pluginRequest)
+		var outputDir string
+		outputDir, err = getOutputDir(pluginRequest)
 		if err == nil {
 			log.Println("patching helm chart")
-			response, err = patchHelmChart(pluginRequest)
+			response, err = patchHelmChart(outputDir, pluginRequest)
 		}
 	default:
 		err = fmt.Errorf("unknown command: %s", pluginRequest.Command)
@@ -70,35 +71,29 @@ func main() {
 	fmt.Printf("%s", output)
 }
 
-const helmPluginName = "helm.kubebuilder.io"
+const helmPluginName = "helm.kubebuilder.io/v2-alpha"
 
-func validateHelmPluginCalled(pluginName string, req *external.PluginRequest) error {
-	log.Printf("validating plugin '%s' called before current plugin ('%s')", helmPluginName, pluginName)
-
-	// not sure why but the helm plugin name is not found in
-	// plugin chain, when from the documentation it seems
-	// like it should. keeping this here in case that is ever
-	// fixed.
-	// var foundHelm bool
-	// for _, plugin := range req.PluginChain {
-	// 	if strings.HasPrefix(plugin, helmPluginName+"/v") {
-	// 		foundHelm = true
-	// 	} else if strings.HasPrefix(plugin, pluginName+"/v") {
-	// 		if foundHelm {
-	// 			return nil
-	// 		}
-	// 		return fmt.Errorf("plugin '%s' is a pre-requiste, "+
-	// 			"ensure that it listed before the current plugin "+
-	// 			"in the argument --plugins",
-	// 			helmPluginName)
-	// 	}
-	// }
-
-	_, chartExists := req.Universe[chartPath]
-	_, valuesExists := req.Universe[chartValuesPath]
-	if !chartExists || !valuesExists {
-		return fmt.Errorf("did not find chart in universe, make sure to run the '%s' plugin before", helmPluginName)
+func getOutputDir(req *external.PluginRequest) (string, error) {
+	log.Print("getting output dir from config kubebuilder helm config")
+	plugins, ok := req.Config["plugins"].(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("unable to list plugins from request")
 	}
-	return nil
+
+	config, ok := plugins[helmPluginName].(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("unable to read kubebuilder helm config '%s'", helmPluginName)
+	}
+
+	outputDir, ok := config["output"].(string)
+	if !ok {
+		return "", fmt.Errorf("no output dir found in config")
+	}
+
+	_, chartExists := req.Universe[path.Join(outputDir, chartPath)]
+	if !chartExists {
+		return "", fmt.Errorf("did not find chart in universe, make sure to run the '%s' plugin before", helmPluginName)
+	}
+	return outputDir, nil
 
 }

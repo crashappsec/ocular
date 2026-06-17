@@ -303,8 +303,8 @@ hack/ignore
 # Ignore specific env files
 .env.*
 
-# Commit go.work file to support Go modules
-!go.work
+# ignore gopls configure
+.gopls.json
 
 # AI generated files
 CLAUDE.md

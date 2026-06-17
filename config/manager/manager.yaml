@@ -60,7 +60,10 @@ spec:
         image: controller
         imagePullPolicy: IfNotPresent
         name: manager
-        ports: []
+        ports:
+        - containerPort: 8081
+          name: health
+          protocol: TCP
         env: []
         securityContext:
           readOnlyRootFilesystem: true
