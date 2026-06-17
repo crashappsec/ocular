@@ -775,7 +775,12 @@ func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline) []corev1.EnvVar
 }
 
 func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline *v1beta1.Pipeline) (ctrl.Result, error) {
-	l := logf.FromContext(ctx)
+	l := logf.FromContext(ctx).WithValues(
+		"pipeline", pipeline.Name, "namespace", pipeline.Namespace,
+		"profile", pipeline.Spec.ProfileRef.Name, "downloader", pipeline.Spec.DownloaderRef.Name,
+		"target", pipeline.Spec.Target, "phase", pipeline.Status.Phase,
+		"completion-time", pipeline.Status.CompletionTime, "start-time", pipeline.Status.StartTime,
+	)
 	l.Info("handling post completion")
 	if controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
 		patch := client.MergeFrom(pipeline.DeepCopy())
@@ -789,16 +794,10 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 		duration := pipeline.Status.CompletionTime.Sub(pipeline.Status.StartTime.Time)
 		pipelinesCompleted.With(metricLabels).Add(1)
 		pipelineDurationSeconds.With(metricLabels).Observe(duration.Seconds())
-		l.Info("pipeline metrics updated with completion",
-			"pipeline", pipeline.Name, "namespace", pipeline.Namespace,
-			"profile", pipeline.Spec.ProfileRef.Name, "downloader", pipeline.Spec.DownloaderRef.Name,
-			"target", pipeline.Spec.Target,
-			"start-time", pipeline.Status.StartTime, "completion-time", pipeline.Status.CompletionTime)
+		l.Info("pipeline metrics updated with completion")
 	}
 	if pipeline.Spec.TTLSecondsAfterFinished == nil {
-		l.Info("pipeline has completed",
-			"name", pipeline.GetName(),
-			"completionTime", pipeline.Status.CompletionTime)
+		l.Info("pipeline has completed")
 		return ctrl.Result{}, nil
 	}
 
@@ -806,15 +805,11 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 	wait := time.Until(pipeline.Status.CompletionTime.Add(ttl))
 	if wait <= 0 {
 		l.Info("pipeline has exceeded its TTL, deleting",
-			"name", pipeline.GetName(),
-			"completionTime", pipeline.Status.CompletionTime,
 			"ttl", ttl)
 		return ctrl.Result{}, client.IgnoreNotFound(r.Delete(ctx, pipeline))
 	}
 
 	l.Info("pipeline has completed, checking TTL before next reconciliation",
-		"name", pipeline.GetName(),
-		"completion-time", pipeline.Status.CompletionTime,
 		"ttl", ttl.Seconds(),
 		"requeue-after", wait.String(),
 	)
