@@ -1,5 +1,23 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
+# [v0.3.2](https://github.com/crashappsec/ocular/releases/tag/v0.3.2) - **June 17th, 2026**
+
+### Added
+
+- Helm charts now template `.Values` into `$values`
+  - This allows for user speicfied data in `values.yaml` to include templates `{{ ... }}`
+
+### Changed
+
+- Uploader pods now validate results come from equivalent scan pod
+  - Validated via the mounted serviceaccount token
+- Missing or zero content artirfacts are now extracted to empty files
+
+### Fixed
+
+- Improve reconciler loop handling of post-completion and TTL
+- E2 tests validate contents of extracted artifacts
+
 # [v0.3.1](https://github.com/crashappsec/ocular/releases/tag/v0.3.1) - **May 22nd, 2026**
 
 ### Added
