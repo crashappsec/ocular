@@ -1,0 +1,92 @@
+# Copyright (C) 2025-2026 Crash Override, Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the FSF, either version 3 of the License, or (at your option) any later version.
+# See the LICENSE file in the root of this repository for full license text or
+# visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
+
+name: Test Chart
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+
+env:
+  OCULAR_CONTROLLER_IMG: ocular-controller:ci
+  OCULAR_SIDECAR_IMG: ocular-sidecar:ci
+  DOCKER_ARGS:
+
+jobs:
+  test-e2e:
+    name: Run on Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # ratchet:actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # ratchet:actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install the latest version of kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Create kind cluster
+        run: kind create cluster
+
+      - name: Prepare chalkular
+        run: |
+          go mod tidy
+          make docker-build-all
+          kind load docker-image $OCULAR_CONTROLLER_IMG
+          kind load docker-image $OCULAR_SIDECAR_IMG
+          make clean-helm helm-build
+
+      - name: Install Helm
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Verify Helm installation
+        run: helm version
+
+      - name: Lint Helm Chart
+        run: |
+          helm lint ./dist/chart
+
+
+      - name: Install cert-manager via Helm (wait for readiness)
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          helm install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --create-namespace \
+            --set crds.enabled=true \
+            --wait \
+            --timeout 300s
+
+        # TODO: Uncomment if Prometheus is enabled
+        #      - name: Install Prometheus Operator CRDs
+        #        run: |
+        #          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        #          helm repo update
+        #          helm install prometheus-crds prometheus-community/prometheus-operator-crds
+
+      - name: Install Helm chart for project
+        run: |
+          helm install my-release ./dist/chart --create-namespace --namespace ocular-system
+
+      - name: Check Helm release status
+        run: |
+          helm status my-release --namespace ocular-system
