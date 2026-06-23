@@ -143,6 +143,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to remove metrics finalizer upon deletion: %w", err)
 		}
+		l.Info("pipeline deleted before finalizer was removed, updating metrics")
 		pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Dec()
 		return ctrl.Result{}, nil
 	}
@@ -294,6 +295,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to add metrics finalizer: %w", err)
 			}
+			l.Info("pipeline starting, incrementing pipeline running count")
 			pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Inc()
 			return ctrl.Result{}, nil
 		}
