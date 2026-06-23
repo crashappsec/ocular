@@ -24,10 +24,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -94,9 +97,27 @@ func (r *PipelineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Pipeline{}).
 		Named("pipeline").
-		Owns(&corev1.Pod{}).
-		Owns(&corev1.Service{}).
+		Owns(&corev1.Pod{}, builder.WithPredicates(podStateChangedPredicate)).
+		Owns(&corev1.Service{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
+}
+
+// podStateChangedPredicate filters pod watch events to only
+// update when phase changed. Since Create/Delete are not
+// specified, they will be triggered for every create/delete
+var podStateChangedPredicate = predicate.Funcs{
+	UpdateFunc: func(e event.UpdateEvent) bool {
+		oldPod, ok1 := e.ObjectOld.(*corev1.Pod)
+		newPod, ok2 := e.ObjectNew.(*corev1.Pod)
+		if !ok1 || !ok2 {
+			return true
+		}
+
+		return oldPod.Status.Phase != newPod.Status.Phase
+		// we may need to check for when container status update
+		// !equality.Semantic.DeepEqual(oldPod.Status.InitContainerStatuses, newPod.Status.InitContainerStatuses) ||
+		// !equality.Semantic.DeepEqual(oldPod.Status.ContainerStatuses, newPod.Status.ContainerStatuses)
+	},
 }
 
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
@@ -231,7 +252,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			fallthrough
 		case controllerutil.OperationResultUpdated:
 			l.Info("upload pod was created or modified", "op", uploadPodOp)
-			return ctrl.Result{}, nil
 		}
 
 		uploadServiceOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, uploadService, func() error {
@@ -245,7 +265,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if uploadServiceOp == controllerutil.OperationResultCreated ||
 			uploadServiceOp == controllerutil.OperationResultUpdated {
 			l.Info("upload service was created or modified", "op", uploadServiceOp)
-			return ctrl.Result{}, nil
 		}
 
 		if pipeline.Status.StartTime.IsZero() && !uploadPodStarted(uploadPod) {
@@ -285,7 +304,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		scanPodsCreated.With(metricLabelsForPipeline(pipeline)).Inc()
 		fallthrough
 	case controllerutil.OperationResultUpdated:
-		return ctrl.Result{}, nil
+		l.Info("scan pod was created or modified", "op", scanPodOp)
 	}
 
 	if !pipeline.Status.StartTime.IsZero() {
