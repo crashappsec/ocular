@@ -560,6 +560,7 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 		parentParams := resources.ParseParameters(profile.Spec.Parameters, profile.Parameters, nil)
 
 		pod.Spec.Volumes = profile.Spec.Volumes
+		pod.Spec.Resources = pipeline.Spec.Resources.DeepCopy()
 		pod.Spec.ImagePullSecrets = make([]corev1.LocalObjectReference, 0)
 		for _, invocation := range uploaders {
 			baseContainer := invocation.Spec.Container
@@ -703,6 +704,8 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 				},
 			},
 		)
+
+		pod.Spec.Resources = pipeline.Spec.Resources.DeepCopy()
 
 		pod.Spec.ImagePullSecrets = slices.CompactFunc(
 			append(profile.Spec.ImagePullSecrets, downloader.Spec.ImagePullSecrets...),

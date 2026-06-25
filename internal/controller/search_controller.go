@@ -334,6 +334,7 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 			// TODO(fix)
 			RunAsUser: new(int64(0)),
 		}
+		pod.Spec.Resources = search.Spec.Resources.DeepCopy()
 		pod.Spec.ImagePullSecrets = crawler.Spec.ImagePullSecrets
 	}
 	return ctrl.SetControllerReference(search, pod, r.Scheme)

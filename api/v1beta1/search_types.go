@@ -9,6 +9,7 @@
 package v1beta1
 
 import (
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -69,6 +70,15 @@ type SearchSpec struct {
 	// Scheduler represents the configuration of the scheduler sidecar
 	// +optional
 	Scheduler SearchSchedulerSpec `json:"scheduler,omitempty"`
+
+	// Resources is the total amount of CPU and Memory resources required by all
+	// containers for a pod. This is applied to both the scan pod and upload pod
+	// (if the pipeline has one).
+	//
+	// This field enables fine-grained control over resource allocation for the
+	// entire pod, allowing resource sharing among containers in a pod.
+	// +optional
+	Resources *v1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // SearchSchedulerSpec configures the scheduler sidecar container
