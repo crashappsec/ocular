@@ -212,7 +212,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 		return ctrl.Result{}, patchStatus(logf.IntoContext(ctx, l), r.Client, pipeline, patch)
 	}
-	l = l.WithValues("scanPodOnly", pipeline.Status.ScanPodOnly)
+	l = l.WithValues("scan-pod-only", pipeline.Status.ScanPodOnly)
 
 	envVars := generateBasePipelineEnvironment(pipeline)
 	containerOpts := generateBaseContainerOptions(envVars)
@@ -244,7 +244,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, client.IgnoreAlreadyExists(fmt.Errorf("unable to generate new upload pod: %w", err))
 		}
 
-		l = l.WithValues("uploadPod", uploadPod.Name)
+		l = l.WithValues("upload-pod", uploadPod.Name)
 
 		switch uploadPodOp {
 		case controllerutil.OperationResultCreated:
@@ -261,7 +261,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, client.IgnoreAlreadyExists(fmt.Errorf("unable to generate new upload service: %w", err))
 		}
 
-		l = l.WithValues("uploadService", uploadService.Name)
+		l = l.WithValues("upload-service", uploadService.Name)
 		if uploadServiceOp == controllerutil.OperationResultCreated ||
 			uploadServiceOp == controllerutil.OperationResultUpdated {
 			l.Info("upload service was created or modified", "op", uploadServiceOp)
@@ -269,7 +269,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 		if pipeline.Status.StartTime.IsZero() && !uploadPodStarted(uploadPod) {
 			l.Info("upload pod and service created, awaiting upload pod ready")
-			return ctrl.Result{RequeueAfter: time.Second * 2}, nil
+			return ctrl.Result{RequeueAfter: time.Second, Priority: new(100)}, nil
 		}
 
 	}
@@ -297,7 +297,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, fmt.Errorf("unable to generate new scan pod: %w", err)
 	}
 
-	l = l.WithValues("scanPod", scanPod.Name)
+	l = l.WithValues("scan-pod", scanPod.Name)
 
 	switch scanPodOp {
 	case controllerutil.OperationResultCreated:
@@ -316,7 +316,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			}
 			l.Info("pipeline starting, incrementing pipeline running count")
 			pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Inc()
-			return ctrl.Result{}, nil
+			return ctrl.Result{Priority: new(25)}, nil
 		}
 
 		// Check for completion of pods and update status accordingly
@@ -325,9 +325,20 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Update status to reflect pods have been created
 	l.Info("marking pipeline as started")
-	startTime := metav1.Now()
+	startTime := scanPod.CreationTimestamp
 	patch := client.MergeFrom(pipeline.DeepCopy())
 	reason, message := "ScanPodSuccessfullyCreated", fmt.Sprintf("The scan pod %s has been created.", scanPod.Name)
+	if !pipeline.Status.ScanPodOnly {
+		reason, message = "UploadPodSuccessfullyCreated", fmt.Sprintf("The upload pod %s has been created.", uploadPod.GetName())
+		pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
+			Type:               v1beta1.PipelineUploadPodCreatedConditionType,
+			Status:             metav1.ConditionTrue,
+			Reason:             reason,
+			Message:            message,
+			LastTransitionTime: uploadPod.CreationTimestamp.Rfc3339Copy(),
+		})
+		pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
+	}
 	pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
 		Type:               v1beta1.PipelineScanPodCreatedConditionType,
 		Status:             metav1.ConditionTrue,
@@ -336,17 +347,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		LastTransitionTime: startTime.Rfc3339Copy(),
 	})
 
-	if !pipeline.Status.ScanPodOnly {
-		reason, message = "UploadPodSuccessfullyCreated", fmt.Sprintf("The upload pod %s has been created.", uploadPod.GetName())
-		pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
-			Type:               v1beta1.PipelineUploadPodCreatedConditionType,
-			Status:             metav1.ConditionTrue,
-			Reason:             reason,
-			Message:            message,
-			LastTransitionTime: startTime,
-		})
-		pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
-	}
 	pipeline.Status.StartTime = &startTime
 	pipeline.Status.Phase = v1beta1.PipelineDownloading
 	pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageInProgress
