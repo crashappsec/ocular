@@ -1,5 +1,17 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
+# [v0.3.3](https://github.com/crashappsec/ocular/releases/tag/v0.3.3) - **June 26th, 2026**
+
+### Added
+
+- Add ability to set resource requirements for pipeline and search pods
+
+### Changed
+
+- Use predicates for decreasing amount of reconcile queues for dependant resources
+- Add prority for reconciles for upload pods awaiting scan pod
+
+
 # [v0.3.2](https://github.com/crashappsec/ocular/releases/tag/v0.3.2) - **June 17th, 2026**
 
 ### Added

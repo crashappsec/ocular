@@ -24,10 +24,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -94,9 +97,27 @@ func (r *PipelineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Pipeline{}).
 		Named("pipeline").
-		Owns(&corev1.Pod{}).
-		Owns(&corev1.Service{}).
+		Owns(&corev1.Pod{}, builder.WithPredicates(podStateChangedPredicate)).
+		Owns(&corev1.Service{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
+}
+
+// podStateChangedPredicate filters pod watch events to only
+// update when phase changed. Since Create/Delete are not
+// specified, they will be triggered for every create/delete
+var podStateChangedPredicate = predicate.Funcs{
+	UpdateFunc: func(e event.UpdateEvent) bool {
+		oldPod, ok1 := e.ObjectOld.(*corev1.Pod)
+		newPod, ok2 := e.ObjectNew.(*corev1.Pod)
+		if !ok1 || !ok2 {
+			return true
+		}
+
+		return oldPod.Status.Phase != newPod.Status.Phase
+		// we may need to check for when container status update
+		// !equality.Semantic.DeepEqual(oldPod.Status.InitContainerStatuses, newPod.Status.InitContainerStatuses) ||
+		// !equality.Semantic.DeepEqual(oldPod.Status.ContainerStatuses, newPod.Status.ContainerStatuses)
+	},
 }
 
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
@@ -143,6 +164,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to remove metrics finalizer upon deletion: %w", err)
 		}
+		l.Info("pipeline deleted before finalizer was removed, updating metrics")
 		pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Dec()
 		return ctrl.Result{}, nil
 	}
@@ -190,7 +212,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 		return ctrl.Result{}, patchStatus(logf.IntoContext(ctx, l), r.Client, pipeline, patch)
 	}
-	l = l.WithValues("scanPodOnly", pipeline.Status.ScanPodOnly)
+	l = l.WithValues("scan-pod-only", pipeline.Status.ScanPodOnly)
 
 	envVars := generateBasePipelineEnvironment(pipeline)
 	containerOpts := generateBaseContainerOptions(envVars)
@@ -222,7 +244,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, client.IgnoreAlreadyExists(fmt.Errorf("unable to generate new upload pod: %w", err))
 		}
 
-		l = l.WithValues("uploadPod", uploadPod.Name)
+		l = l.WithValues("upload-pod", uploadPod.Name)
 
 		switch uploadPodOp {
 		case controllerutil.OperationResultCreated:
@@ -230,7 +252,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			fallthrough
 		case controllerutil.OperationResultUpdated:
 			l.Info("upload pod was created or modified", "op", uploadPodOp)
-			return ctrl.Result{}, nil
 		}
 
 		uploadServiceOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, uploadService, func() error {
@@ -240,16 +261,15 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, client.IgnoreAlreadyExists(fmt.Errorf("unable to generate new upload service: %w", err))
 		}
 
-		l = l.WithValues("uploadService", uploadService.Name)
+		l = l.WithValues("upload-service", uploadService.Name)
 		if uploadServiceOp == controllerutil.OperationResultCreated ||
 			uploadServiceOp == controllerutil.OperationResultUpdated {
 			l.Info("upload service was created or modified", "op", uploadServiceOp)
-			return ctrl.Result{}, nil
 		}
 
 		if pipeline.Status.StartTime.IsZero() && !uploadPodStarted(uploadPod) {
 			l.Info("upload pod and service created, awaiting upload pod ready")
-			return ctrl.Result{RequeueAfter: time.Second * 2}, nil
+			return ctrl.Result{RequeueAfter: time.Second, Priority: new(100)}, nil
 		}
 
 	}
@@ -277,14 +297,14 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, fmt.Errorf("unable to generate new scan pod: %w", err)
 	}
 
-	l = l.WithValues("scanPod", scanPod.Name)
+	l = l.WithValues("scan-pod", scanPod.Name)
 
 	switch scanPodOp {
 	case controllerutil.OperationResultCreated:
 		scanPodsCreated.With(metricLabelsForPipeline(pipeline)).Inc()
 		fallthrough
 	case controllerutil.OperationResultUpdated:
-		return ctrl.Result{}, nil
+		l.Info("scan pod was created or modified", "op", scanPodOp)
 	}
 
 	if !pipeline.Status.StartTime.IsZero() {
@@ -294,8 +314,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to add metrics finalizer: %w", err)
 			}
+			l.Info("pipeline starting, incrementing pipeline running count")
 			pipelinesRunning.With(metricLabelsForPipeline(pipeline)).Inc()
-			return ctrl.Result{}, nil
+			return ctrl.Result{Priority: new(25)}, nil
 		}
 
 		// Check for completion of pods and update status accordingly
@@ -304,9 +325,20 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Update status to reflect pods have been created
 	l.Info("marking pipeline as started")
-	startTime := metav1.Now()
+	startTime := scanPod.CreationTimestamp
 	patch := client.MergeFrom(pipeline.DeepCopy())
 	reason, message := "ScanPodSuccessfullyCreated", fmt.Sprintf("The scan pod %s has been created.", scanPod.Name)
+	if !pipeline.Status.ScanPodOnly {
+		reason, message = "UploadPodSuccessfullyCreated", fmt.Sprintf("The upload pod %s has been created.", uploadPod.GetName())
+		pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
+			Type:               v1beta1.PipelineUploadPodCreatedConditionType,
+			Status:             metav1.ConditionTrue,
+			Reason:             reason,
+			Message:            message,
+			LastTransitionTime: uploadPod.CreationTimestamp.Rfc3339Copy(),
+		})
+		pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
+	}
 	pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
 		Type:               v1beta1.PipelineScanPodCreatedConditionType,
 		Status:             metav1.ConditionTrue,
@@ -315,17 +347,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		LastTransitionTime: startTime.Rfc3339Copy(),
 	})
 
-	if !pipeline.Status.ScanPodOnly {
-		reason, message = "UploadPodSuccessfullyCreated", fmt.Sprintf("The upload pod %s has been created.", uploadPod.GetName())
-		pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
-			Type:               v1beta1.PipelineUploadPodCreatedConditionType,
-			Status:             metav1.ConditionTrue,
-			Reason:             reason,
-			Message:            message,
-			LastTransitionTime: startTime,
-		})
-		pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
-	}
 	pipeline.Status.StartTime = &startTime
 	pipeline.Status.Phase = v1beta1.PipelineDownloading
 	pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageInProgress
@@ -539,6 +560,7 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 		parentParams := resources.ParseParameters(profile.Spec.Parameters, profile.Parameters, nil)
 
 		pod.Spec.Volumes = profile.Spec.Volumes
+		pod.Spec.Resources = pipeline.Spec.Resources.DeepCopy()
 		pod.Spec.ImagePullSecrets = make([]corev1.LocalObjectReference, 0)
 		for _, invocation := range uploaders {
 			baseContainer := invocation.Spec.Container
@@ -682,6 +704,8 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 				},
 			},
 		)
+
+		pod.Spec.Resources = pipeline.Spec.Resources.DeepCopy()
 
 		pod.Spec.ImagePullSecrets = slices.CompactFunc(
 			append(profile.Spec.ImagePullSecrets, downloader.Spec.ImagePullSecrets...),

@@ -9,6 +9,7 @@
 package v1beta1
 
 import (
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -91,6 +92,15 @@ type PipelineSpec struct {
 	// +listType=map
 	// +listMapKey=name
 	Parameters []ParameterDefinition `json:"parameters,omitempty" patchStrategy:"merge,retainKeys" patchMergeKey:"name" protobuf:"bytes,3,rep,name=parameters"`
+
+	// Resources is the total amount of CPU and Memory resources required by all
+	// containers for a pod. This is applied to both the scan pod and upload pod
+	// (if the pipeline has one).
+	//
+	// This field enables fine-grained control over resource allocation for the
+	// entire pod, allowing resource sharing among containers in a pod.
+	// +optional
+	Resources *v1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // PipelinePhase is a label for the condition of a pipeline at the current time.
