@@ -19,6 +19,7 @@ import (
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -366,6 +367,21 @@ const (
 	sidecarReceiverContainerName = "receive-artifacts"
 )
 
+var (
+	sidecarResourceRequirements = corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			// nolint:goconst
+			"cpu": resource.MustParse("250m"),
+			// nolint:goconst
+			"memory": resource.MustParse("512Mi"),
+		},
+		Requests: corev1.ResourceList{
+			"cpu":    resource.MustParse("50m"),
+			"memory": resource.MustParse("64Mi"),
+		},
+	}
+)
+
 func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.Pipeline, uploadService *corev1.Service, artifactsArgs []string) corev1.Container {
 	var (
 		sidecarEnvVars []corev1.EnvVar
@@ -389,6 +405,7 @@ func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.P
 		Args:            append([]string{sidecarCommand}, artifactsArgs...),
 		Env:             sidecarEnvVars,
 		RestartPolicy:   new(corev1.ContainerRestartPolicyAlways),
+		Resources:       *sidecarResourceRequirements.DeepCopy(),
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot: new(true),
 		},
@@ -597,6 +614,7 @@ func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta
 			SecurityContext: &corev1.SecurityContext{
 				RunAsNonRoot: new(true),
 			},
+			Resources: *sidecarResourceRequirements.DeepCopy(),
 		}
 		pod.Spec.ServiceAccountName = pipeline.Spec.UploadServiceAccountName
 		pod.Spec.RuntimeClassName = pipeline.Spec.RuntimeClassName
