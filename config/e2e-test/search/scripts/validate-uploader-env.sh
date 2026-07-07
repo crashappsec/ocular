@@ -7,18 +7,21 @@
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
+set -e
 
 SCRIPTS_DIR="/scripts"
 
 source "$SCRIPTS_DIR/common.sh"
 
-validate-common-env
+validate-common-pipeline-env
 
 validate-pwd "$OCULAR_RESULTS_DIR"
 
 validate-parameter "TEST_PARAM" "testing-param-value"
 validate-parameter "DEFAULT" "default-value"
+
 validate-container-name "uploader-validate-env"
+
 validate-env-var "OCULAR_UPLOADER_NAME" "validate-uploader-env"
 
 complete "uploader env completed successfully"

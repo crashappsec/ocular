@@ -11,3 +11,4 @@ configMapGenerator:
     behavior: merge
     literals:
       - OCULAR_SIDECAR_IMG=ocular-sidecar:e2e-test
+      - OCULAR_SCHEDULER_IMG=ocular-scheduler:e2e-test

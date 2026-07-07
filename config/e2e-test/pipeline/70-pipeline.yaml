@@ -1,8 +1,3 @@
----
-# Will run the uploader, profile and downloader validators
-# Requires Profile 'validate' and downloader 'git-clone'
-# to be created
----
 apiVersion: ocular.crashoverride.run/v1beta1
 kind: Pipeline
 metadata:

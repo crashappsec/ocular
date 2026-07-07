@@ -32,8 +32,12 @@ var (
 	projectImage = "ocular-controller:e2e-test"
 
 	// sidecarImage is the name of the ocular sidecar image used during tests.
-	// It can be built and loaded together with the projectImage.
+	// It can be built and loaded together with the projectImage and schedulerImage.
 	sidecarImage = "ocular-sidecar:e2e-test"
+
+	// schedulerImage is the name of the ocular scheduler image used during tests.
+	// It can be built and loaded together with the projectImage and sidecarImage.
+	schedulerImage = "ocular-scheduler:e2e-test"
 )
 
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.
@@ -52,7 +56,8 @@ var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
 	projectImageTagArg := fmt.Sprintf("OCULAR_CONTROLLER_IMG=%s", projectImage)
 	sidecarImageTagArg := fmt.Sprintf("OCULAR_SIDECAR_IMG=%s", sidecarImage)
-	cmd := exec.Command("make", "docker-build-all", "DOCKER_ARGS=", projectImageTagArg, sidecarImageTagArg)
+	schedulerImageTagArg := fmt.Sprintf("OCULAR_SCHEDULER_IMG=%s", schedulerImage)
+	cmd := exec.Command("make", "docker-build-all", "DOCKER_ARGS=", projectImageTagArg, sidecarImageTagArg, schedulerImageTagArg)
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 	By("loading the manager(Operator) image on Kind")
@@ -62,6 +67,10 @@ var _ = BeforeSuite(func() {
 	By("loading the sidecar image on Kind")
 	err = utils.LoadImageToKindClusterWithName(sidecarImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the sidecar image into Kind")
+
+	By("loading the scheduler image on Kind")
+	err = utils.LoadImageToKindClusterWithName(schedulerImage)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the scheduler image into Kind")
 
 	configureKubectlKubeRC()
 	setupCertManager()

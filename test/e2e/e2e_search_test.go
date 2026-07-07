@@ -17,13 +17,14 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	//
 	"github.com/crashappsec/ocular/test/utils"
 )
 
 // namespace where the project is deployed in
-const pipelineNamespace = "e2e-test-pipeline"
+const searchNamespace = "e2e-test-search"
 
-var _ = Describe("Pipeline", Ordered, func() {
+var _ = Describe("Search", Ordered, func() {
 
 	// Before running the tests, set up the environment by creating the namespace,
 	// enforce the restricted security policy to the namespace, installing CRDs,
@@ -35,9 +36,9 @@ var _ = Describe("Pipeline", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
 
 		By("creating pipeline E2E namespace")
-		cmd = exec.Command("kubectl", "create", "ns", pipelineNamespace)
+		cmd = exec.Command("kubectl", "create", "ns", searchNamespace)
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
+		Expect(err).NotTo(HaveOccurred(), "Failed to create search namespace")
 
 		By("labeling the namespace to enforce the restricted security policy")
 		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
@@ -46,7 +47,7 @@ var _ = Describe("Pipeline", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
 		By("labeling the pipeline namespace to enforce the restricted security policy")
-		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", pipelineNamespace,
+		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", searchNamespace,
 			"pod-security.kubernetes.io/enforce=restricted")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label pipeline namespace with restricted policy")
@@ -67,10 +68,10 @@ var _ = Describe("Pipeline", Ordered, func() {
 		By("waiting for webhook check pod to complete")
 		Eventually(VerifyWebhookServiceCheck, 5*time.Minute).Should(Succeed())
 
-		By("deploying the pipeline test resources")
-		cmd = exec.Command("make", "run-e2e-test-pipeline")
+		By("deploying the search test resources")
+		cmd = exec.Command("make", "run-e2e-test-search")
 		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the pipeline test resources")
+		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the search test resources")
 	})
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
@@ -81,7 +82,7 @@ var _ = Describe("Pipeline", Ordered, func() {
 		_, _ = utils.Run(cmd)
 
 		By("undeploying the controller-manager")
-		cmd = exec.Command("make", "stop-e2e-test-pipeline", "undeploy-e2e-test")
+		cmd = exec.Command("make", "stop-e2e-test-search", "undeploy-e2e-test")
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")
@@ -89,7 +90,7 @@ var _ = Describe("Pipeline", Ordered, func() {
 		_, _ = utils.Run(cmd)
 
 		By("removing manager & pipeline namespace")
-		cmd = exec.Command("kubectl", "delete", "ns", namespace, pipelineNamespace)
+		cmd = exec.Command("kubectl", "delete", "ns", namespace, searchNamespace)
 		_, _ = utils.Run(cmd)
 	})
 
@@ -116,65 +117,46 @@ var _ = Describe("Pipeline", Ordered, func() {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Kubernetes events: %s", err)
 			}
 
-			By("Fetching scan pod description")
-			cmd = exec.Command("kubectl", "describe", "pod", "pipeline-e2e-test", "-n", pipelineNamespace)
-			scanPodDescription, err := utils.Run(cmd)
+			By("Fetching crawler pod description")
+			cmd = exec.Command("kubectl", "describe", "pod", "e2e-test-search", "-n", searchNamespace)
+			crawlerPodDescription, err := utils.Run(cmd)
 			if err == nil {
-				fmt.Println("Pod description:\n", scanPodDescription)
+				fmt.Println("Crawler pod description:\n", crawlerPodDescription)
 			} else {
 				fmt.Println("Failed to describe scan pod")
 			}
 
-			By("Fetching scan and upload pod logs")
-			cmd = exec.Command("kubectl", "logs", "-l", "ocular.crashoverride.run/pipeline=e2e-test",
-				"--all-containers", "-n", pipelineNamespace, "--tail", "-1")
+			By("Fetching crawler pod logs")
+			cmd = exec.Command("kubectl", "logs", "-l", "ocular.crashoverride.run/search=e2e-test",
+				"--all-containers", "-n", searchNamespace)
 			pipelineLogs, err := utils.Run(cmd)
 			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Pipeline logs:\n %s", pipelineLogs)
+				_, _ = fmt.Fprintf(GinkgoWriter, "Crawler logs:\n %s", pipelineLogs)
 			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get pipeline logs: %s", err)
+				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get crawler logs: %s", err)
 			}
 		}
 	})
 
-	SetDefaultEventuallyTimeout(2 * time.Minute)
-	SetDefaultEventuallyPollingInterval(time.Second * 3)
+	SetDefaultEventuallyTimeout(5 * time.Minute)
+	SetDefaultEventuallyPollingInterval(time.Second * 5)
 
-	Context("Pipeline", func() {
+	Context("Search", func() {
 		It("should run successfully", func() {
-			By("validating that the created pipeliene finishes with Success")
-			verifyPipelineSuccess := func(g Gomega) {
+			By("validating that pipelines were created and all finished with Success")
+			verifySearchComplete := func(g Gomega) {
 				// Validate the pipline's status
 				cmd := exec.Command("kubectl", "get",
-					"pipeline", "e2e-test", "-o", "jsonpath={.status.phase}",
-					"-n", pipelineNamespace,
+					"pipeline", "-o", "jsonpath={.items[*].status.phase}",
+					"--no-headers",
+					"-n", searchNamespace,
 				)
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("Succeeded"), "Incorrect pipeline pod status")
+				g.Expect(output).To(Equal("Succeeded Succeeded Succeeded"), "Incorrect pipeline pod statuses")
 
 			}
-			Eventually(verifyPipelineSuccess).Should(Succeed())
+			Eventually(verifySearchComplete).Should(Succeed())
 		})
-		// It("should be cleaned up by TTL after finish", func() {
-		// 	By("setting a TTL")
-		// 	cmd := exec.Command("kubectl", "patch",
-		// 		"pipeline", "e2e-test", `--type=json`, "-p", `[{"op": "replace", "path": "/spec/ttlSecondsAfterFinished", "value": 1}]`,
-		// 		"-n", pipelineNamespace,
-		// 	)
-
-		// 	_, err := utils.Run(cmd)
-		// 	Expect(err).NotTo(HaveOccurred())
-		// 	verifyPipelineTTL := func(g Gomega) {
-		// 		cmd := exec.Command("kubectl", "get",
-		// 			"pipelines", "-o", "jsonpath={.items[*].metadata.name}",
-		// 			"-n", pipelineNamespace,
-		// 		)
-		// 		output, err := utils.Run(cmd)
-		// 		g.Expect(err).NotTo(HaveOccurred())
-		// 		g.Expect(strings.TrimSpace(output)).To(BeEmpty())
-		// 	}
-		// 	Eventually(verifyPipelineTTL).Should(Succeed())
-		// })
 	})
 })

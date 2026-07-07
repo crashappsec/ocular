@@ -63,4 +63,6 @@ validate-pwd "$OCULAR_RESULTS_DIR"
 
 validate-env-var "OCULAR_UPLOADER_NAME" "validate-uploader-files"
 
+validate-container-name "uploader-validate-files"
+
 complete "uploader files completed successfully"

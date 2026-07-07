@@ -7,18 +7,27 @@
 # See the LICENSE file in the root of this repository for full license text or
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
+set -e
 
 SCRIPTS_DIR="/scripts"
 
 source "$SCRIPTS_DIR/common.sh"
 
-validate-common-env
+clone-target() {
+    info "cloning git target"
 
-validate-pwd "$OCULAR_RESULTS_DIR"
+    git clone --depth 1 "$OCULAR_TARGET_IDENTIFIER" . || fail "unable to clone repository"
+    pass "git clone complete"
+}
 
-validate-parameter "TEST_PARAM" "testing-param-value"
-validate-parameter "DEFAULT" "default-value"
-validate-container-name "uploader-validate-env"
-validate-env-var "OCULAR_UPLOADER_NAME" "validate-uploader-env"
+validate-common-pipeline-env
 
-complete "uploader env completed successfully"
+validate-pwd "$OCULAR_TARGET_DIR"
+
+validate-parameter "TEST_PARAM" "PASS"
+
+validate-container-name "downloader-validate-container"
+
+clone-target
+
+complete "downloader completed successfully"

@@ -8,6 +8,8 @@
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
 
+set -e
+
 SCRIPTS_DIR="/scripts"
 
 source "$SCRIPTS_DIR/common.sh"
@@ -25,23 +27,24 @@ trap finalize EXIT
 
 validate-git() {
     remote_url="$(git remote get-url origin || fail 'unable to get remote origin URL')"
-            
+
     case "$remote_url" in
-        *github.com/crashappsec/ocular) pass "validated git remote URL";;
+        *github.com/crashappsec/*) pass "validated git remote URL";;
         *) fail "unexpected remote URL, got '$remote_url' instead";;
     esac
+
+    # TODO: validate git sha
+    # commit_sha="$(git rev-parse HEAD || fail 'unable to parse git HEAD')"
     
-    commit_sha="$(git rev-parse HEAD || fail 'unable to parse git HEAD')"
-    
-    if [ "$commit_sha" = "84462a71dea813105ce746718d7618aeda8923b8" ]; then
-        pass "git HEAD set to correct commit SHA"
-    else
-        fail "unexpcted commit SHA for HEAD, got '$commit_sha' instead"
-    fi
+    # if [ "$commit_sha" = "84462a71dea813105ce746718d7618aeda8923b8" ]; then
+    #     pass "git HEAD set to correct commit SHA"
+    # else
+    #     fail "unexpcted commit SHA for HEAD, got '$commit_sha' instead"
+    # fi
     
 }
 
-validate-common-env
+validate-common-pipeline-env
 
 validate-git
 

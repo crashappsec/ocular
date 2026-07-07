@@ -30,6 +30,8 @@ validate-pwd "$OCULAR_TARGET_DIR"
 
 validate-parameter "TEST_PARAM" "PASS"
 
+validate-container-name "downloader-validate-container"
+
 clone-target
 
 complete "downloader completed successfully"

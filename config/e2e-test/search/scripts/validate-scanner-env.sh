@@ -12,13 +12,22 @@ SCRIPTS_DIR="/scripts"
 
 source "$SCRIPTS_DIR/common.sh"
 
-validate-common-env
+finalize() {
+    result_file="$OCULAR_RESULTS_DIR/env.test"
+    if [ "$?" -eq 0 ]; then
+	echo "PASS" > "$OCULAR_RESULTS_DIR/env.test"
+    else
+	echo "FAIL" > "$OCULAR_RESULTS_DIR/env.test"
+    fi
+}
 
-validate-pwd "$OCULAR_RESULTS_DIR"
+trap finalize EXIT
 
-validate-parameter "TEST_PARAM" "testing-param-value"
-validate-parameter "DEFAULT" "default-value"
-validate-container-name "uploader-validate-env"
-validate-env-var "OCULAR_UPLOADER_NAME" "validate-uploader-env"
+validate-common-pipeline-env
 
-complete "uploader env completed successfully"
+validate-pwd "$OCULAR_TARGET_DIR"
+
+validate-parameter "SCANNER_TEST" "PASS"
+
+validate-container-name "scanner-validate-env"
+complete "scanner enviornment validated"

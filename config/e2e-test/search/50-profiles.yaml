@@ -1,8 +1,17 @@
+---
+# This profile will validate the
+# configuration of the scanner containers
+# and call the validator uploaders
+# Requires uploaders 'validate-files'
+# and 'validate-env' to exist
+
+# TODO(bthuilot): make this into a more compact script/image
+---
 apiVersion: ocular.crashoverride.run/v1beta1
 kind: Profile
 metadata:
   name: validate-scanners
-  namespace: e2e-test-pipeline
+  namespace: e2e-test-search
 spec:
   containers:
     - image: alpine/git:latest

@@ -73,12 +73,10 @@ validate-file-contents() {
 
 
 
-validate-common-env() {
+validate-common-pipeline-env() {
     validate-env-var "OCULAR_PROFILE_NAME" "validate-scanners"
 
     validate-env-var "OCULAR_DOWNLOADER_NAME" "git-clone"
-
-    validate-env-var "OCULAR_PIPELINE_NAME" "e2e-test"
 
     validate-env-var "OCULAR_TARGET_DIR" "/mnt/target"
 
@@ -86,17 +84,32 @@ validate-common-env() {
 
     validate-env-var "OCULAR_METADATA_DIR" "/mnt/metadata"
 
-    validate-env-var "OCULAR_TARGET_IDENTIFIER" "https://github.com/crashappsec/ocular"
+    validate-env-var "OCULAR_NAMESPACE_NAME" "e2e-test-search"
 
-    validate-env-var "OCULAR_TARGET_VERSION" "84462a71dea813105ce746718d7618aeda8923b8"
-
-    validate-env-var "OCULAR_NAMESPACE_NAME" "e2e-test-pipeline"
+    case "$OCULAR_TARGET_VERSION" in
+	1)
+	    validate-env-var "OCULAR_TARGET_IDENTIFIER" "https://github.com/crashappsec/ocular"
+	    ;;
+	2)
+	    validate-env-var "OCULAR_TARGET_IDENTIFIER" "https://github.com/crashappsec/chalk"
+	    ;;
+	3)
+	    validate-env-var "OCULAR_TARGET_IDENTIFIER" "https://github.com/crashappsec/hello-world"
+	    ;;
+    esac
 }
 
 validate-parameter() {
     validate-env-var "OCULAR_PARAM_$1" "$2"
 }
 
+validate-fifo() {
+    if [ -p "$1" ]; then
+	pass "validated FIFO $1"
+    else
+	fail "$1 is not a FIFO"
+    fi
+}
 
 validate-container-name() {
     validate-env-var "OCULAR_CONTAINER_NAME" "$1"
