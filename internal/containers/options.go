@@ -27,6 +27,19 @@ func WithAdditionalArgs(args ...string) Option {
 	}
 }
 
+func WithNamePrefix(prefix string) Option {
+	return func(c *corev1.Container) {
+		c.Name = prefix + c.Name
+	}
+}
+
+func WrapCommand(newEntrypoint ...string) Option {
+	return func(c *corev1.Container) {
+		c.Args = append(c.Command, c.Args...)
+		c.Command = newEntrypoint
+	}
+}
+
 func WithAdditionalVolumeMounts(mounts ...corev1.VolumeMount) Option {
 	return func(c *corev1.Container) {
 		c.VolumeMounts = append(c.VolumeMounts, mounts...)
@@ -39,7 +52,17 @@ func WithWorkingDir(dir string) Option {
 	}
 }
 
-func ApplyOptions(
+func ApplyOptionsTo(
+	c corev1.Container,
+	options ...Option,
+) corev1.Container {
+	for _, option := range options {
+		option(&c)
+	}
+	return c
+}
+
+func ApplyOptionsToAll(
 	containers []corev1.Container,
 	options ...Option,
 ) []corev1.Container {
@@ -51,8 +74,17 @@ func ApplyOptions(
 	return containers
 }
 
+func ApplyStandardOptions(
+	containers []corev1.Container,
+) []corev1.Container {
+	return ApplyOptionsToAll(containers,
+		WithPodSecurityStandardRestricted(),
+		WithContainerNameEnvVar(),
+	)
+}
+
 // WithParameters creates an Option for applying pararmeter settings to a container.
-// This function assumes the settings have been checked for which parameters are required.
+// This function assumes the settings have been checked for which parameters are required
 func WithParameters(definitions []v1beta1.ParameterDefinition, settings []v1beta1.ParameterSetting, parent map[string]string) Option {
 	env := ParseParameterEnvVars(definitions, settings, parent)
 	return func(c *corev1.Container) {
@@ -73,5 +105,14 @@ func WithPodSecurityStandardRestricted() Option {
 		c.SecurityContext.SeccompProfile = &corev1.SeccompProfile{
 			Type: corev1.SeccompProfileTypeRuntimeDefault,
 		}
+	}
+}
+
+func WithContainerNameEnvVar() Option {
+	return func(c *corev1.Container) {
+		c.Env = append(c.Env, corev1.EnvVar{
+			Name:  v1beta1.EnvVarContainerName,
+			Value: c.Name,
+		})
 	}
 }

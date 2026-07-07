@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const MaxPipelineNameLength = validationutils.DNS1035LabelMaxLength - 11
+const MaxPipelineNameLength = validationutils.DNS1035LabelMaxLength - 9 // "pipeline-"
 
 func ValidatePipeline(ctx context.Context, c client.Client, pipeline *v1beta1.Pipeline) error {
 	var fieldErrs field.ErrorList
@@ -88,23 +88,12 @@ func ValidatePipeline(ctx context.Context, c client.Client, pipeline *v1beta1.Pi
 
 	// validate service accounts
 	var serviceAccount corev1.ServiceAccount
-	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ScanServiceAccountName, Namespace: pipeline.Namespace}, &serviceAccount)
+	err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.ServiceAccountName, Namespace: pipeline.Namespace}, &serviceAccount)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return apierrors.NewInternalError(err)
 		}
-		fieldErrs = append(fieldErrs, field.NotFound(field.NewPath("spec").Child("scanServiceAccountName"), pipeline.Spec.ScanServiceAccountName))
-	}
-
-	if len(profile.Spec.UploaderRefs) > 0 {
-		var uploaderServiceAccount corev1.ServiceAccount
-		err = c.Get(ctx, client.ObjectKey{Name: pipeline.Spec.UploadServiceAccountName, Namespace: pipeline.Namespace}, &uploaderServiceAccount)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return fmt.Errorf("error fetching uploader service account %s: %w", pipeline.Spec.UploadServiceAccountName, err)
-			}
-			fieldErrs = append(fieldErrs, field.NotFound(field.NewPath("spec").Child("uploadServiceAccountName"), pipeline.Spec.UploadServiceAccountName))
-		}
+		fieldErrs = append(fieldErrs, field.NotFound(field.NewPath("spec").Child("serviceAccountName"), pipeline.Spec.ServiceAccountName))
 	}
 
 	if len(fieldErrs) == 0 {

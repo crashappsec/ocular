@@ -12,8 +12,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/crashappsec/ocular/internal/containers"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -55,11 +53,4 @@ func patchStatus(ctx context.Context, c client.Client, obj client.Object, patch 
 		return patchErr
 	}
 	return nil
-}
-
-func generateBaseContainerOptions(envVars []corev1.EnvVar) []containers.Option {
-	return []containers.Option{
-		containers.WithAdditionalEnvVars(envVars...),
-		containers.WithPodSecurityStandardRestricted(),
-	}
 }

@@ -118,21 +118,12 @@ var _ = Describe("Pipeline", Ordered, func() {
 			}
 
 			By("Fetching scan pod description")
-			cmd = exec.Command("kubectl", "describe", "pod", "e2e-test-scan", "-n", pipelineNamespace)
+			cmd = exec.Command("kubectl", "describe", "pod", "pipeline-e2e-test", "-n", pipelineNamespace)
 			scanPodDescription, err := utils.Run(cmd)
 			if err == nil {
 				fmt.Println("Pod description:\n", scanPodDescription)
 			} else {
 				fmt.Println("Failed to describe scan pod")
-			}
-
-			By("Fetching upload pod description")
-			cmd = exec.Command("kubectl", "describe", "pod", "e2e-test-upload", "-n", pipelineNamespace)
-			uploadPodDescription, err := utils.Run(cmd)
-			if err == nil {
-				fmt.Println("Pod description:\n", uploadPodDescription)
-			} else {
-				fmt.Println("Failed to describe upload pod")
 			}
 
 			By("Fetching scan and upload pod logs")

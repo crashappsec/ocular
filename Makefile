@@ -28,6 +28,13 @@ export OCULAR_SIDECAR_REPOSITORY
 OCULAR_SIDECAR_IMG ?= $(OCULAR_SIDECAR_REPOSITORY):$(OCULAR_VERSION)
 export OCULAR_SIDECAR_IMG
 
+
+OCULAR_SCHEDULER_REPOSITORY ?= ghcr.io/crashappsec/ocular-scheduler
+export OCULAR_SCHEDULER_REPOSITORY
+OCULAR_SCHEDULER_IMG ?= $(OCULAR_SCHEDULER_REPOSITORY):$(OCULAR_VERSION)
+export OCULAR_SCHEDULER_IMG
+
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -95,8 +102,7 @@ run-e2e-test-%:
 
 stop-e2e-test-%:
 	@"$(KUSTOMIZE)" build config/e2e-test/$* | \
-		"$(YQ)" ea '[.] | reverse | .[]'  | \
-		sed '/^apiVersion:/i ---' | \
+		"$(YQ)" ea '[.] | reverse | .[] |  splitDoc' | \
 		"$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
 
@@ -221,7 +227,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/controller/main.go
 
 .PHONY: docker-build-all
-docker-build-all: docker-build-controller docker-build-sidecar ## Builds all docker images
+docker-build-all: docker-build-controller docker-build-sidecar docker-build-scheduler ## Builds all docker images
 
 # PLATFORMS is a list of platforms to
 # build for. Production Ocular images are built
@@ -239,6 +245,10 @@ docker-build-controller:  docker-build-img-controller ## Build docker image for 
 .PHONY: docker-build-sidecar
 docker-build-sidecar: docker-build-img-sidecar ## Build docker image for the sidecar.
 
+
+.PHONY: docker-build-scheduler
+docker-build-scheduler: docker-build-img-scheduler ## Build docker image for the sidecar.
+
 docker-build-img-%: ## Builds the docker image
 	$(CONTAINER_TOOL) build \
 		--build-arg LDFLAGS="$(LDFLAGS)" \
@@ -248,13 +258,16 @@ docker-build-img-%: ## Builds the docker image
 		-f Dockerfile .
 
 .PHONY: docker-push-all
-docker-push-all: docker-push-controller docker-push-sidecar ## Push docker both manager and sidecar images.
+docker-push-all: docker-push-controller docker-push-sidecar docker-push-scheduler ## Push docker both manager and sidecar images.
 
 .PHONY: docker-push-controller
 docker-push-controller: docker-push-img-controller ## Push docker image with the manager.
 
 .PHONY: docker-push-sidecar
 docker-push-sidecar: docker-push-img-sidecar ## Push docker image with the sidecar.
+
+.PHONY: docker-push-scheduler
+docker-push-sidecar: docker-push-img-scheduler ## Push docker image with the sidecar.
 
 docker-push-img-%: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push $(OCULAR_$(shell echo '$*' | tr '[:lower:]' '[:upper:]')_IMG)
@@ -426,6 +439,8 @@ helm-build: kubebuilder helmpatch-plugin yq ## Generate a helm-chart using kubeb
 	@"$(YQ)" -ie '.manager.image = {"repository": strenv(OCULAR_CONTROLLER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": "v{{ .Chart.AppVersion }}"}' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '.sidecar.image =  {"repository": strenv(OCULAR_SIDECAR_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": "v{{ .Chart.AppVersion }}"}' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '(.sidecar | key) head_comment="Configure Ocular sidecar image"' $(HELM_CHART_DIR)/values.yaml
+	@"$(YQ)" -ie '.scheduler.image =  {"repository": strenv(OCULAR_SCHEDULER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": "v{{ .Chart.AppVersion }}"}' $(HELM_CHART_DIR)/values.yaml
+	@"$(YQ)" -ie '(.scheduler | key) head_comment="Configure Ocular scheduler image"' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' $(HELM_CHART_DIR)/Chart.yaml
 
 

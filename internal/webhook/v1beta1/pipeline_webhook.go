@@ -46,11 +46,8 @@ type PipelineCustomDefaulter struct{}
 func (d *PipelineCustomDefaulter) Default(_ context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) error {
 	pipelinelog.Info("defaulting for Pipeline", "name", pipeline.GetName())
 
-	if pipeline.Spec.UploadServiceAccountName == "" {
-		pipeline.Spec.UploadServiceAccountName = "default"
-	}
-	if pipeline.Spec.ScanServiceAccountName == "" {
-		pipeline.Spec.ScanServiceAccountName = "default"
+	if pipeline.Spec.ServiceAccountName == "" {
+		pipeline.Spec.ServiceAccountName = "default"
 	}
 
 	pipeline.Status.Phase = ocularcrashoverriderunv1beta1.PipelinePending

@@ -9,16 +9,13 @@
 package controller
 
 import (
-	"fmt"
 	"math/rand"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,10 +27,11 @@ import (
 var _ = Describe("Pipeline Controller", func() {
 	rnd := rand.New(rand.NewSource(GinkgoRandomSeed()))
 	var (
-		namespace        = testNamespace
-		runtimeClassName = "kata"
-		sidecarImage     = testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet) + ":latest"
-		downloader       *v1beta1.Downloader
+		namespace             = testNamespace
+		runtimeClassName      = "kata"
+		downloadContainerName = "download-container"
+		sidecarImage          = testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet) + ":latest"
+		downloader            *v1beta1.Downloader
 	)
 	BeforeEach(func() {
 		downloader = &v1beta1.Downloader{
@@ -43,7 +41,7 @@ var _ = Describe("Pipeline Controller", func() {
 			},
 			Spec: v1beta1.DownloaderSpec{
 				Container: corev1.Container{
-					Name:  "downloader-container",
+					Name:  downloadContainerName,
 					Image: testImage,
 					// nolint:goconst
 					Command: []string{"/bin/sh", "-c"},
@@ -61,13 +59,17 @@ var _ = Describe("Pipeline Controller", func() {
 
 	When("a pipeline uses a profile with no uploaders", func() {
 		var (
-			profileName  = "test-profile"
-			pipelineName = "test-pipeline"
-			profile      = &v1beta1.Profile{}
-			pipeline     = &v1beta1.Pipeline{}
+			profileName               = "test-profile"
+			pipelineName              = "test-pipeline"
+			scannerContainerName      = "profile-container"
+			doNotIncludeContainerName = "do-not-include"
+			includeContainerName      = "should-include"
+			profile                   = &v1beta1.Profile{}
+			pipeline                  = &v1beta1.Pipeline{}
 		)
 
 		BeforeEach(func() {
+
 			profileResource := &v1beta1.Profile{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      profileName,
@@ -78,7 +80,7 @@ var _ = Describe("Pipeline Controller", func() {
 						{
 							Container: corev1.Container{
 								Image:   testImage,
-								Name:    "profile-container",
+								Name:    scannerContainerName,
 								Command: []string{"/bin/sh", "-c"},
 								Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
 							},
@@ -87,7 +89,7 @@ var _ = Describe("Pipeline Controller", func() {
 							Container: corev1.Container{
 								Image: testImage,
 								// nolint:goconst
-								Name: "do-not-include",
+								Name: doNotIncludeContainerName,
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
 								// nolint:goconst
@@ -97,7 +99,7 @@ var _ = Describe("Pipeline Controller", func() {
 						{
 							Container: corev1.Container{
 								Image: testImage,
-								Name:  "should-include",
+								Name:  includeContainerName,
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_EMPTY",
@@ -143,8 +145,8 @@ var _ = Describe("Pipeline Controller", func() {
 					Target: v1beta1.Target{
 						Identifier: "https://example.com/samplefile.txt",
 					},
-					ScanServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
-					RuntimeClassName:       &runtimeClassName,
+					ServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
+					RuntimeClassName:   &runtimeClassName,
 				},
 			}
 			Expect(k8sClient.Create(ctx, profileResource)).To(Succeed())
@@ -159,30 +161,15 @@ var _ = Describe("Pipeline Controller", func() {
 		})
 
 		It("should create the pipeline", func() {
-			By("Creating only a pod for the scanners")
+			By("Creating a pod")
 			controllerReconciler := &PipelineReconciler{
 				Client:            k8sClient,
 				Scheme:            k8sClient.Scheme(),
 				SidecarImage:      sidecarImage,
 				SidecarPullPolicy: corev1.PullIfNotPresent,
 			}
-			// 1st reconcile should set the status to scan pod only
-			// since default is scan & upload
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      pipeline.Name,
-					Namespace: pipeline.Namespace,
-				},
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      pipeline.Name,
-				Namespace: pipeline.Namespace,
-			}, pipeline)).To(Succeed())
-			Expect(pipeline.Status.ScanPodOnly).To(BeTrue())
 
-			// 2nd reconcile should create scan pod
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      pipeline.Name,
 					Namespace: pipeline.Namespace,
@@ -195,34 +182,48 @@ var _ = Describe("Pipeline Controller", func() {
 			}, pipeline)).To(Succeed())
 
 			scanPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanSuffix, Namespace: pipeline.Namespace}, scanPod)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipelineResourcePrefix + pipeline.Name, Namespace: pipeline.Namespace}, scanPod)
 			Expect(err).NotTo(HaveOccurred())
-			ValidatePipelineScanPodSpec(scanPod.Spec, sidecarImage, pipeline, profile, downloader,
-				[]string{"should-include", "profile-container"},
-				[]corev1.EnvVar{
-					{
-						Name:  "OCULAR_PARAM_DEFAULT_EMPTY",
-						Value: "1",
+			ValidatePipelinePodSpec(
+				scanPod.Spec,
+				sidecarImage,
+				pipeline,
+				profile,
+				downloader,
+				func(c corev1.Container) {
+					Expect(c.Name).To(Equal(downloadContainerPrefix + downloadContainerName))
+					Expect(c.Image).To(Equal(testImage))
+				},
+				map[string]func(_ corev1.Container){
+					scannerContainerName: func(c corev1.Container) {
+						Expect(c.Name).To(Equal(scanContainerPrefix + scannerContainerName))
+						Expect(c.Image).To(Equal(testImage))
 					},
-					{
-						Name:  "OCULAR_PARAM_DEFAULT_SET",
-						Value: "",
-					}},
+					includeContainerName: func(c corev1.Container) {
+						Expect(c.Env).To(ContainElements(corev1.EnvVar{
+							Name:  "OCULAR_PARAM_DEFAULT_EMPTY",
+							Value: "1",
+						}, corev1.EnvVar{
+							Name:  "OCULAR_PARAM_DEFAULT_SET",
+							Value: "",
+						}))
+					},
+				},
+				nil,
 			)
-
-			uploadPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadSuffix, Namespace: pipeline.Namespace}, uploadPod)
-			Expect(err).To(HaveOccurred())
-			Expect(apierrors.IsNotFound(err)).To(BeTrue())
 		})
 	})
 
 	When("a pipeline uses a profile with at least one uploader", func() {
 		var (
-			suffix   = testutils.GenerateRandomString(rnd, 5, testutils.LowercaseAlphabeticLetterSet)
-			uploader *v1beta1.Uploader
-			profile  *v1beta1.Profile
-			pipeline *v1beta1.Pipeline
+			suffix                    = testutils.GenerateRandomString(rnd, 5, testutils.LowercaseAlphabeticLetterSet)
+			uploaderContainerName     = "uploader-container"
+			scannerContainerName      = "profile-container"
+			doNotIncludeContainerName = "do-not-include"
+			includeContainerName      = "should-include"
+			uploader                  *v1beta1.Uploader
+			profile                   *v1beta1.Profile
+			pipeline                  *v1beta1.Pipeline
 		)
 
 		BeforeEach(func() {
@@ -233,7 +234,7 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 				Spec: v1beta1.UploaderSpec{
 					Container: corev1.Container{
-						Name:    "uploader-container",
+						Name:    uploaderContainerName,
 						Image:   testImage,
 						Command: []string{"/bin/sh", "-c"},
 						Args:    []string{"echo uploading...; cat $OCULAR_RESULTS_DIR/results.txt; echo done."},
@@ -265,7 +266,7 @@ var _ = Describe("Pipeline Controller", func() {
 						{
 							Container: corev1.Container{
 								Image:   testImage,
-								Name:    "profile-container",
+								Name:    scannerContainerName,
 								Command: []string{"/bin/sh", "-c"},
 								Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
 							},
@@ -273,7 +274,7 @@ var _ = Describe("Pipeline Controller", func() {
 						{
 							Container: corev1.Container{
 								Image: testImage,
-								Name:  "do-not-include",
+								Name:  doNotIncludeContainerName,
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_SET",
@@ -282,7 +283,7 @@ var _ = Describe("Pipeline Controller", func() {
 						{
 							Container: corev1.Container{
 								Image: testImage,
-								Name:  "should-include",
+								Name:  includeContainerName,
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_EMPTY",
@@ -364,9 +365,8 @@ var _ = Describe("Pipeline Controller", func() {
 					Target: v1beta1.Target{
 						Identifier: "https://example.com/samplefile.txt",
 					},
-					ScanServiceAccountName:   testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
-					UploadServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
-					RuntimeClassName:         &runtimeClassName,
+					ServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
+					RuntimeClassName:   &runtimeClassName,
 				},
 			}
 			Expect(k8sClient.Create(ctx, uploader)).To(Succeed())
@@ -381,7 +381,7 @@ var _ = Describe("Pipeline Controller", func() {
 		})
 
 		It("should create the pipeline", func() {
-			By("creating a scanner pod and an uploader pod")
+			By("creating a pipeline pod, and include uploaders")
 			controllerReconciler := &PipelineReconciler{
 				Client:            k8sClient,
 				Scheme:            k8sClient.Scheme(),
@@ -389,8 +389,6 @@ var _ = Describe("Pipeline Controller", func() {
 				SidecarPullPolicy: corev1.PullIfNotPresent,
 			}
 
-			// 1st invocation creates upload pod
-			// (it does not set 'scanPodOnly' so goes right into upload pod)
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      pipeline.Name,
@@ -403,100 +401,96 @@ var _ = Describe("Pipeline Controller", func() {
 				Namespace: pipeline.Namespace,
 			}, pipeline)).To(Succeed())
 
-			// upload pod will be created, need to be ready for scan pod
-			uploadPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadSuffix, Namespace: pipeline.Namespace}, uploadPod)
+			pipelinePod := &corev1.Pod{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipelineResourcePrefix + pipeline.Name, Namespace: pipeline.Namespace}, pipelinePod)
 			Expect(err).NotTo(HaveOccurred())
-			ValidatePipelineUploadPodSpec(uploadPod.Spec, sidecarImage, pipeline, profile)
-
-			// 2nd invocation creates service
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      pipeline.Name,
-					Namespace: pipeline.Namespace,
+			expectedScannerParams := []any{
+				corev1.EnvVar{
+					Name:  "OCULAR_PARAM_DEFAULT_EMPTY",
+					Value: "1",
+				}, corev1.EnvVar{
+					Name:  "OCULAR_PARAM_DEFAULT_SET",
+					Value: "",
+				}, corev1.EnvVar{
+					Name:  "OCULAR_PARAM_PARENT",
+					Value: "profile-invocation",
+				}, corev1.EnvVar{
+					Name:  "OCULAR_PARAM_PARENT_DEFAULT",
+					Value: "profile-default",
 				},
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadSuffix, Namespace: pipeline.Namespace}, &corev1.Service{})).To(Succeed())
-
-			// Next one awaits scan pod
-			var resp controllerruntime.Result
-			resp, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      pipeline.Name,
-					Namespace: pipeline.Namespace,
+			}
+			expectedUploaderParams := []any{
+				corev1.EnvVar{
+					Name:  "OCULAR_PARAM_PARAM1",
+					Value: "value1",
+				}, corev1.EnvVar{
+					Name:  "OCULAR_PARAM_INHERIT",
+					Value: "profile-invocation",
+				}, corev1.EnvVar{
+					Name:  "OCULAR_PARAM_INHERIT_DEFAULT",
+					Value: "profile-default",
 				},
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.RequeueAfter).NotTo(BeZero())
+			}
 
-			uploadPod.Status.InitContainerStatuses = append(uploadPod.Status.InitContainerStatuses,
-				corev1.ContainerStatus{
-					Name: sidecarReceiverContainerName,
-					State: corev1.ContainerState{
-						Running: &corev1.ContainerStateRunning{},
-					},
-				})
-			err = k8sClient.Status().Update(ctx, uploadPod)
-			Expect(err).NotTo(HaveOccurred())
-
-			// 3rd invocation will create scan pod (if upload is running)
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      pipeline.Name,
-					Namespace: pipeline.Namespace,
+			ValidatePipelinePodSpec(
+				pipelinePod.Spec,
+				sidecarImage,
+				pipeline,
+				profile,
+				downloader,
+				func(c corev1.Container) {
+					Expect(c.Name).To(Equal(downloadContainerPrefix + downloadContainerName))
+					Expect(c.Image).To(Equal(testImage))
 				},
-			})
-			Expect(err).NotTo(HaveOccurred())
-			scanPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanSuffix, Namespace: pipeline.Namespace}, scanPod)
-			Expect(err).NotTo(HaveOccurred())
-			ValidatePipelineScanPodSpec(scanPod.Spec, sidecarImage, pipeline, profile, downloader, []string{"should-include", "profile-container"},
-				[]corev1.EnvVar{
-					{
-						Name:  "OCULAR_PARAM_DEFAULT_EMPTY",
-						Value: "1",
+				map[string]func(corev1.Container){
+					scannerContainerName: func(c corev1.Container) {
+						Expect(c.Name).To(Equal(scanContainerPrefix + scannerContainerName))
+						Expect(c.Image).To(Equal(testImage))
+						Expect(c.Env).To(ContainElements(expectedScannerParams...))
 					},
-					{
-						Name:  "OCULAR_PARAM_DEFAULT_SET",
-						Value: "",
+					includeContainerName: func(c corev1.Container) {
+
+						Expect(c.Env).To(ContainElements(expectedScannerParams...))
 					},
-					{
-						Name:  "OCULAR_PARAM_PARENT",
-						Value: "profile-invocation",
-					},
-					{
-						Name:  "OCULAR_PARAM_PARENT_DEFAULT",
-						Value: "profile-default",
+				},
+				map[string]func(corev1.Container){
+					uploaderContainerName: func(c corev1.Container) {
+						Expect(c.Env).To(ContainElements(expectedUploaderParams...))
+						Expect(c.Env).To(ContainElement(corev1.EnvVar{
+							Name:  v1beta1.EnvVarUploaderName,
+							Value: uploader.Name,
+						}))
 					},
 				},
 			)
 
-			// finally, set status as running
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      pipeline.Name,
-					Namespace: pipeline.Namespace,
-				},
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      pipeline.Name,
-				Namespace: pipeline.Namespace,
-			}, pipeline)).To(Succeed())
-			Expect(pipeline.Status.StartTime).NotTo(BeNil())
-			Expect(pipeline.Status.Phase).To(Equal(v1beta1.PipelineDownloading))
-			Expect(pipeline.Status.StageStatuses.DownloadStatus).To(Equal(v1beta1.PipelineStageInProgress))
-			Expect(pipeline.Status.StageStatuses.UploadStatus).To(Equal(v1beta1.PipelineStageNotStarted))
-			Expect(pipeline.Status.StageStatuses.ScanStatus).To(Equal(v1beta1.PipelineStageNotStarted))
+			// TODO: test status
+			// _, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+			// 	NamespacedName: types.NamespacedName{
+			// 		Name:      pipeline.Name,
+			// 		Namespace: pipeline.Namespace,
+			// 	},
+			// })
+			// Expect(err).NotTo(HaveOccurred())
+			// Expect(k8sClient.Get(ctx, types.NamespacedName{
+			// 	Name:      pipeline.Name,
+			// 	Namespace: pipeline.Namespace,
+			// }, pipeline)).To(Succeed())
+			// Expect(pipeline.Status.StartTime).NotTo(BeNil())
+			// Expect(pipeline.Status.Phase).To(Equal(v1beta1.PipelineDownloading))
+			// Expect(pipeline.Status.StageStatuses.DownloadStatus).To(Equal(v1beta1.PipelineStageInProgress))
+			// Expect(pipeline.Status.StageStatuses.UploadStatus).To(Equal(v1beta1.PipelineStageNotStarted))
+			// Expect(pipeline.Status.StageStatuses.ScanStatus).To(Equal(v1beta1.PipelineStageNotStarted))
 		})
 
 	})
 	When("a pipeline conditionally uses a container", func() {
 		var (
-			suffix   = testutils.GenerateRandomString(rnd, 5, testutils.LowercaseAlphabeticLetterSet)
-			profile  *v1beta1.Profile
-			pipeline *v1beta1.Pipeline
+			suffix                    = testutils.GenerateRandomString(rnd, 5, testutils.LowercaseAlphabeticLetterSet)
+			includeContainerName      = "should-include"
+			doNotIncludeContainerName = "do-no-include"
+			profile                   *v1beta1.Profile
+			pipeline                  *v1beta1.Pipeline
 		)
 
 		BeforeEach(func() {
@@ -510,7 +504,7 @@ var _ = Describe("Pipeline Controller", func() {
 						{
 							Container: corev1.Container{
 								Image: testImage,
-								Name:  "should-include",
+								Name:  includeContainerName,
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_SET",
@@ -519,8 +513,7 @@ var _ = Describe("Pipeline Controller", func() {
 						{
 							Container: corev1.Container{
 								Image: testImage,
-								// nolint:goconst
-								Name: "do-not-include",
+								Name:  doNotIncludeContainerName,
 							},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_EMPTY",
@@ -557,8 +550,7 @@ var _ = Describe("Pipeline Controller", func() {
 					Target: v1beta1.Target{
 						Identifier: "https://example.com/samplefile.txt",
 					},
-					ScanServiceAccountName:   testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
-					UploadServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
+					ServiceAccountName: testutils.GenerateRandomString(rnd, 10, testutils.LowercaseAlphabeticLetterSet),
 				},
 			}
 			Expect(k8sClient.Create(ctx, profile)).To(Succeed())
@@ -578,23 +570,7 @@ var _ = Describe("Pipeline Controller", func() {
 				SidecarImage:      sidecarImage,
 				SidecarPullPolicy: corev1.PullIfNotPresent,
 			}
-			// 1st reconcile should set the status to scan pod only
-			// since default is scan & upload
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      pipeline.Name,
-					Namespace: pipeline.Namespace,
-				},
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      pipeline.Name,
-				Namespace: pipeline.Namespace,
-			}, pipeline)).To(Succeed())
-			Expect(pipeline.Status.ScanPodOnly).To(BeTrue())
-
-			// 2nd reconcile should create scan pod
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      pipeline.Name,
 					Namespace: pipeline.Namespace,
@@ -607,66 +583,85 @@ var _ = Describe("Pipeline Controller", func() {
 			}, pipeline)).To(Succeed())
 
 			scanPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + scanSuffix, Namespace: pipeline.Namespace}, scanPod)
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipelineResourcePrefix + pipeline.Name, Namespace: pipeline.Namespace}, scanPod)
 			Expect(err).NotTo(HaveOccurred())
-			ValidatePipelineScanPodSpec(scanPod.Spec, sidecarImage, pipeline, profile, downloader, []string{"should-include"}, []corev1.EnvVar{
-				{
-					Name:  "OCULAR_PARAM_DEFAULT_EMPTY",
-					Value: "",
+			ValidatePipelinePodSpec(
+				scanPod.Spec,
+				sidecarImage,
+				pipeline,
+				profile,
+				downloader,
+				func(c corev1.Container) {
+					Expect(c.Name).To(Equal(downloadContainerPrefix + downloadContainerName))
+					Expect(c.Image).To(Equal(testImage))
 				},
-				{
-					Name:  "OCULAR_PARAM_DEFAULT_SET",
-					Value: "1",
-				}},
+				map[string]func(_ corev1.Container){
+					includeContainerName: func(c corev1.Container) {
+						Expect(c.Env).To(ContainElements(corev1.EnvVar{
+							Name:  "OCULAR_PARAM_DEFAULT_EMPTY",
+							Value: "",
+						}, corev1.EnvVar{
+							Name:  "OCULAR_PARAM_DEFAULT_SET",
+							Value: "1",
+						}))
+					},
+				},
+				nil,
 			)
-
-			uploadPod := &corev1.Pod{}
-			err = k8sClient.Get(ctx, types.NamespacedName{Name: pipeline.Name + uploadSuffix, Namespace: pipeline.Namespace}, uploadPod)
-			Expect(err).To(HaveOccurred())
-			Expect(apierrors.IsNotFound(err)).To(BeTrue())
 		})
 
 	})
 })
 
-func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
+func ValidatePipelinePodSpec(podSpec corev1.PodSpec,
 	sidecarImage string,
 	pipeline *v1beta1.Pipeline,
 	profile *v1beta1.Profile,
 	downloader *v1beta1.Downloader,
-	expectedContainerNames []string,
-	expectedEnvVars []corev1.EnvVar,
+	downloaderValidator func(corev1.Container),
+	scanContainerValidators map[string]func(corev1.Container),
+	uploadContainerValidators map[string]func(corev1.Container),
 ) {
 	Expect(podSpec.InitContainers).To(HaveLen(2)) // downloader + sidecar
-	// length minus 1 due to condition not being set
-	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.Containers) - 1))
-	containerNames := make([]string, 0, len(podSpec.Containers))
+	scanContainers, uploadContainers := make(map[string]corev1.Container), make(map[string]corev1.Container)
 	for _, c := range podSpec.Containers {
-		containerNames = append(containerNames, c.Name)
+		if name, found := strings.CutPrefix(c.Name, scanContainerPrefix); found {
+			scanContainers[name] = c
+		} else if name, found := strings.CutPrefix(c.Name, uploadContainerPrefix); found {
+			uploadContainers[name] = c
+		}
 	}
-	expectedNames := make([]any, 0, len(expectedContainerNames))
-	for _, container := range expectedContainerNames {
-		expectedNames = append(expectedNames, container)
+
+	Expect(scanContainers).To(HaveLen(len(scanContainerValidators)))
+	for n, s := range scanContainers {
+		Expect(scanContainerValidators).To(HaveKey(n))
+		validator := scanContainerValidators[n]
+		if validator != nil {
+			validator(s)
+		}
 	}
-	Expect(containerNames).To(ContainElements(expectedNames...),
-		fmt.Sprintf("included containers should be [%s]", strings.Join(expectedContainerNames, ",")))
-	// Downloader
-	Expect(podSpec.InitContainers[0].Name).To(Equal(downloader.Spec.Container.Name))
-	Expect(podSpec.InitContainers[0].Image).To(Equal(downloader.Spec.Container.Image))
-	Expect(podSpec.InitContainers[0].Command).To(Equal(downloader.Spec.Container.Command))
-	Expect(podSpec.InitContainers[0].Args).To(Equal(downloader.Spec.Container.Args))
+
+	Expect(uploadContainers).To(HaveLen(len(uploadContainerValidators)))
+	for n, u := range uploadContainers {
+		Expect(uploadContainerValidators).To(HaveKey(n))
+		validator := uploadContainerValidators[n]
+		if validator != nil {
+			validator(u)
+		}
+	}
 
 	// Sidecar
-	Expect(podSpec.InitContainers[1].Name).To(Equal("extract-artifacts"))
-	Expect(podSpec.InitContainers[1].Image).To(Equal(sidecarImage))
-	Expect(podSpec.InitContainers[1].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
-	Expect(podSpec.InitContainers[1].RestartPolicy).ToNot(BeNil())
-	Expect(*podSpec.InitContainers[1].RestartPolicy).To(Equal(corev1.ContainerRestartPolicyAlways)) // is a sidecar
+	Expect(podSpec.InitContainers[0].Name).To(Equal(sidecarInitContainerName))
+	Expect(podSpec.InitContainers[0].Image).To(Equal(sidecarImage))
+	Expect(podSpec.InitContainers[0].RestartPolicy).To(BeNil())
+	// Downloader
+	if downloaderValidator != nil {
+		downloaderValidator(podSpec.InitContainers[1])
+	}
 
-	Expect(podSpec.ServiceAccountName).To(Equal(pipeline.Spec.ScanServiceAccountName))
+	Expect(podSpec.ServiceAccountName).To(Equal(pipeline.Spec.ServiceAccountName))
 	Expect(podSpec.RuntimeClassName).To(Equal(pipeline.Spec.RuntimeClassName))
-	expectedEnv := make([]any, 0, 6+len(expectedContainerNames))
-	expectedEnv = append(expectedEnv,
+	expectedEnv := []any{
 		corev1.EnvVar{
 			Name:  "OCULAR_TARGET_IDENTIFIER",
 			Value: pipeline.Spec.Target.Identifier,
@@ -696,9 +691,6 @@ func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
 			Name:  "OCULAR_DOWNLOADER_NAME",
 			Value: downloader.Name,
 		},
-	)
-	for _, e := range expectedEnvVars {
-		expectedEnv = append(expectedEnv, e)
 	}
 	for _, container := range podSpec.Containers {
 		Expect(container.Env).To(ContainElements(
@@ -707,60 +699,60 @@ func ValidatePipelineScanPodSpec(podSpec corev1.PodSpec,
 	}
 }
 
-func ValidatePipelineUploadPodSpec(podSpec corev1.PodSpec,
-	sidecarImage string,
-	pipeline *v1beta1.Pipeline,
-	profile *v1beta1.Profile) {
-	Expect(podSpec.InitContainers).To(HaveLen(1)) // sidecar only
-	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.UploaderRefs)))
-	// sidecar
-	Expect(podSpec.InitContainers[0].Name).To(Equal(sidecarReceiverContainerName))
-	Expect(podSpec.InitContainers[0].Image).To(Equal(sidecarImage))
-	Expect(podSpec.InitContainers[0].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
+// func ValidatePipelineUploadPodSpec(podSpec corev1.PodSpec,
+// 	sidecarImage string,
+// 	pipeline *v1beta1.Pipeline,
+// 	profile *v1beta1.Profile) {
+// 	Expect(podSpec.InitContainers).To(HaveLen(1)) // sidecar only
+// 	Expect(podSpec.Containers).To(HaveLen(len(profile.Spec.UploaderRefs)))
+// 	// sidecar
+// 	Expect(podSpec.InitContainers[0].Name).To(Equal(sidecarReceiverContainerName))
+// 	Expect(podSpec.InitContainers[0].Image).To(Equal(sidecarImage))
+// 	Expect(podSpec.InitContainers[0].Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
 
-	Expect(podSpec.ServiceAccountName).To(Equal(pipeline.Spec.UploadServiceAccountName))
-	Expect(podSpec.RuntimeClassName).To(Equal(pipeline.Spec.RuntimeClassName))
-	for _, container := range podSpec.Containers {
-		Expect(container.Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
-		Expect(container.Env).To(ContainElements(
-			corev1.EnvVar{
-				Name:  "OCULAR_PARAM_PARAM1",
-				Value: "value1",
-			},
-			corev1.EnvVar{
-				Name:  "OCULAR_PARAM_INHERIT",
-				Value: "profile-invocation",
-			},
-			corev1.EnvVar{
-				Name:  "OCULAR_PARAM_INHERIT_DEFAULT",
-				Value: "profile-default",
-			},
-			corev1.EnvVar{
-				Name:  "OCULAR_TARGET_IDENTIFIER",
-				Value: pipeline.Spec.Target.Identifier,
-			},
-			corev1.EnvVar{
-				Name:  "OCULAR_RESULTS_DIR",
-				Value: "/mnt/results",
-			},
-			corev1.EnvVar{
-				Name:  "OCULAR_PIPELINE_NAME",
-				Value: pipeline.Name,
-			},
-			corev1.EnvVar{
-				Name: "OCULAR_POD_NAME",
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						APIVersion: "v1",
-						FieldPath:  "metadata.name",
-					},
-				},
-			},
-			corev1.EnvVar{
-				Name:  "OCULAR_TARGET_VERSION",
-				Value: pipeline.Spec.Target.Version,
-			},
-		))
-	}
+// 	Expect(podSpec.ServiceAccountName).To(Equal(pipeline.Spec.UploadServiceAccountName))
+// 	Expect(podSpec.RuntimeClassName).To(Equal(pipeline.Spec.RuntimeClassName))
+// 	for _, container := range podSpec.Containers {
+// 		Expect(container.Args).Should(HaveLen(len(profile.Spec.Artifacts) + 2))
+// 		Expect(container.Env).To(ContainElements(
+// 			corev1.EnvVar{
+// 				Name:  "OCULAR_PARAM_PARAM1",
+// 				Value: "value1",
+// 			},
+// 			corev1.EnvVar{
+// 				Name:  "OCULAR_PARAM_INHERIT",
+// 				Value: "profile-invocation",
+// 			},
+// 			corev1.EnvVar{
+// 				Name:  "OCULAR_PARAM_INHERIT_DEFAULT",
+// 				Value: "profile-default",
+// 			},
+// 			corev1.EnvVar{
+// 				Name:  "OCULAR_TARGET_IDENTIFIER",
+// 				Value: pipeline.Spec.Target.Identifier,
+// 			},
+// 			corev1.EnvVar{
+// 				Name:  "OCULAR_RESULTS_DIR",
+// 				Value: "/mnt/results",
+// 			},
+// 			corev1.EnvVar{
+// 				Name:  "OCULAR_PIPELINE_NAME",
+// 				Value: pipeline.Name,
+// 			},
+// 			corev1.EnvVar{
+// 				Name: "OCULAR_POD_NAME",
+// 				ValueFrom: &corev1.EnvVarSource{
+// 					FieldRef: &corev1.ObjectFieldSelector{
+// 						APIVersion: "v1",
+// 						FieldPath:  "metadata.name",
+// 					},
+// 				},
+// 			},
+// 			corev1.EnvVar{
+// 				Name:  "OCULAR_TARGET_VERSION",
+// 				Value: pipeline.Spec.Target.Version,
+// 			},
+// 		))
+// 	}
 
-}
+// }

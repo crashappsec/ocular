@@ -6,30 +6,28 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-// Utility image to transfer files between scanners and uploaders.
-// It will run as both a sidecar container for the scanner job and
-// an init container for the uploader job. When the scanner job is finished,
-// it will receive a SIGTERM to stop the container and upload the files to the
-// specified uploader job. On the uploader job, it will run as an init container
-// listening for the requests sent from the sidecar container of the scanner job.
-// It will write all files received to the shared results directory and exit 0,
-// allowing uploaders to run.
+// Sidecar is a utility binary that wraps user process in containers
+// and allows for the uploaders to await scanner completion before starting.
+// First the sidecar runs as an init container and copies itself to a shared volume.
+// then it will wrap the scanner containers to write their exit code to a file
+// with the name as the scanner container. Next the wrapped uploaders wait until
+// all scanners finish before starting.
 package main
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
+	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
+	"os/exec"
+	"path"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
-	"github.com/crashappsec/ocular/cmd/sidecar/cmd"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"github.com/crashappsec/ocular/internal/process"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -40,109 +38,135 @@ var (
 
 func main() {
 	ctx := context.Background()
+	l := slog.With(
+		slog.String("version", version),
+		slog.String("git-commit", gitCommit),
+		slog.String("build-time", buildTime),
+	)
 
-	opts := zap.Options{}
-	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
-
-	logger := zap.New(zap.UseFlagOptions(&zap.Options{})).
-		WithValues("version", version, "buildTime", buildTime, "gitCommit", gitCommit)
-	logf.SetLogger(logger)
-	ctx = logf.IntoContext(ctx, logger)
-
-	logger.Info("starting ocular sidecar")
+	l.Info("starting ocular sidecar")
 	if len(os.Args) < 2 {
-		logger.Error(fmt.Errorf("no command specified"), "no command specified for sidecar")
-		fmt.Println("Usage: sidecar <command> [args...]")
+		l.Error("no command specified for sidecar")
+		fmt.Println("Usage: sidecar <command> [user command...]")
 		os.Exit(1)
 	}
 
 	var (
 		command = os.Args[1]
-		err     error
+		userCmd = os.Args[2:]
 	)
 
-	var files []string
-	for n, arg := range os.Args {
-		if arg == "--" {
-			files = os.Args[n+1:]
-			break
-		}
-	}
+	cancelCtx, awaitSigterm := process.CancelContextSigterm(ctx)
+	go awaitSigterm()
 
-	cancelCtx, cancel := context.WithCancel(ctx)
-	go awaitSigterm(cancelCtx, cancel)
-
-	logger.Info("starting sidecar in mode "+command, "files", files, "command", command)
+	l = l.With(slog.Any("userCmd", userCmd), slog.String("command", command))
+	l.Info("starting sidecar command " + command)
 	switch command {
-	case "receive":
-		err = cmd.Receive(cancelCtx, files)
-	case "extract":
-		err = cmd.Extract(cancelCtx, files)
-	case "scheduler":
-		err = cmd.Schedule(cancelCtx)
-	case "scheduler-keepalive": // keeps pod alive till scheduler is done
-		if _, err = os.Create(os.Getenv(v1beta1.EnvVarSchedulerCompletePath)); err != nil {
-			logger.Error(err, "unable to create complete path")
+	case "init":
+		execPath, err := os.Executable()
+		if err != nil {
+			l.Error("unable to determine executable path", slog.Any("error", err))
 			os.Exit(1)
 		}
-		awaitFIFOs(ctx, false)
-		os.Exit(0)
-	case "scheduler-init": // awaits scheduler to be ready before existing
-		awaitFIFOs(ctx, true)
-		os.Exit(0)
-	case "ignore":
-		logger.Info("no uploaders specified, ignoring files and shutting down gracefully")
-		<-cancelCtx.Done()
+		runtimePath := os.Getenv(v1beta1.EnvVarSidecarPath)
+		err = process.CopyFile(ctx, execPath, runtimePath)
+		if err != nil {
+			l.Error("failed to copy executable", slog.Any("error", err))
+			os.Exit(1)
+		}
+		err = os.Chmod(runtimePath, 0o755)
+		if err != nil {
+			l.Error("unable to change permissions of executable", slog.Any("error", err))
+		}
+		err = os.MkdirAll(os.Getenv(v1beta1.EnvVarProcessDir), 0o777)
+		if err != nil {
+			l.Error("unable to create process directory ", slog.Any("error", err))
+		}
+	case "await-scanners":
+		cmd, err := process.BuildUserCommand(cancelCtx, userCmd)
+		if err != nil {
+			l.Error("unable to parse user command", slog.Any("error", err))
+			os.Exit(1)
+		}
+		awaitScannersHook := AwaitScans(strings.Split(os.Getenv(v1beta1.EnvVarScanContainerNames), ","))
+		exitCode, err := process.HookCommand(cancelCtx, cmd, awaitScannersHook, nil)
+		if err != nil {
+			l.Error("unable to execute scanner", slog.Any("error", err))
+			os.Exit(1)
+		}
+		os.Exit(exitCode)
+	case "scanner":
+		cmd, err := process.BuildUserCommand(cancelCtx, userCmd)
+		if err != nil {
+			l.Error("unable to parse user command", slog.Any("error", err))
+			os.Exit(1)
+		}
+		exitCode, err := process.HookCommand(cancelCtx, cmd, nil, ScanCompleteHook(os.Getenv(v1beta1.EnvVarContainerName)))
+		if err != nil {
+			l.Error("unable to execute scanner", slog.Any("error", err))
+			os.Exit(1)
+		}
+		os.Exit(exitCode)
 	default:
-		err = fmt.Errorf("unknown argument: %s", command)
-	}
-
-	if err != nil {
-		fmt.Println("error:", err)
-		logger.Error(err, "failed to extract files", "command", command)
+		slog.Error("unknown command")
 		os.Exit(1)
 	}
 }
 
-func awaitSigterm(ctx context.Context, cancel context.CancelFunc) {
-	l := logf.FromContext(ctx)
-	sigTerm := make(chan os.Signal, 1)
-	// catch SIGETRM or SIGINTERRUPT
-	signal.Notify(sigTerm, syscall.SIGTERM, syscall.SIGINT)
-	l.Info("awaiting SIGTERM")
-	sig := <-sigTerm
-	cancel()
-	l.Info("Received signal", "signal", sig.String())
+func AwaitScans(scanners []string) process.Hook {
+	return func(ctx context.Context, _ *exec.Cmd) error {
+		g, ctx := errgroup.WithContext(ctx)
+		for _, scanner := range scanners {
+			l := slog.With(slog.String("scanner", scanner))
+			l.Info("awating scanner")
+			g.Go(func() error {
+				for {
+					complete, err := IsScannerComplete(ctx, scanner)
+					if err != nil {
+						l.Error("unable to check for scanner completion", slog.Any("error", err))
+						return err
+					}
+
+					if complete {
+						l.Info("scanner complete")
+						return nil
+					}
+					l.Info("scanner not complete, sleeping before checking again")
+					time.Sleep(time.Second)
+				}
+			})
+		}
+		return g.Wait()
+	}
 }
 
-// awaitFIFOs will await both the search and pipeline
-// FIFO files exist if exists is true, otherwise it
-// will await they dont exist.
-func awaitFIFOs(ctx context.Context, exists bool) {
-	pipelineFIFOPath, searchFIFOPath := os.Getenv(v1beta1.EnvVarPipelineFIFO), os.Getenv(v1beta1.EnvVarSearchFIFO)
-	var searchFIFO, pipelineFIFO bool
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			if _, err := os.Stat(pipelineFIFOPath); exists {
-				pipelineFIFO = err == nil
-			} else {
-				pipelineFIFO = errors.Is(err, os.ErrNotExist)
-			}
+func IsScannerComplete(_ context.Context, scanner string) (bool, error) {
+	markPath := path.Join(os.Getenv(v1beta1.EnvVarProcessDir), scanner)
+	_, err := os.Stat(markPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
 
-			if _, err := os.Stat(searchFIFOPath); exists {
-				searchFIFO = err == nil
-			} else {
-				searchFIFO = errors.Is(err, os.ErrNotExist)
-			}
+	return true, nil
+}
 
-			if pipelineFIFO && searchFIFO {
-				return
-			}
-			time.Sleep(time.Second)
+func ScanCompleteHook(scanner string) process.Hook {
+	return func(ctx context.Context, cmd *exec.Cmd) error {
+		markPath := path.Join(os.Getenv(v1beta1.EnvVarProcessDir), scanner)
+
+		exitcode := cmd.ProcessState.ExitCode()
+		f, err := os.Create(markPath)
+		if err != nil {
+			return fmt.Errorf("unable to create mark path '%s' for scanner %s: %w", markPath, scanner, err)
 		}
+
+		_, err = f.WriteString(strconv.Itoa(exitcode))
+		if err != nil {
+			return fmt.Errorf("unable to write exit code '%d' for scanner %s: %w", exitcode, scanner, err)
+		}
+
+		return nil
 	}
 }

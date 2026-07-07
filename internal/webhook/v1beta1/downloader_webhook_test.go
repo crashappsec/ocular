@@ -82,8 +82,7 @@ var _ = Describe("Downloader Webhook", func() {
 					Identifier: "some-identifier",
 					Version:    "some-version",
 				},
-				ScanServiceAccountName:   svcAccount.Name,
-				UploadServiceAccountName: svcAccount.Name,
+				ServiceAccountName: svcAccount.Name,
 			},
 		}
 		validator = DownloaderCustomValidator{

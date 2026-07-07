@@ -24,6 +24,10 @@ const (
 	// EnvVarPodName is the environment variable name for the current pod.
 	EnvVarPodName EnvironmentVariableName = "OCULAR_POD_NAME"
 
+	// EnvVarContainerName is the environment variable name for the name of the
+	// current container.
+	EnvVarContainerName EnvironmentVariableName = "OCULAR_CONTAINER_NAME"
+
 	/* Pipeline and Profile related environment variables */
 
 	// EnvVarTargetIdentifier is the environment variable name for the target identifier.
@@ -86,6 +90,22 @@ const (
 	EnvVarPipelineSchedulerIntervalSeconds EnvironmentVariableName = "OCULAR_PIPELINE_SCHEDULER_INTERVAL_SEC"
 
 	// internal environment variables  //
+
+	// EnvVarProcessDir is the environment variable with the name of the process
+	// directory, used by the sidecar internally
+	EnvVarProcessDir EnvironmentVariableName = "OCULAR_PROCESS_DIR"
+
+	// EnvVarSidecarPath is the environment that points to the location
+	// of the ocular sidecar executable
+	EnvVarSidecarPath EnvironmentVariableName = "OCULAR_SIDECAR_PATH"
+
+	// EnvVarSchedulerPath is the environment that points to the location
+	// of the ocular scheduler executable
+	EnvVarSchedulerPath EnvironmentVariableName = "OCULAR_SCHEDULER_PATH"
+
+	// EnvVarScanContainerNames is a comma separated list of container
+	// names for each scan container in the pod
+	EnvVarScanContainerNames EnvironmentVariableName = "OCULAR_SCAN_CONTAINER_NAMES"
 
 	// EnvVarExtractorPort is the environment variable name for the extractor port.
 	EnvVarExtractorPort EnvironmentVariableName = "OCULAR_EXTRACTOR_PORT"

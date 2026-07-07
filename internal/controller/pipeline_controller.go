@@ -13,25 +13,21 @@ import (
 	"maps"
 	"path"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/crashappsec/ocular/internal/containers"
 	"github.com/crashappsec/ocular/internal/resources"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -52,16 +48,9 @@ var (
 		},
 		[]string{"profile", "downloader", "namespace"},
 	)
-	scanPodsCreated = prometheus.NewCounterVec(
+	pipelinePodsCreated = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "pipeline_scan_pods_total",
-			Help: "Number of scan pods ocular has created",
-		},
-		[]string{"profile", "downloader", "namespace"},
-	)
-	uploadPodsCreated = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "pipeline_upload_pods_total",
+			Name: "pipeline_pods_total",
 			Help: "Number of scan pods ocular has created",
 		},
 		[]string{"profile", "downloader", "namespace"},
@@ -80,7 +69,7 @@ func init() {
 	metrics.Registry.MustRegister(
 		pipelinesCompleted,
 		pipelinesRunning,
-		scanPodsCreated, uploadPodsCreated,
+		pipelinePodsCreated,
 		pipelineDurationSeconds,
 	)
 }
@@ -99,26 +88,7 @@ func (r *PipelineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1beta1.Pipeline{}).
 		Named("pipeline").
 		Owns(&corev1.Pod{}, builder.WithPredicates(podStateChangedPredicate)).
-		Owns(&corev1.Service{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
-}
-
-// podStateChangedPredicate filters pod watch events to only
-// update when phase changed. Since Create/Delete are not
-// specified, they will be triggered for every create/delete
-var podStateChangedPredicate = predicate.Funcs{
-	UpdateFunc: func(e event.UpdateEvent) bool {
-		oldPod, ok1 := e.ObjectOld.(*corev1.Pod)
-		newPod, ok2 := e.ObjectNew.(*corev1.Pod)
-		if !ok1 || !ok2 {
-			return true
-		}
-
-		return oldPod.Status.Phase != newPod.Status.Phase
-		// we may need to check for when container status update
-		// !equality.Semantic.DeepEqual(oldPod.Status.InitContainerStatuses, newPod.Status.InitContainerStatuses) ||
-		// !equality.Semantic.DeepEqual(oldPod.Status.ContainerStatuses, newPod.Status.ContainerStatuses)
-	},
 }
 
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
@@ -137,12 +107,9 @@ var podStateChangedPredicate = predicate.Funcs{
 // Breakdown of the reconciliation steps:
 // 1. Fetch the pipeline instance
 // 2. Fetch referenced resources (profile, downloader, uploaders)
-// 3. Update status to indicate if scan only (exit if updated)
-// 4. Fetch or create upload pod if applicable (exit if created)
-// 5. Fetch or create upload service if applicable (exit if created)
-// 6. Await upload pod running, and create scan pod if applicable (exit if created)
-// 8. Continually Update the pipeline status accordingly based on the state of the pods
-// 9. Once completed, await TTL if set
+// 3. Fetch or create pipeline pod
+// 4. Continually Update the pipeline status accordingly based on the state of the pods
+// 5. Once completed, await TTL if set
 // For more details, check Reconcile and its Result here:
 // https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile#Reconciler
 func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -201,98 +168,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	// In the case where no artifacts or uploaders are defined and the pipeline hasn't started
-	// set the status to scan pod only
-	scanPodOnly := len(profile.Spec.UploaderRefs) == 0
-	if pipeline.Status.StartTime == nil && scanPodOnly != pipeline.Status.ScanPodOnly {
-		l.Info("setting pipeline scan only status", "scanPodOnly", scanPodOnly)
-		patch := client.MergeFrom(pipeline.DeepCopy())
-		pipeline.Status.ScanPodOnly = scanPodOnly
-		if scanPodOnly {
-			pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageSkipped
-		}
-		return ctrl.Result{}, patchStatus(logf.IntoContext(ctx, l), r.Client, pipeline, patch)
-	}
-	l = l.WithValues("scan-pod-only", pipeline.Status.ScanPodOnly)
-
-	envVars := generateBasePipelineEnvironment(pipeline)
-	containerOpts := generateBaseContainerOptions(envVars)
-	// aritfactArgs are the arguments passed to the sidecar
-	// & uploaders to specify which artifacts to extract
-	artifactArgs := generateArtifactArguments(downloader.Spec.MetadataFiles, profile.Spec.Artifacts)
-
-	// generate upload components (if applicable)
-	uploadPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: pipeline.GetName() + uploadSuffix, Namespace: pipeline.GetNamespace()}}
-	uploadService := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: pipeline.GetName() + uploadSuffix, Namespace: pipeline.GetNamespace()}}
-	if !pipeline.Status.ScanPodOnly {
-		l.Info("ensuring upload resources are created")
-		uploadPodOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, uploadPod, func() error {
-			uploaderContainerOpts := append(containerOpts,
-				containers.WithAdditionalArgs(artifactArgs...),
-				containers.WithWorkingDir(v1beta1.PipelineResultsDirectory),
-				containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
-					Name:      pipelineResultsVolumeName,
-					MountPath: v1beta1.PipelineResultsDirectory,
-				}),
-				containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
-					Name:      pipelineMetadataVolumeName,
-					MountPath: v1beta1.PipelineMetadataDirectory,
-				}),
-			)
-			return r.populateUploadPod(uploadPod, pipeline, profile, uploaders, uploaderContainerOpts...)
-		})
-		if err != nil {
-			return ctrl.Result{}, client.IgnoreAlreadyExists(fmt.Errorf("unable to generate new upload pod: %w", err))
-		}
-
-		l = l.WithValues("upload-pod", uploadPod.Name)
-
-		switch uploadPodOp {
-		case controllerutil.OperationResultCreated:
-			uploadPodsCreated.With(metricLabelsForPipeline(pipeline)).Inc()
-			fallthrough
-		case controllerutil.OperationResultUpdated:
-			l.Info("upload pod was created or modified", "op", uploadPodOp)
-		}
-
-		uploadServiceOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, uploadService, func() error {
-			return r.populateUploadService(uploadService, pipeline)
-		})
-		if err != nil {
-			return ctrl.Result{}, client.IgnoreAlreadyExists(fmt.Errorf("unable to generate new upload service: %w", err))
-		}
-
-		l = l.WithValues("upload-service", uploadService.Name)
-		if uploadServiceOp == controllerutil.OperationResultCreated ||
-			uploadServiceOp == controllerutil.OperationResultUpdated {
-			l.Info("upload service was created or modified", "op", uploadServiceOp)
-		}
-
-		if pipeline.Status.StartTime.IsZero() && !uploadPodStarted(uploadPod) {
-			l.Info("upload pod and service created, awaiting upload pod ready")
-			return ctrl.Result{RequeueAfter: time.Second, Priority: new(100)}, nil
-		}
-
-	}
-
-	scanPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: pipeline.GetName() + scanSuffix, Namespace: pipeline.GetNamespace()}}
+	scanPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: pipelineResourcePrefix + pipeline.GetName(), Namespace: pipeline.GetNamespace()}}
 	scanPodOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, scanPod, func() error {
-		sidecarContainer := r.createSidecarExtractorContainer(pipeline, uploadService, artifactArgs)
-		scanContainerOpts := append(containerOpts,
-			containers.WithWorkingDir(v1beta1.PipelineTargetDirectory),
-			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
-				Name:      pipelineTargetVolumeName,
-				MountPath: v1beta1.PipelineTargetDirectory,
-			}),
-			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
-				Name:      pipelineMetadataVolumeName,
-				MountPath: v1beta1.PipelineMetadataDirectory,
-			}),
-			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
-				Name:      pipelineResultsVolumeName,
-				MountPath: v1beta1.PipelineResultsDirectory,
-			}))
-		return r.populateScanPod(scanPod, pipeline, profile, downloader, sidecarContainer, scanContainerOpts...)
+		return r.populateScanPod(scanPod, pipeline, profile, downloader, uploaders)
 	})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("unable to generate new scan pod: %w", err)
@@ -302,7 +180,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	switch scanPodOp {
 	case controllerutil.OperationResultCreated:
-		scanPodsCreated.With(metricLabelsForPipeline(pipeline)).Inc()
+		pipelinePodsCreated.With(metricLabelsForPipeline(pipeline)).Inc()
 		fallthrough
 	case controllerutil.OperationResultUpdated:
 		l.Info("scan pod was created or modified", "op", scanPodOp)
@@ -321,7 +199,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 
 		// Check for completion of pods and update status accordingly
-		return r.handleCompletion(logf.IntoContext(ctx, l), pipeline, scanPod, uploadPod)
+		return r.handleCompletion(logf.IntoContext(ctx, l), pipeline, scanPod)
 	}
 
 	// Update status to reflect pods have been created
@@ -329,17 +207,6 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	startTime := scanPod.CreationTimestamp
 	patch := client.MergeFrom(pipeline.DeepCopy())
 	reason, message := "ScanPodSuccessfullyCreated", fmt.Sprintf("The scan pod %s has been created.", scanPod.Name)
-	if !pipeline.Status.ScanPodOnly {
-		reason, message = "UploadPodSuccessfullyCreated", fmt.Sprintf("The upload pod %s has been created.", uploadPod.GetName())
-		pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
-			Type:               v1beta1.PipelineUploadPodCreatedConditionType,
-			Status:             metav1.ConditionTrue,
-			Reason:             reason,
-			Message:            message,
-			LastTransitionTime: uploadPod.CreationTimestamp.Rfc3339Copy(),
-		})
-		pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
-	}
 	pipeline.Status.Conditions = append(pipeline.Status.Conditions, metav1.Condition{
 		Type:               v1beta1.PipelineScanPodCreatedConditionType,
 		Status:             metav1.ConditionTrue,
@@ -357,62 +224,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 }
 
-const (
-	// sidecarExtractorContainerName is the name of the sidecar container in the scan pod
-	// that handles extracting artifacts and uploading them to the upload pod
-	sidecarExtractorContainerName = "extract-artifacts"
-
-	// sidecarReceiverContainerName is the name of the receiver
-	// sidecar container in the upload pod
-	sidecarReceiverContainerName = "receive-artifacts"
-)
-
-var (
-	sidecarResourceRequirements = corev1.ResourceRequirements{
-		Limits: corev1.ResourceList{
-			// nolint:goconst
-			"cpu": resource.MustParse("250m"),
-			// nolint:goconst
-			"memory": resource.MustParse("512Mi"),
-		},
-		Requests: corev1.ResourceList{
-			"cpu":    resource.MustParse("50m"),
-			"memory": resource.MustParse("64Mi"),
-		},
-	}
-)
-
-func (r *PipelineReconciler) createSidecarExtractorContainer(pipeline *v1beta1.Pipeline, uploadService *corev1.Service, artifactsArgs []string) corev1.Container {
-	var (
-		sidecarEnvVars []corev1.EnvVar
-		sidecarCommand = "ignore"
-	)
-
-	if !pipeline.Status.ScanPodOnly {
-		sidecarCommand = "extract"
-		if uploadService != nil {
-			sidecarEnvVars = append(sidecarEnvVars, corev1.EnvVar{
-				Name:  v1beta1.EnvVarExtractorHost,
-				Value: fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", uploadService.Name, uploadService.Namespace, extractorPort),
-			})
-		}
-	}
-
-	return corev1.Container{
-		Name:            sidecarExtractorContainerName,
-		Image:           r.SidecarImage,
-		ImagePullPolicy: r.SidecarPullPolicy,
-		Args:            append([]string{sidecarCommand}, artifactsArgs...),
-		Env:             sidecarEnvVars,
-		RestartPolicy:   new(corev1.ContainerRestartPolicyAlways),
-		Resources:       *sidecarResourceRequirements.DeepCopy(),
-		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot: new(true),
-		},
-	}
-}
-
-func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1beta1.Pipeline, scanPod, uploadPod *corev1.Pod) (ctrl.Result, error) {
+func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1beta1.Pipeline, scanPod *corev1.Pod) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
 	l.Info("checking for scan & upload pod completion")
 
@@ -424,93 +236,65 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		// scan pod completed successfully
 		pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageCompleted
 		pipeline.Status.StageStatuses.ScanStatus = v1beta1.PipelineStageCompleted
-		if pipeline.Status.ScanPodOnly {
-			pipeline.Status.Phase = v1beta1.PipelineSucceeded
-			pipeline.Status.CompletionTime = new(t)
-			pipeline.Status.Conditions = append(pipeline.Status.Conditions,
-				metav1.Condition{
-					Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
-					Status:             metav1.ConditionTrue,
-					Reason:             "ScanCompletedSuccessfully",
-					Message:            "The scan pod has completed successfully.",
-					LastTransitionTime: t,
-				})
-		} else {
-			// if we have an upload pod, wait for it to complete
-			switch uploadPod.Status.Phase {
-			case corev1.PodSucceeded:
-				pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageCompleted
-				pipeline.Status.Phase = v1beta1.PipelineSucceeded
-				pipeline.Status.CompletionTime = new(t)
-				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
-					metav1.Condition{
-						Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
-						Status:             metav1.ConditionTrue,
-						Reason:             "ScanAndUploadPodComplete",
-						Message:            "The scan and upload pods have completed successfully.",
-						LastTransitionTime: t,
-					})
-			case corev1.PodFailed:
-				pipeline.Status.CompletionTime = new(t)
-				pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageFailed
-				pipeline.Status.Conditions = append(pipeline.Status.Conditions,
-					metav1.Condition{
-						Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
-						Status:             metav1.ConditionFalse,
-						Reason:             "UploadPodTerminatedWithFailures",
-						Message:            "The upload pod has failed.",
-						LastTransitionTime: t,
-					})
-				pipeline.Status.Phase = v1beta1.PipelineFailed
-			case corev1.PodRunning, corev1.PodPending:
-				// upload pod still running or pending
-				uploadStatus := determineUploadPodStageStatuses(uploadPod)
-				pipeline.Status.StageStatuses.UploadStatus = uploadStatus
-				pipeline.Status.Phase = v1beta1.PipelineUploading
-				return ctrl.Result{}, patchStatus(ctx, r.Client, pipeline, patch)
-			default:
-				// upload pod in unknown state, requeue for further investigation
-				l.Error(fmt.Errorf("upload pod in unknown state"), "upload pod is in an unknown state", "phase", uploadPod.Status.Phase, "name", pipeline.GetName())
-				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-			}
+		if pipeline.Status.StageStatuses.UploadStatus != v1beta1.PipelineStageSkipped {
+			pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageCompleted
 		}
+		pipeline.Status.Phase = v1beta1.PipelineSucceeded
+		pipeline.Status.CompletionTime = new(t)
+		pipeline.Status.Conditions = append(pipeline.Status.Conditions,
+			metav1.Condition{
+				Type:               v1beta1.PipelineCompletedSuccessfullyConditionType,
+				Status:             metav1.ConditionTrue,
+				Reason:             "PodCompletedSuccessfully",
+				Message:            "The pipeline has completed successfully.",
+				LastTransitionTime: t,
+			})
 	case corev1.PodFailed:
-		downloaderStatus, scanStatus := determineScanPodStageStatuses(scanPod)
+		downloaderStatus, scanStatus, uploadStatus := determineScanPodStageStatuses(scanPod)
 		pipeline.Status.StageStatuses.DownloadStatus = downloaderStatus
 		pipeline.Status.StageStatuses.ScanStatus = scanStatus
+		if pipeline.Status.StageStatuses.UploadStatus != v1beta1.PipelineStageSkipped {
+			pipeline.Status.StageStatuses.UploadStatus = uploadStatus
+		}
 		pipeline.Status.Phase = v1beta1.PipelineFailed
 		pipeline.Status.CompletionTime = new(t)
 		pipeline.Status.Conditions = append(pipeline.Status.Conditions,
 			metav1.Condition{
 				Type:               v1beta1.CompletedSuccessfullyConditionType,
 				Status:             metav1.ConditionFalse,
-				Reason:             "ScanPodTerminatedWithFailures",
-				Message:            "The scan and/or upload pod have failed.",
+				Reason:             "PodTerminatedWithFailures",
+				Message:            "The pipeline pod has failed.",
 				LastTransitionTime: t,
 			})
-		if !pipeline.Status.ScanPodOnly && slices.Contains([]corev1.PodPhase{
-			corev1.PodPending,
-		}, uploadPod.Status.Phase) {
-			// if we have an upload pod still running or pending, we should clean it up
-			// TODO(bryce): cleanup pod
-			return ctrl.Result{}, r.failPod(ctx, uploadPod)
-		}
 	case corev1.PodRunning:
-		downloaderStatus, scanStatus := determineScanPodStageStatuses(scanPod)
+		downloaderStatus, scanStatus, uploadStatus := determineScanPodStageStatuses(scanPod)
+		pipeline.Status.StageStatuses = v1beta1.PipelineStageStatuses{
+			DownloadStatus: downloaderStatus,
+			ScanStatus:     scanStatus,
+		}
+		if pipeline.Status.StageStatuses.UploadStatus != v1beta1.PipelineStageSkipped {
+			pipeline.Status.StageStatuses.UploadStatus = uploadStatus
+		}
+
 		if downloaderStatus == v1beta1.PipelineStageInProgress {
 			pipeline.Status.Phase = v1beta1.PipelineDownloading
 		} else if scanStatus == v1beta1.PipelineStageInProgress {
 			pipeline.Status.Phase = v1beta1.PipelineScanning
+		} else if pipeline.Status.StageStatuses.UploadStatus != v1beta1.PipelineStageSkipped {
+			pipeline.Status.Phase = v1beta1.PipelineUploading
 		}
-		return ctrl.Result{}, patchStatus(ctx, r.Client, pipeline, patch)
 	case corev1.PodPending:
-		// scan pod still running or pending
-		return ctrl.Result{}, nil
+		pipeline.Status.StageStatuses.DownloadStatus = v1beta1.PipelineStageNotStarted
+		pipeline.Status.StageStatuses.ScanStatus = v1beta1.PipelineStageNotStarted
+		if pipeline.Status.StageStatuses.UploadStatus != v1beta1.PipelineStageSkipped {
+			pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
+		}
+		pipeline.Status.Phase = v1beta1.PipelineSucceeded
 	default:
 		// scan pod in unknown state, requeue for further investigation
 		l.Error(fmt.Errorf("scan pod in unknown state"), "scan pod is in an unknown state", "phase", scanPod.Status.Phase, "name", pipeline.GetName())
 		pipeline.Status.Phase = v1beta1.PipelineStateUnknown
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
 	l = l.WithValues("phase", pipeline.Status.Phase)
@@ -518,223 +302,206 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 	return ctrl.Result{}, err
 }
 
-func uploadPodStarted(p *corev1.Pod) bool {
-	// check if uploader is running & can accept artifacts
-	// or if its terminated (i.e. already ran)
-	for _, status := range p.Status.InitContainerStatuses {
-		if status.Name == sidecarReceiverContainerName {
-			return status.State.Running != nil || status.State.Terminated != nil
-		}
-	}
-	return false
-}
-
-func (r *PipelineReconciler) failPod(ctx context.Context, pod *corev1.Pod) error {
-	l := logf.FromContext(ctx)
-	l.Info("failing pod", "name", pod.GetName())
-	if pod.Status.Phase == corev1.PodFailed || pod.Status.Phase == corev1.PodSucceeded {
-		return nil
-	}
-	pod.Spec.ActiveDeadlineSeconds = ptr.To[int64](1)
-	return r.Update(ctx, pod)
-}
-
-func (r *PipelineReconciler) populateUploadService(svc *corev1.Service, pipeline *v1beta1.Pipeline) error {
-	if svc.Labels == nil {
-		svc.Labels = make(map[string]string)
-	}
-
-	svc.Labels[v1beta1.TypeLabelKey] = v1beta1.ServiceTypeUpload
-	svc.Labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
-	svc.Labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
-	svc.Labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
-	if svc.Spec.Selector == nil {
-		svc.Spec.Selector = make(map[string]string)
-	}
-
-	svc.Spec.Selector[v1beta1.PipelineLabelKey] = pipeline.GetName()
-	svc.Spec.Selector[v1beta1.TypeLabelKey] = v1beta1.PodTypeUpload
-
-	svc.Spec.PublishNotReadyAddresses = true
-	if len(svc.Spec.Ports) != 1 || svc.Spec.Ports[0].Port != extractorPort {
-		svc.Spec.Ports = []corev1.ServicePort{
-			{Port: extractorPort, TargetPort: intstr.FromInt32(extractorPort), Protocol: corev1.ProtocolTCP},
-		}
-	}
-
-	return ctrl.SetControllerReference(pipeline, svc, r.Scheme)
-}
-
-func (r *PipelineReconciler) populateUploadPod(pod *corev1.Pod, pipeline *v1beta1.Pipeline, profile resources.Invocation[v1beta1.ProfileSpec], uploaders []resources.Invocation[v1beta1.UploaderSpec], containerOpts ...containers.Option) error {
-
-	if pod.CreationTimestamp.IsZero() {
-		// only edit pod spec if not created yet
-		// since once created, spec cant really be modified
-		uploaderContainers := make([]corev1.Container, 0, len(uploaders))
-		uploaderLabels := make(map[string]string)
-		uploaderAnnotations := make(map[string]string)
-
-		parentParams := resources.ParseParameters(profile.Spec.Parameters, profile.Parameters, nil)
-
-		pod.Spec.Volumes = profile.Spec.Volumes
-		pod.Spec.Resources = pipeline.Spec.Resources.DeepCopy()
-		pod.Spec.ImagePullSecrets = make([]corev1.LocalObjectReference, 0)
-		for _, invocation := range uploaders {
-			baseContainer := invocation.Spec.Container
-			baseContainer.Env = append(baseContainer.Env, corev1.EnvVar{
-				Name:  v1beta1.EnvVarUploaderName,
-				Value: invocation.Metadata.Name,
-			})
-
-			baseContainer.Env = append(baseContainer.Env,
-				containers.ParseParameterEnvVars(invocation.Spec.Parameters, invocation.Parameters, parentParams)...)
-
-			maps.Copy(uploaderLabels, invocation.Metadata.GetLabels())
-			maps.Copy(uploaderAnnotations, invocation.Metadata.GetAnnotations())
-
-			pod.Spec.Volumes = append(pod.Spec.Volumes, invocation.Spec.Volumes...)
-
-			uploaderContainers = append(uploaderContainers, baseContainer)
-			pod.Spec.ImagePullSecrets = append(pod.Spec.ImagePullSecrets, invocation.Spec.ImagePullSecrets...)
-		}
-
-		pod.Spec.ImagePullSecrets = slices.CompactFunc(pod.Spec.ImagePullSecrets, func(s1, s2 corev1.LocalObjectReference) bool {
-			return s1.Name == s2.Name
-		})
-
-		sidecarContainer := corev1.Container{
-			Name:  sidecarReceiverContainerName,
-			Image: r.SidecarImage,
-
-			Args: []string{"receive"},
-			Env: []corev1.EnvVar{
-				{Name: v1beta1.EnvVarExtractorPort, Value: fmt.Sprintf("%d", extractorPort)},
-			},
-			// RestartPolicy: ptr.To(corev1.ContainerRestartPolicyNever),
-			SecurityContext: &corev1.SecurityContext{
-				RunAsNonRoot: new(true),
-			},
-			Resources: *sidecarResourceRequirements.DeepCopy(),
-		}
-		pod.Spec.ServiceAccountName = pipeline.Spec.UploadServiceAccountName
-		pod.Spec.RuntimeClassName = pipeline.Spec.RuntimeClassName
-		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
-		pod.Spec.Containers = containers.ApplyOptions(uploaderContainers, containerOpts...)
-		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{
-			// Add the extractor as an init container running in receive mode
-			sidecarContainer,
-		}, containerOpts...)
-		pod.Spec.Volumes = append(pod.Spec.Volumes,
-			// add shared volume for target and results
-			corev1.Volume{Name: pipelineTargetVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
-			}, corev1.Volume{Name: pipelineResultsVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
-			}, corev1.Volume{Name: pipelineMetadataVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
-			},
-		)
-
-		if pod.Labels == nil {
-			pod.Labels = make(map[string]string)
-		}
-		maps.Copy(pod.Labels, resources.PropagateMetadata(pipeline.Labels, profile.Metadata.Labels, uploaderLabels))
-		pod.Labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeUpload
-		pod.Labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
-		pod.Labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
-		pod.Labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
-
-		if pod.Annotations == nil {
-			pod.Annotations = make(map[string]string)
-		}
-		maps.Copy(pod.Annotations, resources.PropagateMetadata(pipeline.Annotations, profile.Metadata.Annotations, uploaderAnnotations))
-
-	}
-
-	return ctrl.SetControllerReference(pipeline, pod, r.Scheme)
-}
-
-func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.Pipeline, profile resources.Invocation[v1beta1.ProfileSpec], downloader resources.Invocation[v1beta1.DownloaderSpec],
-	extractorContainer corev1.Container, containerOpts ...containers.Option) error {
+func (r *PipelineReconciler) populateScanPod(
+	pod *corev1.Pod,
+	pipeline *v1beta1.Pipeline,
+	profile resources.Invocation[v1beta1.ProfileSpec],
+	downloader resources.Invocation[v1beta1.DownloaderSpec],
+	uploaders []resources.Invocation[v1beta1.UploaderSpec],
+) error {
 	// only edit pod spec if not created yet
 	// since once created, spec cant really be modified
 	if pod.CreationTimestamp.IsZero() {
 
-		downloaderContainer := downloader.Spec.Container
-		downloaderContainer.Env = append(downloaderContainer.Env, containers.ParseParameterEnvVars(downloader.Spec.Parameters, pipeline.Spec.DownloaderRef.Parameters, nil)...)
+		targetVolume := corev1.Volume{
+			Name: pipelineTargetVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		}
+		resultsVolume := corev1.Volume{
+			Name: pipelineResultsVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		}
+		metadataVolume := corev1.Volume{
+			Name: pipelineMetadataVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		}
+		processVolume := corev1.Volume{
+			Name: runtimeProcVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		}
+		binaryVolume := corev1.Volume{
+			Name: runtimeBinaryVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		}
 
-		scannerContainers := containers.FilterConditionalContainers(profile.Spec.Containers, profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters)
+		pod.Spec.Volumes = []corev1.Volume{
+			targetVolume,
+			binaryVolume,
+			resultsVolume,
+			metadataVolume,
+			processVolume,
+		}
 
-		pod.Spec.ServiceAccountName = pipeline.Spec.ScanServiceAccountName
-		pod.Spec.RuntimeClassName = pipeline.Spec.RuntimeClassName
-		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
-		pod.Spec.Containers = containers.ApplyOptions(scannerContainers, append(containerOpts,
-			containers.WithParameters(profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters, nil))...,
+		envVars := generateBasePipelineEnvironment(pipeline)
+
+		baseContainerOptions := []containers.Option{
+			containers.WithAdditionalEnvVars(envVars...),
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+				Name:      metadataVolume.Name,
+				MountPath: pipelineMetadataDirectory,
+			}),
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+				Name:      resultsVolume.Name,
+				MountPath: pipelineResultsDirectory,
+			}),
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+				Name:      processVolume.Name,
+				MountPath: processDirectory,
+			}),
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+				Name:      binaryVolume.Name,
+				MountPath: binaryDirectory,
+			}),
+		}
+
+		/* init containers (downloader + sidecar) */
+
+		downloaderOptions := []containers.Option{
+			containers.WithWorkingDir(pipelineTargetDirectory),
+			containers.WithParameters(downloader.Spec.Parameters, pipeline.Spec.DownloaderRef.Parameters, nil),
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+				Name:      targetVolume.Name,
+				MountPath: pipelineTargetDirectory,
+			}),
+			containers.WithNamePrefix(downloadContainerPrefix),
+		}
+		downloaderContainer := containers.ApplyOptionsTo(
+			downloader.Spec.Container,
+			downloaderOptions...,
 		)
 
-		extractorContainer.VolumeMounts = append(extractorContainer.VolumeMounts,
-			corev1.VolumeMount{
-				Name:      pipelineUploadTokenVolumeName,
-				MountPath: v1beta1.UploadTokenDir,
-				ReadOnly:  true,
-			})
-
-		pod.Spec.InitContainers = containers.ApplyOptions([]corev1.Container{
-			// Add the downloader as an init container
-			downloaderContainer,
-			// Add the extractor as a sidecar container running in extract mode
-			extractorContainer,
-		}, containerOpts...)
-		volumes := append(profile.Spec.Volumes, downloader.Spec.Volumes...)
-		pod.Spec.Volumes = append(volumes,
-			corev1.Volume{Name: pipelineTargetVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
-			}, corev1.Volume{Name: pipelineResultsVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
-			}, corev1.Volume{Name: pipelineMetadataVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{},
-				},
-			},
-			corev1.Volume{Name: pipelineUploadTokenVolumeName,
-				VolumeSource: corev1.VolumeSource{
-					Projected: &corev1.ProjectedVolumeSource{
-						Sources: []corev1.VolumeProjection{
-							{
-								ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-									Audience:          pipeline.GetName() + uploadSuffix,
-									ExpirationSeconds: new(int64(60 * 60)),
-									Path:              v1beta1.UploadTokenFile,
-								},
-							},
-						},
+		initContainers := containers.ApplyOptionsToAll(
+			[]corev1.Container{
+				// sidecar init to copy wrapper binary into runtime direction
+				{
+					Name:            sidecarInitContainerName,
+					Image:           r.SidecarImage,
+					ImagePullPolicy: r.SidecarPullPolicy,
+					Args:            []string{"init"},
+					Resources:       *sidecarInitResourceRequirements.DeepCopy(),
+					SecurityContext: &corev1.SecurityContext{
+						RunAsNonRoot: new(true),
 					},
 				},
-			},
+				// Add the downloader as an init container
+				downloaderContainer,
+			}, baseContainerOptions...,
+		)
+
+		pod.Spec.ImagePullSecrets = append(pod.Spec.ImagePullSecrets, downloader.Spec.ImagePullSecrets...)
+		pod.Spec.Volumes = append(pod.Spec.Volumes, downloader.Spec.Volumes...)
+
+		/* scanner containers */
+
+		scannerOptions := append(baseContainerOptions,
+			containers.WrapCommand(sidecarBinaryPath, "scanner"),
+			containers.WithWorkingDir(pipelineTargetDirectory),
+			containers.WithParameters(profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters, nil),
+			containers.WithAdditionalVolumeMounts(corev1.VolumeMount{
+				Name:      targetVolume.Name,
+				MountPath: pipelineTargetDirectory,
+			}),
+			containers.WithNamePrefix(scanContainerPrefix),
+		)
+		scannerContainers := containers.ApplyOptionsToAll(
+			containers.FilterConditionalContainers(profile.Spec.Containers, profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters),
+			scannerOptions...,
+		)
+
+		scanContainerNames := make([]string, len(scannerContainers))
+		for i, c := range scannerContainers {
+			scanContainerNames[i] = c.Name
+		}
+
+		pod.Spec.ImagePullSecrets = append(pod.Spec.ImagePullSecrets, profile.Spec.ImagePullSecrets...)
+		pod.Spec.Volumes = append(pod.Spec.Volumes, profile.Spec.Volumes...)
+
+		/* uploader containers */
+
+		// aritfactArgs are the arguments passed to
+		// uploaders to specify which artifacts to extract
+		artifactArgs := generateArtifactArguments(downloader.Spec.MetadataFiles, profile.Spec.Artifacts)
+
+		uploaderContainers := make([]corev1.Container, 0, len(uploaders))
+		uploaderLabels, uploaderAnnotations := make(map[string]string), make(map[string]string)
+		parentParams := resources.ParseParameters(profile.Spec.Parameters, profile.Parameters, nil)
+		for _, invocation := range uploaders {
+			baseContainer := invocation.Spec.Container
+
+			maps.Copy(uploaderLabels, invocation.Metadata.GetLabels())
+			maps.Copy(uploaderAnnotations, invocation.Metadata.GetAnnotations())
+
+			uploaderContainers = append(uploaderContainers,
+				containers.ApplyOptionsTo(
+					baseContainer,
+					containers.WithParameters(invocation.Spec.Parameters, invocation.Parameters, parentParams),
+					containers.WithAdditionalEnvVars(corev1.EnvVar{
+						Name:  v1beta1.EnvVarUploaderName,
+						Value: invocation.Metadata.Name,
+					}),
+				),
+			)
+			pod.Spec.Volumes = append(pod.Spec.Volumes, invocation.Spec.Volumes...)
+			pod.Spec.ImagePullSecrets = append(pod.Spec.ImagePullSecrets, invocation.Spec.ImagePullSecrets...)
+		}
+
+		uploaderOpts := append(baseContainerOptions,
+			containers.WrapCommand(sidecarBinaryPath, "await-scanners"),
+			containers.WithAdditionalArgs(artifactArgs...),
+			containers.WithWorkingDir(pipelineResultsDirectory),
+			containers.WithAdditionalEnvVars(corev1.EnvVar{
+				Name:  v1beta1.EnvVarScanContainerNames,
+				Value: strings.Join(scanContainerNames, ","),
+			}),
+			containers.WithNamePrefix(uploadContainerPrefix),
+		)
+
+		uploaderContainers = containers.ApplyOptionsToAll(
+			// TODO: conditional reference
+			uploaderContainers,
+			uploaderOpts...,
+		)
+
+		pod.Spec.ServiceAccountName = pipeline.Spec.ServiceAccountName
+		pod.Spec.RuntimeClassName = pipeline.Spec.RuntimeClassName
+		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
+		pod.Spec.InitContainers = containers.ApplyStandardOptions(initContainers)
+		pod.Spec.Containers = containers.ApplyStandardOptions(
+			append(scannerContainers, uploaderContainers...),
 		)
 
 		pod.Spec.Resources = pipeline.Spec.Resources.DeepCopy()
-
 		pod.Spec.ImagePullSecrets = slices.CompactFunc(
-			append(profile.Spec.ImagePullSecrets, downloader.Spec.ImagePullSecrets...),
+			pod.Spec.ImagePullSecrets,
 			func(s1, s2 corev1.LocalObjectReference) bool { return s1.Name == s2.Name },
 		)
 
 		if pod.Labels == nil {
 			pod.Labels = make(map[string]string)
 		}
-		maps.Copy(pod.Labels, resources.PropagateMetadata(downloader.Metadata.GetLabels(), profile.Metadata.GetLabels()))
-		pod.Labels[v1beta1.TypeLabelKey] = v1beta1.PodTypeScan
+
+		maps.Copy(pod.Labels, resources.PropagateMetadata(downloader.Metadata.GetLabels(), profile.Metadata.GetLabels(), uploaderLabels))
+		pod.Labels[v1beta1.TypeLabelKey] = v1beta1.PipelinePodType
 		pod.Labels[v1beta1.PipelineLabelKey] = pipeline.GetName()
 		pod.Labels[v1beta1.DownloaderLabelKey] = pipeline.Spec.DownloaderRef.Name
 		pod.Labels[v1beta1.ProfileLabelKey] = pipeline.Spec.ProfileRef.Name
@@ -742,7 +509,7 @@ func (r *PipelineReconciler) populateScanPod(pod *corev1.Pod, pipeline *v1beta1.
 		if pod.Annotations == nil {
 			pod.Annotations = make(map[string]string)
 		}
-		maps.Copy(pod.Annotations, resources.PropagateMetadata(downloader.Metadata.GetAnnotations(), profile.Metadata.GetAnnotations()))
+		maps.Copy(pod.Annotations, resources.PropagateMetadata(downloader.Metadata.GetAnnotations(), profile.Metadata.GetAnnotations(), uploaderAnnotations))
 
 	}
 
@@ -812,6 +579,14 @@ func generateBasePipelineEnvironment(pipeline *v1beta1.Pipeline) []corev1.EnvVar
 			Name:      v1beta1.EnvVarNamespaceName,
 			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 		},
+		{
+			Name:  v1beta1.EnvVarProcessDir,
+			Value: processDirectory,
+		},
+		{
+			Name:  v1beta1.EnvVarSidecarPath,
+			Value: sidecarBinaryPath,
+		},
 	}
 
 }
@@ -859,50 +634,61 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 	return ctrl.Result{RequeueAfter: wait}, nil
 }
 
-func determineScanPodStageStatuses(scanPod *corev1.Pod) (dlStatus v1beta1.PipelineStageStatus, scanStatus v1beta1.PipelineStageStatus) {
-	completed, failed := true, false
+func determineScanPodStageStatuses(scanPod *corev1.Pod) (download, scan, upload v1beta1.PipelineStageStatus) {
 	for _, cs := range scanPod.Status.InitContainerStatuses {
-		if cs.Name != sidecarExtractorContainerName {
-			completed = completed && cs.State.Terminated != nil
+		if cs.Name != sidecarInitContainerName {
 			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
-				failed = true
+				download = v1beta1.PipelineStageCompleted
+			} else if cs.State.Terminated != nil {
+				download = v1beta1.PipelineStageFailed
+			} else {
+				download = v1beta1.PipelineStageInProgress
 			}
 		}
+
 	}
 
-	if failed {
-		dlStatus = v1beta1.PipelineStageFailed
-	} else if completed {
-		dlStatus = v1beta1.PipelineStageCompleted
-	} else {
-		dlStatus = v1beta1.PipelineStageInProgress
-	}
-
-	switch dlStatus {
+	switch download {
 	case v1beta1.PipelineStageInProgress:
-		scanStatus = v1beta1.PipelineStageNotStarted
+		scan = v1beta1.PipelineStageNotStarted
 	case v1beta1.PipelineStageFailed:
-		scanStatus = v1beta1.PipelineStageSkipped
+		scan = v1beta1.PipelineStageSkipped
 	default:
-		completed, failed = true, false
+		scan = v1beta1.PipelineStageCompleted
 		for _, cs := range scanPod.Status.ContainerStatuses {
-			if cs.State.Terminated != nil {
-				completed = completed && cs.State.Terminated != nil
-				if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
-					failed = true
+			if strings.HasPrefix(cs.Name, scanContainerPrefix) {
+				if cs.State.Terminated == nil {
+					scan = v1beta1.PipelineStageInProgress
+					break
+				} else if cs.State.Terminated.ExitCode != 0 {
+					scan = v1beta1.PipelineStageFailed
+					break
 				}
 			}
-		}
 
-		if failed {
-			scanStatus = v1beta1.PipelineStageFailed
-		} else if completed {
-			scanStatus = v1beta1.PipelineStageCompleted
-		} else {
-			scanStatus = v1beta1.PipelineStageInProgress
 		}
 	}
-	return dlStatus, scanStatus
+
+	switch scan {
+	case v1beta1.PipelineStageInProgress:
+		upload = v1beta1.PipelineStageNotStarted
+	case v1beta1.PipelineStageSkipped:
+		upload = v1beta1.PipelineStageSkipped
+	default:
+		for _, cs := range scanPod.Status.ContainerStatuses {
+			if strings.HasPrefix(cs.Name, uploadContainerPrefix) {
+				if cs.State.Terminated == nil {
+					upload = v1beta1.PipelineStageInProgress
+					break
+				} else if cs.State.Terminated.ExitCode != 0 {
+					upload = v1beta1.PipelineStageFailed
+					break
+				}
+			}
+
+		}
+	}
+	return download, scan, upload
 }
 
 func uploaderInvocationsFromProfile(ctx context.Context, c client.Client, namespace string, uploaderRefs []v1beta1.ParameterizedLocalObjectReference) ([]resources.Invocation[v1beta1.UploaderSpec], error) {
@@ -923,24 +709,4 @@ func metricLabelsForPipeline(pipeline *v1beta1.Pipeline) prometheus.Labels {
 		"downloader": pipeline.Spec.DownloaderRef.Name,
 		"profile":    pipeline.Spec.ProfileRef.Name,
 	}
-}
-
-func determineUploadPodStageStatuses(uploadPod *corev1.Pod) (status v1beta1.PipelineStageStatus) {
-	completed, failed := true, false
-	for _, cs := range uploadPod.Status.ContainerStatuses {
-		completed = completed && cs.State.Terminated != nil
-		if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
-			failed = true
-		}
-	}
-
-	if failed {
-		status = v1beta1.PipelineStageFailed
-	} else if completed {
-		status = v1beta1.PipelineStageCompleted
-	} else {
-		status = v1beta1.PipelineStageInProgress
-	}
-
-	return
 }
