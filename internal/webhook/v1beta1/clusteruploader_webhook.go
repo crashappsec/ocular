@@ -14,6 +14,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -36,15 +37,13 @@ func SetupClusterUploaderWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// NOTE: currently the uploader is only configured to run as a validating webhook
-// during the update and/or deletion of a Uploader resource to validate that
+// NOTE: the validator is  configured to run as a validating webhook
+// during the create, update and/or deletion of a Uploader resource to validate that
 // 1) no new required parameters have been added that are not defined in
 //    existing Pipelines resources that reference it (on update), and
 // 2) no Pipeline resources referring to it exist (on delete).
-// Creation is currently not needed since most of the work is handled by the
-// k8s OpenAPI schema validation. If in the future there is a need to validate
-// Uploader resources on creation, the ValidateCreate method below can be implemented and 'create'
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-clusteruploader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=clusteruploaders,verbs=update;delete,versions=v1beta1,name=vclusteruploader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
+// 3) that the user specified an entrypoint to the container.
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-clusteruploader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=clusteruploaders,verbs=create;update;delete,versions=v1beta1,name=vclusteruploader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // ClusterUploaderCustomValidator struct is responsible for validating the ClusterUploader resource
 // when it is created, updated, or deleted.
@@ -53,14 +52,23 @@ type ClusterUploaderCustomValidator struct {
 }
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type ClusterUploader.
-func (v *ClusterUploaderCustomValidator) ValidateCreate(_ context.Context, crawler *v1beta1.ClusterUploader) (admission.Warnings, error) {
-	clusteruploaderlog.Info("cluster uploader validate create should not be registered, see NOTE in webhook/v1beta1/clusteruploader_webhook.go", "name", crawler.GetName())
-	return nil, nil
+func (v *ClusterUploaderCustomValidator) ValidateCreate(ctx context.Context, obj *v1beta1.ClusterUploader) (admission.Warnings, error) {
+	clusteruploaderlog.Info("validating cluster uploader creation", "name", obj.GetName())
+
+	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), obj.Spec.Container)
+
+	if len(fieldErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: v1beta1.Group, Kind: "ClusterUploader"},
+		obj.Name, fieldErrs)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type ClusterUploader.
 func (v *ClusterUploaderCustomValidator) ValidateUpdate(ctx context.Context, oldUploader, newUploader *v1beta1.ClusterUploader) (admission.Warnings, error) {
-	clusteruploaderlog.Info("validating new parameters for cluster uploader", "name", newUploader.GetName())
+	clusteruploaderlog.Info("validating  cluster uploader update", "name", newUploader.GetName())
 
 	newRequiredParams := parseNewRequiredParameters(oldUploader.Spec.Parameters, newUploader.Spec.Parameters)
 
@@ -88,7 +96,16 @@ func (v *ClusterUploaderCustomValidator) ValidateUpdate(ctx context.Context, old
 
 	}
 
-	return nil, nil
+	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), newUploader.Spec.Container)
+
+	if len(fieldErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: v1beta1.Group, Kind: "ClusterUploader"},
+		newUploader.Name, fieldErrs)
+
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type ClusterUploader.

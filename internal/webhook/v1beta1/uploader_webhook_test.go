@@ -38,8 +38,9 @@ var _ = Describe("Uploader Webhook", func() {
 			},
 			Spec: v1beta1.UploaderSpec{
 				Container: v1.Container{
-					Name:  "dummy-uploader-container",
-					Image: "dummy-uploader-image",
+					Name:    "dummy-uploader-container",
+					Image:   "dummy-uploader-image",
+					Command: []string{"/bin/bash"},
 				},
 			},
 		}
@@ -58,8 +59,9 @@ var _ = Describe("Uploader Webhook", func() {
 				Containers: []v1beta1.ConditionalContainer{
 					{
 						Container: v1.Container{
-							Name:  "dummy-scan-container",
-							Image: "dummy-scan-image",
+							Name:    "dummy-scan-container",
+							Image:   "dummy-scan-image",
+							Command: []string{"/bin/sh"},
 						},
 					},
 				},
@@ -148,6 +150,21 @@ var _ = Describe("Uploader Webhook", func() {
 			Expect(k8sClient.Delete(ctx, profile)).To(Succeed())
 			Expect(validator.ValidateDelete(ctx, obj)).To(BeNil(), "Expected validation to pass after Profile referencing Uploader is deleted")
 			Expect(k8sClient.Delete(ctx, obj)).To(Succeed(), "Expected Uploader deletion to succeed after Profile is deleted")
+		})
+	})
+
+	Context("When creating or updating a Uploader under Validating Webhook", func() {
+		It("Should deny if no entrypoint is set", func() {
+			By("Creating a Uploader that has no entrypoint")
+			noEntryObj := obj.DeepCopy()
+			noEntryObj.Spec.Container.Command = nil
+			_, err := validator.ValidateCreate(ctx, noEntryObj)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+
+			_, err = validator.ValidateUpdate(ctx, noEntryObj, noEntryObj.DeepCopy())
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 		})
 	})
 

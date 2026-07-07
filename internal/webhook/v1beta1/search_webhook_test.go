@@ -41,6 +41,7 @@ var _ = Describe("Search Webhook", func() {
 				Namespace: metav1.NamespaceDefault,
 			},
 			Spec: v1beta1.CrawlerSpec{
+				Container: testutils.GenerateRandomContainer(rnd),
 				Parameters: []v1beta1.ParameterDefinition{
 					{
 						Name: "PARAM_1",

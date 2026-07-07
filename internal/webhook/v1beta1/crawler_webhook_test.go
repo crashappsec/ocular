@@ -47,6 +47,9 @@ var _ = Describe("Crawler Webhook", func() {
 				Name:      "crawler",
 				Namespace: namespace,
 			},
+			Spec: ocularcrashoverriderunv1beta1.CrawlerSpec{
+				Container: testutils.GenerateRandomContainer(rnd),
+			},
 		}
 		search = &ocularcrashoverriderunv1beta1.Search{
 			ObjectMeta: metav1.ObjectMeta{
@@ -125,6 +128,21 @@ var _ = Describe("Crawler Webhook", func() {
 			_, err := validator.ValidateDelete(ctx, obj)
 			Expect(err).To(HaveOccurred())
 			Expect(apierrors.IsForbidden(err)).To(BeTrue())
+		})
+	})
+
+	Context("When creating or updating a Crawler under Validating Webhook", func() {
+		It("Should deny if no entrypoint is set", func() {
+			By("Creating a Crawler that has no entrypoint")
+			noEntryObj := obj.DeepCopy()
+			noEntryObj.Spec.Container.Command = nil
+			_, err := validator.ValidateCreate(ctx, noEntryObj)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+
+			_, err = validator.ValidateUpdate(ctx, noEntryObj, noEntryObj.DeepCopy())
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
 		})
 	})
 

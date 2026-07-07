@@ -89,11 +89,11 @@ var replacements = map[string][]replacement{
 		},
 		{
 			Pattern:     regexp.MustCompile(`(?m)^([ ]+)OCULAR_SCHEDULER_IMG:.*$`),
-			Replacement: "${1}OCULAR_SIDECAR_IMG: {{ .Values.scheduler.image.repository }}:{{ .Values.scheduler.image.tag }}",
+			Replacement: "${1}OCULAR_SCHEDULER_IMG: {{ .Values.scheduler.image.repository }}:{{ .Values.scheduler.image.tag }}",
 		},
 		{
 			Pattern:     regexp.MustCompile(`(?m)^([ ]+)OCULAR_SCHEDULER_PULLPOLICY:.*$`),
-			Replacement: "${1}OCULAR_SIDECAR_PULLPOLICY: {{ .Values.scheduler.image.pullPolicy }}",
+			Replacement: "${1}OCULAR_SCHEDULER_PULLPOLICY: {{ .Values.scheduler.image.pullPolicy }}",
 		},
 		{
 			Pattern:     regexp.MustCompile(`\.Values`),

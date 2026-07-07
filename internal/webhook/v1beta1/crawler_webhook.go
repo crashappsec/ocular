@@ -16,6 +16,7 @@ import (
 	"github.com/crashappsec/ocular/internal/validators"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -42,11 +43,8 @@ func SetupCrawlerWebhookWithManager(mgr ctrl.Manager) error {
 // 1) no new required parameters have been added that are not defined in
 //    existing (Cron)?Search resources that reference it (on update), and
 // 2) no (Cron)?Search resources referring to it exist (on delete).
-// Creation is currently not needed since most of the work is handled by the
-// k8s OpenAPI schema validation. If in the future there is a need to validate
-// Crawler resources on creation, the ValidateCreate method below can be implemented and 'create'
-// can be added to the verbs in the kubebuilder marker below.
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-crawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=crawlers,verbs=delete;update,versions=v1beta1,name=vcrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
+// 3) validate entrypoint is set on container (update/create)
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-crawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=crawlers,verbs=create;delete;update,versions=v1beta1,name=vcrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // CrawlerCustomValidator struct is responsible for validating the Crawler resource
 // when it is created, updated, or deleted.
@@ -56,9 +54,17 @@ type CrawlerCustomValidator struct {
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
 func (v *CrawlerCustomValidator) ValidateCreate(ctx context.Context, crawler *v1beta1.Crawler) (admission.Warnings, error) {
-	crawlerlog.Info("crawler validate create should not be registered, see NOTE in webhook/v1beta1/crawler_webhook.go", "name", crawler.GetName())
+	crawlerlog.Info("validating crawler upon creation", "name", crawler.GetName())
 
-	return nil, nil
+	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), crawler.Spec.Container)
+
+	if len(fieldErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: v1beta1.Group, Kind: "Crawler"},
+		crawler.Name, fieldErrs)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
@@ -103,7 +109,15 @@ func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler,
 		}
 	}
 
-	return nil, nil
+	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), newCrawler.Spec.Container)
+
+	if len(fieldErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: v1beta1.Group, Kind: "Crawler"},
+		newCrawler.Name, fieldErrs)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Crawler.

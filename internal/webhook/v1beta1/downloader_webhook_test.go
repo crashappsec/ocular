@@ -132,4 +132,19 @@ var _ = Describe("Downloader Webhook", func() {
 		})
 	})
 
+	Context("When creating or updating a Downloader under Validating Webhook", func() {
+		It("Should deny if no entrypoint is set", func() {
+			By("Creating a Downloader that has no entrypoint")
+			noEntryObj := obj.DeepCopy()
+			noEntryObj.Spec.Container.Command = nil
+			_, err := validator.ValidateCreate(ctx, noEntryObj)
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+
+			_, err = validator.ValidateUpdate(ctx, noEntryObj, noEntryObj.DeepCopy())
+			Expect(err).To(HaveOccurred())
+			Expect(apierrors.IsInvalid(err)).To(BeTrue())
+		})
+	})
+
 })
