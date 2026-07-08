@@ -80,6 +80,11 @@ var _ = Describe("Pipeline", Ordered, func() {
 		cmd := exec.Command("kubectl", "delete", "pod", awaitWebhookPodName, "-n", namespace)
 		_, _ = utils.Run(cmd)
 
+		By("ensuring nothing is running")
+		cmd = exec.Command("kubectl", "delete", "pipelines", "--all",
+			"-n", pipelineNamespace, "--wait=true", "--timeout=120s")
+		_, _ = utils.Run(cmd)
+
 		By("undeploying the controller-manager")
 		cmd = exec.Command("make", "stop-e2e-test-pipeline", "undeploy-e2e-test")
 		_, _ = utils.Run(cmd)
