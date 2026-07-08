@@ -90,9 +90,9 @@ var (
 	sidecarInitResourceRequirements = corev1.ResourceRequirements{
 		Limits: corev1.ResourceList{
 			// nolint:goconst
-			"cpu": resource.MustParse("50m"),
+			"cpu": resource.MustParse("150m"),
 			// nolint:goconst
-			"memory": resource.MustParse("64Mi"),
+			"memory": resource.MustParse("128Mi"),
 		},
 		Requests: corev1.ResourceList{
 			"cpu":    resource.MustParse("25m"),
@@ -106,14 +106,12 @@ var (
 	// a shared volume mount.
 	schedulerInitResourceRequirements = corev1.ResourceRequirements{
 		Limits: corev1.ResourceList{
-			// nolint:goconst
-			"cpu": resource.MustParse("50m"),
-			// nolint:goconst
-			"memory": resource.MustParse("64Mi"),
+			"cpu":    resource.MustParse("150m"),
+			"memory": resource.MustParse("128Mi"),
 		},
 		Requests: corev1.ResourceList{
 			"cpu":    resource.MustParse("25m"),
-			"memory": resource.MustParse("32Mi"),
+			"memory": resource.MustParse("64Mi"),
 		},
 	}
 
