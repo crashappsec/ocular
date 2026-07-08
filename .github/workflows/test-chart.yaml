@@ -18,11 +18,12 @@ on:
 env:
   OCULAR_CONTROLLER_IMG: ocular-controller:ci
   OCULAR_SIDECAR_IMG: ocular-sidecar:ci
+  OCULAR_SCHEDULER_IMG: ocular-scheduler:ci
   DOCKER_ARGS:
 
 jobs:
-  test-e2e:
-    name: Run on Ubuntu
+  test-charts:
+    name: test chart deployment
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
@@ -51,6 +52,7 @@ jobs:
           make docker-build-all
           kind load docker-image $OCULAR_CONTROLLER_IMG
           kind load docker-image $OCULAR_SIDECAR_IMG
+          kind load docker-image $OCULAR_SCHEDULER_IMG
           make clean-helm helm-build
 
       - name: Install Helm
