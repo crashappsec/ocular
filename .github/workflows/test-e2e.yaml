@@ -16,7 +16,7 @@ on:
 
 jobs:
   test-e2e:
-    name: Run on Ubuntu
+    name: run e2e tests
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
@@ -40,3 +40,5 @@ jobs:
         run: |
           go mod tidy
           make test-e2e
+        env:
+          TEST_TIMEOUT: 25m

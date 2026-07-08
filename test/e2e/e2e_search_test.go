@@ -81,6 +81,15 @@ var _ = Describe("Search", Ordered, func() {
 		cmd := exec.Command("kubectl", "delete", "pod", awaitWebhookPodName, "-n", namespace)
 		_, _ = utils.Run(cmd)
 
+		By("ensuring nothing is running")
+		cmd = exec.Command("kubectl", "delete", "searches", "--all",
+			"-n", searchNamespace, "--wait=true", "--timeout=120s")
+		_, _ = utils.Run(cmd)
+
+		cmd = exec.Command("kubectl", "delete", "pipelines", "--all",
+			"-n", searchNamespace, "--wait=true", "--timeout=120s")
+		_, _ = utils.Run(cmd)
+
 		By("undeploying the controller-manager")
 		cmd = exec.Command("make", "stop-e2e-test-search", "undeploy-e2e-test")
 		_, _ = utils.Run(cmd)
