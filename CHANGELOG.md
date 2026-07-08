@@ -1,6 +1,6 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
-# [v0.3.4](https://github.com/crashappsec/ocular/releases/tag/v0.3.4) - **July 8th, 2026**
+# [v0.4.0](https://github.com/crashappsec/ocular/releases/tag/v0.4.0) - **July 8th, 2026**
 
 ### Changed
 
