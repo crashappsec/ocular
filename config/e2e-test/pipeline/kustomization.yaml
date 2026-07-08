@@ -2,7 +2,7 @@ resources:
   - 10-uploaders.yaml
   - 20-downloaders.yaml
   - 50-profiles.yaml
-  - 90-pipeline.yaml
+  - 70-pipeline.yaml
 
 configMapGenerator:
 - name: validate-scripts

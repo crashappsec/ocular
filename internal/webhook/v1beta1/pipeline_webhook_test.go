@@ -79,8 +79,7 @@ var _ = Describe("Pipeline Webhook", func() {
 					Name: downloader.Name,
 					Kind: "Downloader",
 				},
-				ScanServiceAccountName:   svcAccount.Name,
-				UploadServiceAccountName: svcAccount.Name,
+				ServiceAccountName: svcAccount.Name,
 			},
 		}
 		oldObj = &v1beta1.Pipeline{}
@@ -115,13 +114,11 @@ var _ = Describe("Pipeline Webhook", func() {
 	Context("When creating Pipeline under Defaulting Webhook", func() {
 		It("Should set the service account fields to default", func() {
 			By("simulating a scenario where defaults should be applied")
-			obj.Spec.ScanServiceAccountName = "some-account"
-			obj.Spec.UploadServiceAccountName = ""
+			obj.Spec.ServiceAccountName = "some-account"
 			By("calling the Default method to apply defaults")
 			Expect(defaulter.Default(ctx, obj)).To(Succeed())
 			By("checking that the default values are set")
-			Expect(obj.Spec.ScanServiceAccountName).To(Equal("some-account"))
-			Expect(obj.Spec.UploadServiceAccountName).To(Equal("default"))
+			Expect(obj.Spec.ServiceAccountName).To(Equal("some-account"))
 		})
 	})
 

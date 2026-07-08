@@ -45,4 +45,6 @@ validate-common-env
 
 validate-git
 
+validate-container-name "scanner-validate-git"
+
 complete "scanner git test succeeded"

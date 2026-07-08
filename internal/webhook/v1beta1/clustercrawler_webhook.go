@@ -14,6 +14,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -36,29 +37,31 @@ func SetupClusterCrawlerWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// NOTE: this validator is currently only enabled for 'delete'.
-// additional options can be specified in the 'verbs' parameter
-
-// NOTE: currently the cluster crawler only configured to run as a validating webhook
-// during the update and/or deletion of a ClusterCrawler resource to validate that
+// NOTE: the validator is configured to run as a validating webhook
+// during the create, update and/or deletion of a ClusterCrawler resource to validate that
 // 1) no new required parameters have been added that are not defined in
 //    existing (Cron)?Search resources that reference it (on update), and
 // 2) no (Cron)?Search resources referring to it exist (on delete).
-// Creation is currently not needed since most of the work is handled by the
-// k8s OpenAPI schema validation. If in the future there is a need to validate
-// Crawler resources on creation, the ValidateCreate method below can be implemented and 'create'
-// can be added to the verbs in the kubebuilder marker below.
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-clustercrawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=clustercrawlers,verbs=update;delete,versions=v1beta1,name=vclustercrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
+// 3) the crawler specified an entrypoint (on update/create)
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-clustercrawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=clustercrawlers,verbs=create;update;delete,versions=v1beta1,name=vclustercrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 type ClusterCrawlerCustomValidator struct {
 	c client.Client
 }
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type ClusterCrawler.
-func (v *ClusterCrawlerCustomValidator) ValidateCreate(_ context.Context, obj *v1beta1.ClusterCrawler) (admission.Warnings, error) {
-	clustercrawlerlog.Info("cluster crawler validate create should not be registered, see NOTE in webhook/v1beta1/clustercrawler_webhook.go", "name", obj.GetName())
+func (v *ClusterCrawlerCustomValidator) ValidateCreate(ctx context.Context, obj *v1beta1.ClusterCrawler) (admission.Warnings, error) {
+	clustercrawlerlog.Info("valdiating cluster crawler creation", "name", obj.GetName())
 
-	return nil, nil
+	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), obj.Spec.Container)
+
+	if len(fieldErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: v1beta1.Group, Kind: "ClusterCrawler"},
+		obj.Name, fieldErrs)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type ClusterCrawler.
@@ -103,7 +106,15 @@ func (v *ClusterCrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldC
 		}
 	}
 
-	return nil, nil
+	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), newCrawler.Spec.Container)
+
+	if len(fieldErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: v1beta1.Group, Kind: "ClusterCrawler"},
+		newCrawler.Name, fieldErrs)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type ClusterCrawler.

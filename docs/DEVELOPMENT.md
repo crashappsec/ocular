@@ -24,8 +24,13 @@ An example `.env` file is provided in the repository as [`example.env`](/example
 There are two images required inorder to run 'ocular':
 - `OCULAR_CONTROLLER_IMG`: The image for the controller manager. This is a webserver that
   will act as a kubernetes controller and will manage the lifecycle of all Ocular resources.
-- `OCULAR_SIDECAR_IMG`: The image for the sidecar container. This is a program that facilities
-  the extraction of artifacts from the scanners to uploaders in a pipeline.
+- `OCULAR_SIDECAR_IMG`: The image for the pipeline sidecar container. This is a program that on init
+will copy itself to a shared volume mount, then all user containers command are wrapped
+with the binary, allowing ocular to halt the uploaderes from running until all scanners are done
+- `OCULAR_SCHEDULER_IMG`:  The image for the search scheduler container. This is a program that on init
+will copy itself to a shared volume mount, then all user containers command are wrapped
+with the binary, allows for the binary to create and manage FIFOs on the filesystem that allow
+the crawler to create pipelines or searches by writing JSON objects to them.
 
 ### To Deploy on the cluster
 
@@ -65,22 +70,27 @@ make undeploy
 
 *NOTE*: be sure to run `make undeploy` first if comint from the previous section
 
-**Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG` and `OCULAR_SIDECAR_IMG`:**
+**Build and push your image to the location specified by `OCULAR_CONTROLLER_IMG`, `OCULAR_SIDECAR_IMG` and `OCULAR_SCHEDULER_IMG` :**
 
 ```sh
 # Controller image
 make docker-build-controller docker-push-controller \
   OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag
 
-# Extractor image
+# Sidecar image
 make docker-build-sidecar docker-push-sidecar \
   OCULAR_SIDECAR_IMG=<some-registry>/ocular-sidecar:tag
-  
-# Or both at once
+
+# Scheduler image
+make docker-build-scheduler docker-push-scheduler \
+  OCULAR_SCHEDULER_IMG=<some-registry>/ocular-scheduler:tag
+
+
+# Or all at once
 make docker-build-all docker-push-all \
   OCULAR_CONTROLLER_IMG=<some-registry>/ocular-controller:tag \
   OCULAR_SIDECAR_IMG=<some-registry>/ocular-sidecar:tag
-
+  OCULAR_SCHEDULER_IMG=<some-registry>/ocular-scheduler:tag
 ```
 
 **NOTE:** This image ought to be published in the personal registry you specified.
@@ -108,7 +118,8 @@ cd config/${DEPLOYMENT_NAME}
 kustomize create
 kustomize edit add resource ../default
 kustomize edit set image ghcr.io/crashappsec/ocular-controller=${OCULAR_CONTROLLER_IMG}
-kustomize edit set configmap controller-manager-config --from-literal=OCULAR_SIDECAR_IMG=${OCULAR_SIDECAR_IMG}
+kustomize edit set configmap controller-manager-config --from-literal=OCULAR_SIDECAR_IMG=${OCULAR_SIDECAR_IMG} \
+	--from-literal=OCULAR_SCHEDULER_IMG=${OCULAR_SCHEDULER_IMG}
 ```
 
 

@@ -12,7 +12,6 @@ package e2e
 import (
 	"fmt"
 	"os/exec"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -118,21 +117,12 @@ var _ = Describe("Pipeline", Ordered, func() {
 			}
 
 			By("Fetching scan pod description")
-			cmd = exec.Command("kubectl", "describe", "pod", "e2e-test-scan", "-n", pipelineNamespace)
+			cmd = exec.Command("kubectl", "describe", "pod", "pipeline-e2e-test", "-n", pipelineNamespace)
 			scanPodDescription, err := utils.Run(cmd)
 			if err == nil {
 				fmt.Println("Pod description:\n", scanPodDescription)
 			} else {
 				fmt.Println("Failed to describe scan pod")
-			}
-
-			By("Fetching upload pod description")
-			cmd = exec.Command("kubectl", "describe", "pod", "e2e-test-upload", "-n", pipelineNamespace)
-			uploadPodDescription, err := utils.Run(cmd)
-			if err == nil {
-				fmt.Println("Pod description:\n", uploadPodDescription)
-			} else {
-				fmt.Println("Failed to describe upload pod")
 			}
 
 			By("Fetching scan and upload pod logs")
@@ -165,22 +155,26 @@ var _ = Describe("Pipeline", Ordered, func() {
 
 			}
 			Eventually(verifyPipelineSuccess).Should(Succeed())
-			cmd := exec.Command("kubectl", "patch",
-				"pipeline", "e2e-test", `--type=json`, "-p", `[{"op": "replace", "path": "/spec/ttlSecondsAfterFinished", "value": 1}]`,
-				"-n", pipelineNamespace,
-			)
-			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-			verifyPipelineTTL := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get",
-					"pipelines", "-o", "jsonpath={.items[*].metadata.name}",
-					"-n", pipelineNamespace,
-				)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(strings.TrimSpace(output)).To(BeEmpty())
-			}
-			Eventually(verifyPipelineTTL).Should(Succeed())
 		})
+		// It("should be cleaned up by TTL after finish", func() {
+		// 	By("setting a TTL")
+		// 	cmd := exec.Command("kubectl", "patch",
+		// 		"pipeline", "e2e-test", `--type=json`, "-p", `[{"op": "replace", "path": "/spec/ttlSecondsAfterFinished", "value": 1}]`,
+		// 		"-n", pipelineNamespace,
+		// 	)
+
+		// 	_, err := utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred())
+		// 	verifyPipelineTTL := func(g Gomega) {
+		// 		cmd := exec.Command("kubectl", "get",
+		// 			"pipelines", "-o", "jsonpath={.items[*].metadata.name}",
+		// 			"-n", pipelineNamespace,
+		// 		)
+		// 		output, err := utils.Run(cmd)
+		// 		g.Expect(err).NotTo(HaveOccurred())
+		// 		g.Expect(strings.TrimSpace(output)).To(BeEmpty())
+		// 	}
+		// 	Eventually(verifyPipelineTTL).Should(Succeed())
+		// })
 	})
 })

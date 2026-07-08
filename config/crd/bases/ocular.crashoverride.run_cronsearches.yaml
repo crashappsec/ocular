@@ -433,9 +433,9 @@ spec:
                                       RuntimeClassName is the name of the RuntimeClass that will be used to run the scan and upload pods.
                                       If not set, the cluster's default runtime handler will be used.
                                     type: string
-                                  scanServiceAccountName:
+                                  serviceAccountName:
                                     description: |-
-                                      ScanServiceAccountName is the name of the service account that will be used to run the scan job.
+                                      ServiceAccountName is the name of the service account that will be used to run the pipeline job.
                                       If not set, the default service account of the namespace will be used.
                                     type: string
                                   target:
@@ -475,11 +475,6 @@ spec:
                                     format: int32
                                     minimum: 1
                                     type: integer
-                                  uploadServiceAccountName:
-                                    description: |-
-                                      UploadServiceAccountName is the name of the service account that will be used to run the upload job.
-                                      If not set, the default service account of the namespace will be used.
-                                    type: string
                                 required:
                                 - downloaderRef
                                 - profileRef

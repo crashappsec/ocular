@@ -8,41 +8,128 @@
 
 package controller
 
+import (
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+)
+
 const (
-	/* Volumes */
+	/* volumes */
 
-	pipelineResultsVolumeName  = "results"
-	pipelineTargetVolumeName   = "target"
-	pipelineMetadataVolumeName = "metadata"
+	pipelineResultsVolumeName  = "ocular-pipeline-results"
+	pipelineTargetVolumeName   = "ocular-pipeline-target"
+	pipelineMetadataVolumeName = "ocular-pipeline-metadata"
 
-	pipelineUploadTokenVolumeName = "upload-token"
+	runtimeProcVolumeName   = "ocular-runtime-process"
+	runtimeBinaryVolumeName = "ocular-runtime-binaries"
 
-	/* Ports */
+	searchTemplatesVolumeName = "ocular-search-templates"
+	searchFIFOVolumeName      = "ocular-search-fifos"
 
-	// extractorPort is the port that
-	// that the ocular sidecar will run
-	// listen for extracted artifacts
-	extractorPort = 2121
+	/* files */
 
-	/* Naming */
+	schedulerBinaryName = "scheduler"
+	sidecarBinaryName   = "sidecar"
 
-	// scanSuffix is the suffix for
-	// all scan resources created by a pipeline.
-	// i.e. scan pod
-	scanSuffix = "-scan"
-	// uploadSuffix is the suffix for all
-	// upload resources created by a pipeline
-	// i.e. pod and service
-	uploadSuffix = "-upload"
+	pipelineTemplateName = "pipeline.template.json"
+	pipelineFIFOName     = "pipelines"
+	searchFIFOName       = "searches"
 
-	// searchResourceSuffix is the suffix for
-	// all search resources
-	// i.e. search pod
-	searchSuffix = "-search"
+	/* directories */
 
-	/* Finalizers */
+	runtimeDirectory = "/var/run/ocular"
+	processDirectory = runtimeDirectory + "/proc"
+	fifoDirectory    = runtimeDirectory + "/fifo"
+	binaryDirectory  = runtimeDirectory + "/bin"
+	configDirectory  = "/etc/ocular"
+
+	pipelineTargetDirectory   = "/mnt/target"
+	pipelineResultsDirectory  = "/mnt/results"
+	pipelineMetadataDirectory = "/mnt/metadata"
+
+	/* path */
+
+	pipelineTemplatePath = configDirectory + "/" + pipelineTemplateName
+	sidecarBinaryPath    = binaryDirectory + "/" + sidecarBinaryName
+	schedulerBinaryPath  = binaryDirectory + "/" + schedulerBinaryName
+
+	pipelineFIFOPath = fifoDirectory + "/" + pipelineFIFOName
+	searchFIFOPath   = fifoDirectory + "/" + searchFIFOName
+
+	/* containers */
+
+	uploadContainerPrefix   = "uploader-"
+	scanContainerPrefix     = "scanner-"
+	downloadContainerPrefix = "downloader-"
+
+	crawlerContainerPrefix = "crawler-"
+
+	sidecarInitContainerName   = "sidecar-init"
+	schedulerInitContainerName = "scheduler-init"
+
+	/* resource naming */
+
+	pipelineResourcePrefix = "pipeline-"
+
+	searchResourcePrefix = "search-"
+
+	/* finalizers */
 
 	// metricsFinalizer is a finalizer for
 	// computing metrics on resources.
 	metricsFinalizer = "ocular.crashoverride.run/metrics"
+)
+
+var (
+	// sidecarInitResourceRequirements are the resource requirements
+	// for the sidecar init container. This container is the first init
+	// container of the pipeline pod, and just copies the binary to
+	// a shared volume mount.
+	sidecarInitResourceRequirements = corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			// nolint:goconst
+			"cpu": resource.MustParse("150m"),
+			// nolint:goconst
+			"memory": resource.MustParse("128Mi"),
+		},
+		Requests: corev1.ResourceList{
+			"cpu":    resource.MustParse("25m"),
+			"memory": resource.MustParse("32Mi"),
+		},
+	}
+
+	// schedulerInitResourceRequirements are the resource requirements
+	// for the scheduler init container. This container is the first init
+	// container of the search pod, and just copies the binary to
+	// a shared volume mount.
+	schedulerInitResourceRequirements = corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			"cpu":    resource.MustParse("150m"),
+			"memory": resource.MustParse("128Mi"),
+		},
+		Requests: corev1.ResourceList{
+			"cpu":    resource.MustParse("25m"),
+			"memory": resource.MustParse("64Mi"),
+		},
+	}
+
+	// podStateChangedPredicate filters pod watch events to only
+	// update when phase changed. Since Create/Delete are not
+	// specified, they will be triggered for every create/delete
+	podStateChangedPredicate = predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPod, ok1 := e.ObjectOld.(*corev1.Pod)
+			newPod, ok2 := e.ObjectNew.(*corev1.Pod)
+			if !ok1 || !ok2 {
+				return true
+			}
+
+			return oldPod.Status.Phase != newPod.Status.Phase
+			// we may need to check for when container status update
+			// !equality.Semantic.DeepEqual(oldPod.Status.InitContainerStatuses, newPod.Status.InitContainerStatuses) ||
+			// !equality.Semantic.DeepEqual(oldPod.Status.ContainerStatuses, newPod.Status.ContainerStatuses)
+		},
+	}
 )

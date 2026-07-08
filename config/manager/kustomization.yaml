@@ -12,5 +12,7 @@ configMapGenerator:
       - OCULAR_SIDECAR_PULLPOLICY=IfNotPresent
       - OCULAR_SIDECAR_IMG=ghcr.io/crashappsec/ocular-sidecar:latest
       - OCULAR_SEARCH_CLUSTER_ROLE=ocular-search-cluster-role
+      - OCULAR_SCHEDULER_PULLPOLICY=IfNotPresent
+      - OCULAR_SCHEDULER_IMG=ghcr.io/crashappsec/ocular-scheduler:latest
     options:
       disableNameSuffixHash: true

@@ -54,15 +54,10 @@ type PipelineSpec struct {
 	// +optional
 	Target Target `json:"target" protobuf:"bytes,3,opt,name=target"`
 
-	// ScanServiceAccountName is the name of the service account that will be used to run the scan job.
+	// ServiceAccountName is the name of the service account that will be used to run the pipeline job.
 	// If not set, the default service account of the namespace will be used.
 	// +optional
-	ScanServiceAccountName string `json:"scanServiceAccountName,omitempty" protobuf:"bytes,4,opt,name=scanServiceAccountName" description:"The name of the service account that will be used to run the scan job."`
-
-	// UploadServiceAccountName is the name of the service account that will be used to run the upload job.
-	// If not set, the default service account of the namespace will be used.
-	// +optional
-	UploadServiceAccountName string `json:"uploadServiceAccountName,omitempty" protobuf:"bytes,5,opt,name=uploadServiceAccountName" description:"The name of the service account that will be used to run the upload job."`
+	ServiceAccountName string `json:"serviceAccountName,omitempty" protobuf:"bytes,4,opt,name=serviceAccountName" description:"The name of the service account that will be used to run the pipeline."`
 
 	// RuntimeClassName is the name of the RuntimeClass that will be used to run the scan and upload pods.
 	// If not set, the cluster's default runtime handler will be used.
@@ -200,11 +195,6 @@ type PipelineStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-
-	// ScanPodOnly indicates if the pipeline is configured to run only the scan job without uploading results.
-	// This is true when the profile associated with the pipeline has no artifacts or uploaders defined.
-	// +optional
-	ScanPodOnly bool `json:"scanPodOnly,omitempty" description:"Indicates if the pipeline is configured to run only the scan job without uploading results."`
 
 	// StartTime is the time when the pipeline started.
 	// +optional

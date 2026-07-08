@@ -88,6 +88,14 @@ var replacements = map[string][]replacement{
 			Replacement: "${1}OCULAR_SIDECAR_PULLPOLICY: {{ .Values.sidecar.image.pullPolicy }}",
 		},
 		{
+			Pattern:     regexp.MustCompile(`(?m)^([ ]+)OCULAR_SCHEDULER_IMG:.*$`),
+			Replacement: "${1}OCULAR_SCHEDULER_IMG: {{ .Values.scheduler.image.repository }}:{{ .Values.scheduler.image.tag }}",
+		},
+		{
+			Pattern:     regexp.MustCompile(`(?m)^([ ]+)OCULAR_SCHEDULER_PULLPOLICY:.*$`),
+			Replacement: "${1}OCULAR_SCHEDULER_PULLPOLICY: {{ .Values.scheduler.image.pullPolicy }}",
+		},
+		{
 			Pattern:     regexp.MustCompile(`\.Values`),
 			Replacement: "$$values",
 		},

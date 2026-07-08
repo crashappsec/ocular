@@ -48,6 +48,7 @@ var _ = Describe("Profile Webhook", func() {
 						Container: v1.Container{
 							Name:            "my-image",
 							Image:           "my-test-image:latest",
+							Command:         []string{"testing"},
 							ImagePullPolicy: v1.PullNever,
 						},
 						IncludeIf: nil,

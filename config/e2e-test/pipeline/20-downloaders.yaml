@@ -10,6 +10,7 @@ spec:
     - git.metadata
   container:
     image: alpine/git:latest
+    imagePullPolicy: IfNotPresent
     name: validate-container
     command: ['/bin/sh']
     args: ["/scripts/validate-downloader.sh"]

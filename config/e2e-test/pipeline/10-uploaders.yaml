@@ -10,6 +10,7 @@ spec:
       default: default-value
   container:
     image: alpine/git:latest
+    imagePullPolicy: IfNotPresent
     name: validate-env
     command: ['/bin/sh']
     securityContext:

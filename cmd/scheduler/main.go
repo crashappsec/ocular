@@ -6,7 +6,14 @@
 // See the LICENSE file in the root of this repository for full license text or
 // visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-package cmd
+// Scheduler is a binary that is loaded into a shared
+// volume mount and wraps crawler executions to provide
+// an interface for crawler to spawn new pipelines/searches.
+// It will create a FIFO for each and then spawn the user process.
+// If the user process writes the FIFO, the respective resource
+// will be created. Once the user process exits and all resources
+// have been scheduled, the program will exit.
+package main
 
 import (
 	"context"
@@ -14,8 +21,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -23,6 +32,7 @@ import (
 	"time"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
+	"github.com/crashappsec/ocular/internal/process"
 	"github.com/crashappsec/ocular/internal/utils"
 	"github.com/crashappsec/ocular/pkg/generated/clientset"
 
@@ -31,19 +41,89 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/yaml"
 )
 
-func Schedule(ctx context.Context) error {
-	log := logf.FromContext(ctx)
-	log.Info("beginning pipeline scheduler")
+var (
+	version   = "unknown"
+	buildTime = "unknown"
+	gitCommit = "unknown"
+)
+
+func main() {
+	ctx := context.Background()
+	l := slog.New(slog.NewJSONHandler(os.Stderr, nil)).With(
+		slog.String("version", version),
+		slog.String("git-commit", gitCommit),
+		slog.String("build-time", buildTime),
+	)
+	slog.SetDefault(l)
+
+	l.Info("starting ocular scheduler")
+	if len(os.Args) < 2 {
+		l.Error("no command specified for scheduler")
+		fmt.Println("Usage: scheduler <command> [user command...]")
+		os.Exit(1)
+	}
+
+	var (
+		command = os.Args[1]
+		userCmd = os.Args[2:]
+	)
+
+	ctx, awaitSigterm := process.CancelContextSigterm(ctx)
+	go awaitSigterm()
+
+	l = l.With(slog.Any("userCmd", userCmd), slog.String("command", command))
+	l.Info("starting scheduler command " + command)
+	switch command {
+	case "init":
+		execPath, err := os.Executable()
+		if err != nil {
+			l.Error("unable to determine executable path", slog.Any("error", err))
+			os.Exit(1)
+		}
+		runtimePath := os.Getenv(v1beta1.EnvVarSchedulerPath)
+		err = process.CopyFile(ctx, execPath, runtimePath)
+		if err != nil {
+			l.Error("failed to copy executable", slog.Any("error", err))
+			os.Exit(1)
+		}
+		err = os.Chmod(runtimePath, 0o755)
+		if err != nil {
+			l.Error("unable to change permissions of executable", slog.Any("error", err))
+		}
+	case "crawler":
+		cmd, err := process.BuildUserCommand(ctx, userCmd)
+		if err != nil {
+			l.Error("unable to parse user command", slog.Any("error", err))
+			os.Exit(1)
+		}
+
+		awaitSchedulerHook, err := Schedule(ctx)
+		if err != nil {
+			l.Error("unable to start scheduler", slog.Any("error", err))
+			os.Exit(1)
+		}
+		exitCode, err := process.HookCommand(ctx, cmd, nil, awaitSchedulerHook)
+		if err != nil {
+			l.Error("unable to execute scanner", slog.Any("error", err))
+			os.Exit(1)
+		}
+		os.Exit(exitCode)
+	default:
+		slog.Error("unknown command")
+		os.Exit(1)
+	}
+
+}
+
+func Schedule(ctx context.Context) (process.Hook, error) {
+	slog.Info("beginning pipeline scheduler")
 
 	cs, err := parseKubernetesClientset(ctx)
 	if err != nil {
-		log.Error(err, "unable to create kubernetes clientset, disabling scheduler")
-		return fmt.Errorf("unable to create kubernetes clientset")
+		slog.Error("unable to create kubernetes clientset, disabling scheduler", slog.Any("error", err))
+		return nil, fmt.Errorf("unable to create kubernetes clientset")
 	}
 
 	searchName := os.Getenv(v1beta1.EnvVarSearchName)
@@ -54,37 +134,36 @@ func Schedule(ctx context.Context) error {
 	templateFilePath := os.Getenv(v1beta1.EnvVarPipelineTemplatePath)
 	sleepDuration, err := strconv.Atoi(os.Getenv(v1beta1.EnvVarPipelineSchedulerIntervalSeconds))
 	if err != nil {
-		log.Error(err, "unable to parse sleep seconds, defaulting to 60")
+		slog.Error("unable to parse sleep seconds, defaulting to 60", slog.Any("error", err))
 		sleepDuration = 60
 	} else if sleepDuration < 0 {
-		log.Info("negative sleep amount given, defaulting to 60")
+		slog.Info("negative sleep amount given, defaulting to 60")
 		sleepDuration = 60
 	}
 
 	templateFile, err := os.Open(templateFilePath)
 	if err != nil {
-		log.Error(err, "unable to open pipeline template file", "file", templateFile)
-		return fmt.Errorf("unable to open pipeline template file")
+		slog.Error("unable to open pipeline template file", slog.String("file", templateFilePath), slog.Any("error", err))
+		return nil, fmt.Errorf("unable to open pipeline template file")
 	}
 
 	var template v1beta1.PipelineTemplate
 	if err = json.NewDecoder(templateFile).Decode(&template); err != nil {
-		log.Error(err, "unable to decode pipeline template", "file", templateFile)
-		return fmt.Errorf("unable to decode pipeline template")
+		slog.Error("unable to decode pipeline template", slog.String("file", templateFilePath), slog.Any("error", err))
+		return nil, fmt.Errorf("unable to decode pipeline template")
 	}
-	log.Info("creating FIFOs", "pipeline-fifo", pipelineFIFOPath, "search-fifo", searchFIFOPath)
+	slog.Info("creating FIFOs", slog.String("pipeline-fifo", pipelineFIFOPath), slog.String("search-fifo", searchFIFOPath))
 
 	targets, crawlers := make(chan v1beta1.Target), make(chan v1beta1.ParameterizedLocalObjectReference)
 
 	if err = createFIFO(ctx, pipelineFIFOPath); err != nil {
-		return fmt.Errorf("unable to create pipeline FIFO")
+		return nil, fmt.Errorf("unable to create pipeline FIFO")
 	}
-	defer utils.RemoveAndLog(ctx, pipelineFIFOPath)
 
 	if err = createFIFO(ctx, searchFIFOPath); err != nil {
-		return fmt.Errorf("unable to create search FIFO")
+		utils.RemoveAndLog(ctx, pipelineFIFOPath)
+		return nil, fmt.Errorf("unable to create search FIFO")
 	}
-	defer utils.RemoveAndLog(ctx, searchFIFOPath)
 
 	// crawlerCtx will have an event sent to the Done channel
 	// when the crawler container exits for this search.
@@ -101,7 +180,7 @@ func Schedule(ctx context.Context) error {
 		Controller: new(true),
 	}
 
-	log.Info("starting workers")
+	slog.Info("starting workers")
 	wg := &sync.WaitGroup{}
 
 	// crawler decoder and scheduler
@@ -120,10 +199,10 @@ func Schedule(ctx context.Context) error {
 		for {
 			crawler, ok := <-crawlers
 			if !ok {
-				log.Info("crawler channel closed")
+				slog.Info("crawler channel closed")
 				break
 			}
-			log.Info("scheduling search for crawler", "crawler", crawler)
+			slog.Info("scheduling search for crawler", slog.Any("crawler", crawler))
 			search := &v1beta1.Search{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: searchName + "-",
@@ -144,22 +223,21 @@ func Schedule(ctx context.Context) error {
 			}
 			crawler.DeepCopyInto(&search.Spec.CrawlerRef)
 			template.Spec.DeepCopyInto(&search.Spec.Scheduler.PipelineTemplate.Spec)
-			yamlSearch, _ := yaml.Marshal(search)
-			log.Info("starting search", "search-resource", string(yamlSearch))
+			slog.Info("starting search", slog.Any("search", search))
 			scheduledSearch, err := cs.ApiV1beta1().Searches(namespace).Create(ctx, search, metav1.CreateOptions{})
 			if err != nil {
-				log.Error(err, "unable to start pipeline for crawler", "crawler", crawler)
+				slog.Error("unable to start pipeline for crawler", slog.Any("crawler", crawler), slog.Any("error", err))
 				continue
 			}
-			log.Info("search created", "search", scheduledSearch.Name)
+			slog.Info("search created", "search", scheduledSearch.Name)
 
 			time.Sleep(time.Duration(sleepDuration) * time.Second)
 		}
-		log.Info("search scheduler complete")
+		slog.Info("search scheduler complete")
 	})
 
-	// pipeline decoder and scheduler
 	wg.Go(func() {
+		// pipeline decoder and scheduler
 		fifoDecoder(crawlerCtx, targets, pipelineFIFOPath)
 	})
 
@@ -169,11 +247,11 @@ func Schedule(ctx context.Context) error {
 		for {
 			target, ok := <-targets
 			if !ok {
-				log.Info("target channel closed")
+				slog.Info("target channel closed")
 				break
 			}
 
-			log.Info("scheduling pipeline for target", "target", target)
+			slog.Info("scheduling pipeline for target", "target", target)
 			pipeline := &v1beta1.Pipeline{
 				ObjectMeta: metav1.ObjectMeta{
 					GenerateName: searchName + "-",
@@ -191,57 +269,40 @@ func Schedule(ctx context.Context) error {
 			target.DeepCopyInto(&pipeline.Spec.Target)
 			scheduledPipeline, err := cs.ApiV1beta1().Pipelines(namespace).Create(ctx, pipeline, metav1.CreateOptions{})
 			if err != nil {
-				log.Error(err, "unable to start pipeline for target", "target", target)
+				slog.Error("unable to start pipeline for target", slog.Any("target", target), slog.Any("error", err))
 				continue
 			}
-			log.Info("pipeline created", "pipeline", scheduledPipeline.Name)
+			slog.Info("pipeline created", "pipeline", scheduledPipeline.Name)
 			time.Sleep(time.Duration(sleepDuration) * time.Second)
 		}
-		log.Info("pipeline scheduler complete")
+		slog.Info("pipeline scheduler complete")
 	})
 
-	// await user crawler completion
-	completePath := os.Getenv(v1beta1.EnvVarSchedulerCompletePath)
-	for {
-		select {
-		case <-crawlerCtx.Done():
-			log.Info("stopping scheduler")
-			goto complete
-		default:
-			_, err := os.Stat(completePath)
-			if err == nil {
-				log.Info("complete path written, stopping scheduler")
-				goto complete
-			}
-			time.Sleep(time.Second * 5)
-
-		}
-	}
-complete:
-	crawlerCancel()
-	wg.Wait()
-	return nil
+	return func(ctx context.Context, _ *exec.Cmd) error {
+		crawlerCancel()
+		wg.Wait()
+		utils.RemoveAndLog(ctx, pipelineFIFOPath)
+		utils.RemoveAndLog(ctx, searchFIFOPath)
+		return nil
+	}, nil
 }
 
-func createFIFO(ctx context.Context, path string) error {
-	log := logf.FromContext(ctx)
-
+func createFIFO(_ context.Context, path string) error {
 	if err := syscall.Mkfifo(path, 0622); err != nil {
 		return fmt.Errorf("unable to create FIFO: %w", err)
 	}
 
 	if err := os.Chmod(path, 0622); err != nil {
-		log.Error(err, "failed to change permissions of FIFO", "path", path)
+		slog.Error("failed to change permissions of FIFO", slog.String("path", path), slog.Any("error", err))
 	}
 	return nil
 
 }
 
-func openFIFOReader(ctx context.Context, path string) (io.ReadCloser, error) {
-	log := logf.FromContext(ctx)
+func openFIFOReader(_ context.Context, path string) (io.ReadCloser, error) {
 	fifoReader, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
 	if err != nil {
-		log.Error(err, "fifo reader opening, error")
+		slog.Error("fifo reader opening, error", slog.Any("error", err))
 		return nil, fmt.Errorf("unable to open FIFO: %w", err)
 	}
 
@@ -250,11 +311,11 @@ func openFIFOReader(ctx context.Context, path string) (io.ReadCloser, error) {
 }
 
 func fifoDecoder[T any](ctx context.Context, c chan T, path string) {
-	log := logf.FromContext(ctx, "fifo-path", path)
 	var (
 		decoder *json.Decoder
 		rc      io.ReadCloser
 		err     error
+		l       = slog.With(slog.String("fifo", path))
 	)
 
 	for {
@@ -262,30 +323,29 @@ func fifoDecoder[T any](ctx context.Context, c chan T, path string) {
 		if decoder == nil {
 			rc, err = openFIFOReader(ctx, path)
 			if err != nil {
-				log.Error(err, "unable to open search fifo")
+				l.Error("unable to open fifo", slog.Any("error", err))
+				time.Sleep(time.Second)
 				continue
 			}
-
 			decoder = json.NewDecoder(rc)
 		}
+		l.Info("decoding from FIFO")
 		err = decoder.Decode(&t)
-		if errors.Is(err, io.EOF) {
+		if err != nil {
 			decoder = nil
-			utils.CloseAndLog(ctx, rc, "closing fifo reader")
+			if !errors.Is(err, io.EOF) {
+				l.Error("error from decoder", slog.Any("error", err))
+			}
+			process.CloseAndLog(ctx, rc)
 			time.Sleep(time.Second)
-		} else if err != nil {
-			log.Error(err, "error decoding from fifo")
-			decoder = nil
-			utils.CloseAndLog(ctx, rc, "closing search fifo reader")
-			continue
 		} else {
-			log.Info("decoded from reader", "t", t)
+			l.Info("decoded from reader", slog.Any("t", t))
 			c <- t
 			continue
 		}
 		select {
 		case <-ctx.Done():
-			log.Info("received signal, exiting decoder")
+			l.Info("received signal, exiting decoder")
 			close(c)
 			return
 		default:
@@ -294,20 +354,19 @@ func fifoDecoder[T any](ctx context.Context, c chan T, path string) {
 
 }
 
-func parseKubernetesClientset(ctx context.Context) (*clientset.Clientset, error) {
+func parseKubernetesClientset(_ context.Context) (*clientset.Clientset, error) {
 	var (
 		config *rest.Config
 		err    error
 	)
-	l := logf.FromContext(ctx)
 
 	if config, err = rest.InClusterConfig(); err != nil {
-		l.Info("in-cluster configuration was unable to be parsed, trying kubeconfig")
+		slog.Info("in-cluster configuration was unable to be parsed, trying kubeconfig")
 		home := homedir.HomeDir()
 		kubeconfigPath := filepath.Join(home, ".kube", "config")
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 		if err != nil {
-			l.Info("unable to build kubernetes config from flags, trying kubeconfig")
+			slog.Info("unable to build kubernetes config from flags, trying kubeconfig")
 			return nil, fmt.Errorf("unable to parse in-cluster config and kubeconfig")
 		}
 	}

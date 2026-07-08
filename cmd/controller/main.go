@@ -196,7 +196,7 @@ func main() {
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
 		SearchClusterRole: os.Getenv("OCULAR_SEARCH_CLUSTER_ROLE"),
-		SidecarImage:      os.Getenv("OCULAR_SIDECAR_IMG"),
+		SidecarImage:      os.Getenv("OCULAR_SCHEDULER_IMG"),
 		SidecarPullPolicy: sidecarPullPolicy,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Search")

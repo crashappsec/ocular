@@ -33,26 +33,14 @@ const (
 	TypeLabelKey = Group + "/type"
 
 	// PodTypeScan is the value of the TypeLabelKey label for scan pods.
-	PodTypeScan = "scan"
-	// PodTypeUpload is the value of the TypeLabelKey label for upload pods.
-	PodTypeUpload = "upload"
+	PipelinePodType = "pipeline"
+
 	// PodTypeSearch is the value of the TypeLabelKey label for search pods.
-	PodTypeSearch = "search"
-
-	// ServiceTypeUpload is the value of the TypeLabelKey label for upload services.
-	ServiceTypeUpload = "upload"
+	SearchPodType = "search"
 	// ServiceAccountTypeSearch is the value of the TypeLabelKey label for scan service accounts.
-	ServiceAccountTypeSearch = "search"
+	SearchServiceAccountType = "search"
 	// RoleBindingTypeSearch is the value of the TypeLabelKey label for search role bindings.
-	RoleBindingTypeSearch = "search"
-
-	// UploadTokenFile is the name of the file that contains the token
-	UploadTokenFile = "token"
-	// UploadTokenDir is the directory the token file will be mounted into
-	UploadTokenDir = "/var/run/ocular/secrets"
-	// UploadTokenPath is the path at which the token file exists on
-	// scan pods
-	UploadTokenPath = UploadTokenDir + "/" + UploadTokenFile
+	SearchRoleBindingType = "search"
 )
 
 // Target represents a target to be downloaded by a Downloader.

@@ -17,6 +17,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -44,11 +45,8 @@ func SetupUploaderWebhookWithManager(mgr ctrl.Manager) error {
 // 1) no new required parameters have been added that are not defined in
 //    existing Pipelines resources that reference it (on update), and
 // 2) no Pipeline resources referring to it exist (on delete).
-// Creation is currently not needed since most of the work is handled by the
-// k8s OpenAPI schema validation. If in the future there is a need to validate
-// Uploader resources on creation, the ValidateCreate method below can be implemented and 'create'
-// can be added to the verbs in the kubebuilder marker below.
-// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-uploader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=uploaders,verbs=delete;update,versions=v1beta1,name=vuploader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
+// 3) ensure that entry point is set for container (on create/update)
+// +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-uploader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=uploaders,verbs=create;delete;update,versions=v1beta1,name=vuploader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
 // UploaderCustomValidator struct is responsible for validating the Uploader resource
 // when it is created, updated, or deleted.
@@ -58,16 +56,23 @@ type UploaderCustomValidator struct {
 }
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
-func (v *UploaderCustomValidator) ValidateCreate(_ context.Context, uploader *v1beta1.Uploader) (admission.Warnings, error) {
-	uploaderlog.Info("uploader validate create should not be registered, see NOTE in webhook/v1beta1/uploader_webhook.go", "name", uploader.GetName())
+func (v *UploaderCustomValidator) ValidateCreate(ctx context.Context, uploader *v1beta1.Uploader) (admission.Warnings, error) {
+	uploaderlog.Info("validating uploader creation", "name", uploader.GetName())
 
-	return nil, nil
+	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), uploader.Spec.Container)
+
+	if len(fieldErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: v1beta1.Group, Kind: "Uploader"},
+		uploader.Name, fieldErrs)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
 func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldUploader, newUploader *v1beta1.Uploader) (admission.Warnings, error) {
-
-	uploaderlog.Info("validating new parameters for uploader", "name", newUploader.GetName())
+	uploaderlog.Info("validating uploader update", "name", newUploader.GetName())
 
 	newRequiredParams := parseNewRequiredParameters(oldUploader.Spec.Parameters, newUploader.Spec.Parameters)
 
@@ -99,7 +104,16 @@ func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldUploade
 
 	}
 
-	return nil, nil
+	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), newUploader.Spec.Container)
+
+	if len(fieldErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: v1beta1.Group, Kind: "Uploader"},
+		newUploader.Name, fieldErrs)
+
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Uploader.

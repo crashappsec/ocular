@@ -29,4 +29,6 @@ validate-pwd "$OCULAR_TARGET_DIR"
 
 validate-parameter "SCANNER_TEST" "PASS"
 
+validate-container-name "scanner-validate-env"
+
 complete "scanner enviornment validated" 

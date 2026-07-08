@@ -18,6 +18,7 @@ validate-pwd "$OCULAR_RESULTS_DIR"
 
 validate-parameter "TEST_PARAM" "testing-param-value"
 validate-parameter "DEFAULT" "default-value"
+validate-container-name "uploader-validate-env"
 validate-env-var "OCULAR_UPLOADER_NAME" "validate-uploader-env"
 
 complete "uploader env completed successfully"

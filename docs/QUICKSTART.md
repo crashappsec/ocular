@@ -163,12 +163,12 @@ Resource Controllers. The following instructions will guide you through the setu
     ```sh
     kubectl describe pipeline ${PIPELINE_NAME} -n default
     ```
-    Or by viewing the pods created for the pipeline:
+    Or by viewing the pod created for the pipeline:
     ```sh
-    kubectl get pods -n default -l ocular.crashoverride.run/pipeline=${PIPELINE_NAME}
+    kubectl get pod -n default -l ocular.crashoverride.run/pipeline=${PIPELINE_NAME}
     ```
    
-   Since there are no uploaders defined in the profile, the results files are printed to the logs of the scanner pods.
+   The results files are printed to the logs of the scanner pods.
    You can view the logs of each scanner pod to see the results:
    ```sh
    kubectl logs -l ocular.crashoverride.run/pipeline=${PIPELINE_NAME} -n default --all-containers

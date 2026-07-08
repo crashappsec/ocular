@@ -41,6 +41,7 @@ var _ = Describe("Search Webhook", func() {
 				Namespace: metav1.NamespaceDefault,
 			},
 			Spec: v1beta1.CrawlerSpec{
+				Container: testutils.GenerateRandomContainer(rnd),
 				Parameters: []v1beta1.ParameterDefinition{
 					{
 						Name: "PARAM_1",
@@ -110,10 +111,6 @@ var _ = Describe("Search Webhook", func() {
 	})
 
 	Context("When creating a search", func() {
-		It("Should default the service account when non is given", func() {
-			Expect(defaulter.Default(ctx, obj)).Error().To(Succeed())
-			Expect(obj.Spec.ServiceAccountName).To(Equal("search-" + obj.Name))
-		})
 		It("Should accept a custom service account", func() {
 			objSA := obj.DeepCopy()
 			objSA.Spec.ServiceAccountName = customSA.Name

@@ -48,9 +48,6 @@ type SearchCustomDefaulter struct{}
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Search.
 func (d *SearchCustomDefaulter) Default(_ context.Context, search *v1beta1.Search) error {
 	searchlog.Info("defaulting for Search", "name", search.GetName())
-	if search.Spec.ServiceAccountName == "" {
-		search.Spec.ServiceAccountName = "search-" + search.GetName()
-	}
 
 	search.Spec.CrawlerRef = resources.ReferenceDefaulter(search.Spec.CrawlerRef, "Crawler")
 	return nil
@@ -83,7 +80,7 @@ func (v *SearchCustomValidator) ValidateCreate(ctx context.Context, search *v1be
 func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldSearch, newSearch *v1beta1.Search) (admission.Warnings, error) {
 	searchlog.Info("validating Search resource update", "name", newSearch.GetName())
 
-	if oldSearch.Spec.ServiceAccountName != newSearch.Spec.ServiceAccountName {
+	if oldSearch.Spec.ServiceAccountName != "" && oldSearch.Spec.ServiceAccountName != newSearch.Spec.ServiceAccountName {
 		return nil, apierrors.NewInvalid(
 			schema.GroupKind{Group: v1beta1.Group, Kind: "Search"},
 			newSearch.Name,

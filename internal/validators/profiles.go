@@ -62,6 +62,10 @@ func ValidateProfile(ctx context.Context, c client.Client, profile *v1beta1.Prof
 		}
 	}
 
+	for i, c := range profile.Spec.Containers {
+		fieldErrors = append(fieldErrors, ValidateContainerDefinition(ctx, field.NewPath("spec").Child("containers").Index(i), c.Container)...)
+	}
+
 	if len(fieldErrors) == 0 {
 		return nil
 	}

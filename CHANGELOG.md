@@ -1,5 +1,15 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
+# [v0.3.4](https://github.com/crashappsec/ocular/releases/tag/v0.3.4) - **July 8th, 2026**
+
+### Changed
+
+- Pipelines now use only pod for both scanners and uploaders
+  - The `scanServiceAccount` and `uploadServiceAccount` are now just `serviceAccount`, which is applied to both scanners and uploaders
+  - Commands are wrapped with a shared binary, so all conatiner defintions now require a command
+- Add resource requirements for sidecars
+- Added E2E tests for searches
+
 # [v0.3.3](https://github.com/crashappsec/ocular/releases/tag/v0.3.3) - **June 26th, 2026**
 
 ### Added

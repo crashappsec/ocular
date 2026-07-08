@@ -16,7 +16,6 @@ permissions:
 
 env:
   GO_VERSION: 1.25
-  CONTROLLER_IMAGE_REPOSITORY: "ghcr.io/${{ github.repository_owner }}/ocular-controller"
 
   SUFFIX: ${{ github.event.release.prerelease && '-prerelease' || '' }}
   RELEASE_NAME: ${{ github.event.release.name }}
@@ -48,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image: [controller, sidecar]
+        image: [controller, sidecar, scheduler]
     permissions:
       packages: write
       contents: read

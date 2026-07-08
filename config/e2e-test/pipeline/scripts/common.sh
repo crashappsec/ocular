@@ -96,3 +96,8 @@ validate-common-env() {
 validate-parameter() {
     validate-env-var "OCULAR_PARAM_$1" "$2"
 }
+
+
+validate-container-name() {
+    validate-env-var "OCULAR_CONTAINER_NAME" "$1"
+}

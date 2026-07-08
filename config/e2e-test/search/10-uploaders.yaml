@@ -1,0 +1,43 @@
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Uploader
+metadata:
+  name: validate-uploader-env
+  namespace: e2e-test-search
+spec:
+  parameters:
+    - name: TEST_PARAM
+    - name: DEFAULT
+      default: default-value
+  container:
+    image: alpine/git:latest
+    imagePullPolicy: IfNotPresent
+    name: validate-env
+    command: ['/bin/sh']
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+    args: ["/scripts/validate-uploader-env.sh"]
+    # volume created in profile
+    volumeMounts:
+      - mountPath: "/scripts"
+        name: "validate-scripts"
+---
+apiVersion: ocular.crashoverride.run/v1beta1
+kind: Uploader
+metadata:
+  name: validate-uploader-files
+  namespace: e2e-test-search
+spec:
+  container:
+    image: alpine/git:latest
+    imagePullPolicy: IfNotPresent
+    name: validate-files
+    command: ['/bin/sh']
+    args: ["/scripts/validate-uploader-files.sh"]
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+    # volume created in profile
+    volumeMounts:
+      - mountPath: "/scripts"
+        name: "validate-scripts"
