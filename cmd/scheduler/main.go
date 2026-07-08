@@ -51,7 +51,7 @@ var (
 
 func main() {
 	ctx := context.Background()
-	l := slog.With(
+	l := slog.New(slog.NewJSONHandler(os.Stderr, nil)).With(
 		slog.String("version", version),
 		slog.String("git-commit", gitCommit),
 		slog.String("build-time", buildTime),
