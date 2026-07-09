@@ -49,6 +49,8 @@ resources:
 - profile_admin_role.yaml
 - profile_editor_role.yaml
 - profile_viewer_role.yaml
+# Additionally a global reader role
+- viewer_role.yaml
 # This role will be bound to the service account created
 # for searches to allow it to create Pipelines, Searches, and
 # CronSearches.
