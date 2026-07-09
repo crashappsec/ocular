@@ -43,6 +43,7 @@ func main() {
 		slog.String("git-commit", gitCommit),
 		slog.String("build-time", buildTime),
 	)
+	slog.SetDefault(l)
 
 	l.Info("starting ocular sidecar")
 	if len(os.Args) < 2 {
