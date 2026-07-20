@@ -154,6 +154,19 @@ var _ = Describe("Search", Ordered, func() {
 		It("should run successfully", func() {
 			By("validating that pipelines were created and all finished with Success")
 			verifySearchComplete := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get",
+					"search", "e2e-test",
+					"-o", "jsonpath={.status.conditions[?(@.type=='Complete')].status}",
+					"--no-headers",
+					"-n", searchNamespace,
+				)
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("True"), "Search did not report complete successfully")
+
+			}
+
+			verifySearchPipelinesComplete := func(g Gomega) {
 				// Validate the pipline's status
 				cmd := exec.Command("kubectl", "get",
 					"pipeline", "-o", "jsonpath={.items[*].status.phase}",
@@ -165,7 +178,9 @@ var _ = Describe("Search", Ordered, func() {
 				g.Expect(output).To(Equal("Succeeded Succeeded Succeeded"), "Incorrect pipeline pod statuses")
 
 			}
+
 			Eventually(verifySearchComplete).Should(Succeed())
+			Eventually(verifySearchPipelinesComplete).Should(Succeed())
 		})
 	})
 })

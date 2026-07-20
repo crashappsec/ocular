@@ -82,7 +82,7 @@ func HookCommand(ctx context.Context, cmd *exec.Cmd, preStart, postStop Hook) (i
 			}
 			err := cmd.Process.Signal(sig)
 			if err != nil {
-				slog.Info("unable to send signal to child process", slog.Any("error", err))
+				slog.Info("unable to send signal to child process", slog.Any("error", err), "signal", sig.String())
 			}
 		}
 	}()

@@ -15,11 +15,11 @@ SCRIPTS_DIR="/scripts"
 
 
 pass() {
-    echo "PASS: $1"
+    echo "PASS: $1" 1>&2
 }
 
 complete() {
-    echo "COMPLETE: $1"
+    echo "COMPLETE: $1" 1>&2
     exit 0
 }
 
@@ -28,7 +28,7 @@ info() {
 }
 
 fail() {
-    echo "FAIL: $1"
+    echo "FAIL: $1" 1>&2
     # custom exit code to debug
     # container exec failures vs
     # script failures
