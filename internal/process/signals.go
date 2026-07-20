@@ -24,7 +24,7 @@ func CancelContextSigterm(ctx context.Context) (context.Context, func()) {
 	return cancelCtx, func() {
 		slog.Info("awaiting SIGTERM")
 		sig := <-sigTerm
+		slog.Info("received cancel signal, cancelling context", "signal", sig.String())
 		cancel()
-		slog.Info("Received signal", "signal", sig.String())
 	}
 }

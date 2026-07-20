@@ -161,7 +161,7 @@ func Schedule(ctx context.Context) (process.Hook, error) {
 	}
 
 	if err = createFIFO(ctx, searchFIFOPath); err != nil {
-		utils.RemoveAndLog(ctx, pipelineFIFOPath)
+		process.RemovePathAndLog(ctx, pipelineFIFOPath)
 		return nil, fmt.Errorf("unable to create search FIFO")
 	}
 
@@ -281,8 +281,8 @@ func Schedule(ctx context.Context) (process.Hook, error) {
 	return func(ctx context.Context, _ *exec.Cmd) error {
 		crawlerCancel()
 		wg.Wait()
-		utils.RemoveAndLog(ctx, pipelineFIFOPath)
-		utils.RemoveAndLog(ctx, searchFIFOPath)
+		process.RemovePathAndLog(ctx, pipelineFIFOPath)
+		process.RemovePathAndLog(ctx, searchFIFOPath)
 		return nil
 	}, nil
 }
