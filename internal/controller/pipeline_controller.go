@@ -173,7 +173,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return r.populateScanPod(scanPod, pipeline, profile, downloader, uploaders)
 	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to generate new scan pod: %w", err)
+		return ctrl.Result{}, client.IgnoreAlreadyExists(err)
 	}
 
 	l = l.WithValues("scan-pod", scanPod.Name)

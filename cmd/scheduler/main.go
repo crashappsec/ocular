@@ -156,15 +156,6 @@ func Schedule(ctx context.Context) (process.Hook, error) {
 
 	targets, crawlers := make(chan v1beta1.Target), make(chan v1beta1.ParameterizedLocalObjectReference)
 
-	if err = createFIFO(ctx, pipelineFIFOPath); err != nil {
-		return nil, fmt.Errorf("unable to create pipeline FIFO")
-	}
-
-	if err = createFIFO(ctx, searchFIFOPath); err != nil {
-		utils.RemoveAndLog(ctx, pipelineFIFOPath)
-		return nil, fmt.Errorf("unable to create search FIFO")
-	}
-
 	// crawlerCtx will have an event sent to the Done channel
 	// when the crawler container exits for this search.
 	crawlerCtx, crawlerCancel := context.WithCancel(ctx)
@@ -185,7 +176,14 @@ func Schedule(ctx context.Context) (process.Hook, error) {
 
 	// crawler decoder and scheduler
 	wg.Go(func() {
-		fifoDecoder(crawlerCtx, crawlers, searchFIFOPath)
+		defer close(crawlers)
+		rc, err := newFIFOReader(crawlerCtx, searchFIFOPath)
+		if err != nil {
+			slog.Error("unable to create search FIFO reader")
+			return
+		}
+		defer process.CloseAndLog(crawlerCtx, rc)
+		decodeJSONToChannel(ctx, rc, crawlers)
 	})
 	wg.Go(func() {
 		var ttlSeconds *int32
@@ -237,8 +235,14 @@ func Schedule(ctx context.Context) (process.Hook, error) {
 	})
 
 	wg.Go(func() {
-		// pipeline decoder and scheduler
-		fifoDecoder(crawlerCtx, targets, pipelineFIFOPath)
+		defer close(targets)
+		rc, err := newFIFOReader(crawlerCtx, pipelineFIFOPath)
+		if err != nil {
+			slog.Error("unable to create pipeline FIFO reader")
+			return
+		}
+		defer process.CloseAndLog(crawlerCtx, rc)
+		decodeJSONToChannel(ctx, rc, targets)
 	})
 
 	wg.Go(func() {
@@ -279,77 +283,93 @@ func Schedule(ctx context.Context) (process.Hook, error) {
 	})
 
 	return func(ctx context.Context, _ *exec.Cmd) error {
+		slog.Info("user process finished, exiting decoder")
 		crawlerCancel()
 		wg.Wait()
-		utils.RemoveAndLog(ctx, pipelineFIFOPath)
-		utils.RemoveAndLog(ctx, searchFIFOPath)
 		return nil
 	}, nil
 }
 
-func createFIFO(_ context.Context, path string) error {
+// fifoReader reads from a FIFO until
+// ctx is done AND the pipe buffer is fully drained.
+type fifoReader struct {
+	f        *os.File
+	path     string
+	ctx      context.Context
+	draining bool
+}
+
+func newFIFOReader(ctx context.Context, path string) (*fifoReader, error) {
 	if err := syscall.Mkfifo(path, 0622); err != nil {
-		return fmt.Errorf("unable to create FIFO: %w", err)
+		return nil, fmt.Errorf("unable to create FIFO: %w", err)
 	}
 
 	if err := os.Chmod(path, 0622); err != nil {
 		slog.Error("failed to change permissions of FIFO", slog.String("path", path), slog.Any("error", err))
 	}
-	return nil
 
+	f, err := os.OpenFile(path, os.O_RDWR|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	fr := &fifoReader{f: f, ctx: ctx, path: path}
+
+	go func() {
+		<-ctx.Done()
+		slog.Info("FIFO context complete, draining FIFO", slog.String("path", path))
+		_ = f.SetReadDeadline(time.Now())
+	}()
+
+	return fr, nil
 }
 
-func openFIFOReader(_ context.Context, path string) (io.ReadCloser, error) {
-	fifoReader, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
-	if err != nil {
-		slog.Error("fifo reader opening, error", slog.Any("error", err))
-		return nil, fmt.Errorf("unable to open FIFO: %w", err)
+func (fr *fifoReader) drain(p []byte) (int, error) {
+	// reset deadline to be able to read,
+	// choose a small time since there are no writers.
+	// if you get a timeout with 0 bytes read -> drained fifo
+	_ = fr.f.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	n, err := fr.f.Read(p)
+	if n > 0 {
+		return n, nil
+	}
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return 0, io.EOF
+	}
+	return n, err
+}
+
+func (fr *fifoReader) Read(p []byte) (int, error) {
+	if fr.draining {
+		return fr.drain(p)
 	}
 
-	return fifoReader, nil
-
+	n, err := fr.f.Read(p)
+	if errors.Is(err, os.ErrDeadlineExceeded) && fr.ctx.Err() != nil {
+		fr.draining = true
+		return fr.Read(p)
+	}
+	return n, err
 }
 
-func fifoDecoder[T any](ctx context.Context, c chan T, path string) {
-	var (
-		decoder *json.Decoder
-		rc      io.ReadCloser
-		err     error
-		l       = slog.With(slog.String("fifo", path))
-	)
+func (fr *fifoReader) Close() error {
+	process.CloseAndLog(fr.ctx, fr.f)
+	process.RemovePathAndLog(fr.ctx, fr.path)
+	return nil
+}
 
+func decodeJSONToChannel[T any](_ context.Context, rc io.ReadCloser, c chan T) {
+	decoder := json.NewDecoder(rc)
 	for {
 		var t T
-		if decoder == nil {
-			rc, err = openFIFOReader(ctx, path)
-			if err != nil {
-				l.Error("unable to open fifo", slog.Any("error", err))
-				time.Sleep(time.Second)
-				continue
-			}
-			decoder = json.NewDecoder(rc)
+		err := decoder.Decode(&t)
+		if err == io.EOF {
+			slog.Info("stopping decode to channel")
+			break
 		}
-		l.Info("decoding from FIFO")
-		err = decoder.Decode(&t)
 		if err != nil {
-			decoder = nil
-			if !errors.Is(err, io.EOF) {
-				l.Error("error from decoder", slog.Any("error", err))
-			}
-			process.CloseAndLog(ctx, rc)
-			time.Sleep(time.Second)
-		} else {
-			l.Info("decoded from reader", slog.Any("t", t))
-			c <- t
-			continue
+			slog.Error("unable to decode JSON", slog.Any("error", err))
 		}
-		select {
-		case <-ctx.Done():
-			l.Info("received signal, exiting decoder")
-			close(c)
-			return
-		default:
-		}
+		c <- t
 	}
 
 }

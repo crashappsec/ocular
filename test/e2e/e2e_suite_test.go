@@ -29,15 +29,15 @@ var (
 
 	// projectImage is the name of the image which will be build and loaded
 	// with the code source changes to be tested.
-	projectImage = "ocular-controller:e2e-test"
+	projectImage = "host.local/library/ocular-controller:e2e-test"
 
 	// sidecarImage is the name of the ocular sidecar image used during tests.
 	// It can be built and loaded together with the projectImage and schedulerImage.
-	sidecarImage = "ocular-sidecar:e2e-test"
+	sidecarImage = "host.local/library/ocular-sidecar:e2e-test"
 
 	// schedulerImage is the name of the ocular scheduler image used during tests.
 	// It can be built and loaded together with the projectImage and sidecarImage.
-	schedulerImage = "ocular-scheduler:e2e-test"
+	schedulerImage = "host.local/library/ocular-scheduler:e2e-test"
 )
 
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.

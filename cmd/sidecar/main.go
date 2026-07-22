@@ -43,6 +43,7 @@ func main() {
 		slog.String("git-commit", gitCommit),
 		slog.String("build-time", buildTime),
 	)
+	slog.SetDefault(l)
 
 	l.Info("starting ocular sidecar")
 	if len(os.Args) < 2 {
@@ -91,7 +92,7 @@ func main() {
 		awaitScannersHook := AwaitScans(strings.Split(os.Getenv(v1beta1.EnvVarScanContainerNames), ","))
 		exitCode, err := process.HookCommand(cancelCtx, cmd, awaitScannersHook, nil)
 		if err != nil {
-			l.Error("unable to execute scanner", slog.Any("error", err))
+			l.Error("unable to execute uploader", slog.Any("error", err))
 			os.Exit(1)
 		}
 		os.Exit(exitCode)
@@ -120,6 +121,9 @@ func AwaitScans(scanners []string) process.Hook {
 			l := slog.With(slog.String("scanner", scanner))
 			l.Info("awating scanner")
 			g.Go(func() error {
+				// make sure we dont spam the console
+				lastPrintTime, printDelay := time.Now(), time.Second*10
+				l.Info(fmt.Sprintf("awaiting scanner '%s'", scanner))
 				for {
 					complete, err := IsScannerComplete(ctx, scanner)
 					if err != nil {
@@ -131,7 +135,10 @@ func AwaitScans(scanners []string) process.Hook {
 						l.Info("scanner complete")
 						return nil
 					}
-					l.Info("scanner not complete, sleeping before checking again")
+					if time.Since(lastPrintTime) > printDelay {
+						l.Info(fmt.Sprintf("scanner '%s' still not complete, awaiting", scanner))
+						lastPrintTime = time.Now()
+					}
 					time.Sleep(time.Second)
 				}
 			})

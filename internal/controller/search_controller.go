@@ -175,6 +175,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Update status to reflect pods have been created
 	if search.Status.StartTime == nil {
 		l.Info("marking search as started")
+		patch := client.MergeFrom(search.DeepCopy())
 		startTime := metav1.NewTime(time.Now())
 		search.Status.Conditions = []metav1.Condition{
 			{
@@ -186,7 +187,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			},
 		}
 		search.Status.StartTime = &startTime
-		return ctrl.Result{}, updateStatus(ctx, r.Client, search)
+		return ctrl.Result{}, patchStatus(ctx, r.Client, search, patch)
 	}
 
 	// Check for completion of pods and update status accordingly
@@ -353,6 +354,7 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 
 func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1.Search, pod *corev1.Pod) (ctrl.Result, error) {
 	l := logf.FromContext(ctx)
+	patch := client.MergeFrom(search.DeepCopy())
 
 	childPipelines, childSearches, err := r.retrieveRunningScheduledResources(ctx, search)
 	if err != nil {
@@ -397,7 +399,7 @@ func (r *SearchReconciler) handleCompletion(ctx context.Context, search *v1beta1
 		l.Info("search pod is in unknown state, requeuing", "name", search.GetName(), "pod", pod.GetName(), "phase", pod.Status.Phase)
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
-	if err := updateStatus(ctx, r.Client, search, "step", "search pod completion"); err != nil {
+	if err := patchStatus(ctx, r.Client, search, patch); err != nil {
 		return ctrl.Result{}, err
 	}
 
