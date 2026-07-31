@@ -482,6 +482,9 @@ func (r *PipelineReconciler) populateScanPod(
 			uploaderOpts...,
 		)
 
+		pod.Spec.Tolerations = pipeline.Spec.Tolerations
+		pod.Spec.Affinity = pipeline.Spec.Affinity
+		pod.Spec.NodeSelector = pipeline.Spec.NodeSelector
 		pod.Spec.ServiceAccountName = pipeline.Spec.ServiceAccountName
 		pod.Spec.RuntimeClassName = pipeline.Spec.RuntimeClassName
 		pod.Spec.RestartPolicy = corev1.RestartPolicyNever
