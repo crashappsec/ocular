@@ -8,7 +8,7 @@
 
 ARG BUILDPLATFORM
 
-FROM --platform=${BUILDPLATFORM} golang:1.26@sha256:f96cc555eb8db430159a3aa6797cd5bae561945b7b0fe7d0e284c63a3b291609 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.26@sha256:3aff6657219a4d9c14e27fb1d8976c49c29fddb70ba835014f477e1c70636647 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -32,7 +32,7 @@ COPY pkg/ pkg/
 RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -ldflags="${LDFLAGS}" -o entrypoint cmd/$COMMAND/main.go
 
-FROM gcr.io/distroless/static:nonroot@sha256:963fa6c544fe5ce420f1f54fb88b6fb01479f054c8056d0f74cc2c6000df5240
+FROM gcr.io/distroless/static:nonroot@sha256:f7f8f729987ad0fdf6b05eeeae94b26e6a0f613bdf46feea7fc40f7bd72953e6
 
 WORKDIR /
 COPY --from=builder /workspace/entrypoint .
