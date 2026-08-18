@@ -22,23 +22,28 @@ validate-container-name "crawler-validate-container"
 
 validate-parameter "RESOURCE" "CRAWLER"
 
-cat <<EOF >> "$OCULAR_PIPELINE_FIFO"
+echo "creating pipeline for crashappsec/ocular scan"
+cat <<EOF > "$OCULAR_PIPELINE_FIFO"
 {
   "identifier": "https://github.com/crashappsec/ocular",
   "version": "1"
 }
 EOF
 
+sleep 1
 
-cat <<EOF >> "$OCULAR_PIPELINE_FIFO"
+echo "creating pipeline for crashappsec/chalk scan"
+cat <<EOF > "$OCULAR_PIPELINE_FIFO"
 {
   "identifier": "https://github.com/crashappsec/chalk",
   "version": "2"
 }
 EOF
 
+sleep 1
 
-cat <<EOF >> "$OCULAR_PIPELINE_FIFO"
+echo "creating pipeline for crashappsec/hello-world scan"
+cat <<EOF > "$OCULAR_PIPELINE_FIFO"
 {
   "identifier": "https://github.com/crashappsec/hello-world",
   "version": "3"

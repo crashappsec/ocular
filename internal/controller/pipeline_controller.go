@@ -173,7 +173,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return r.populateScanPod(scanPod, pipeline, profile, downloader, uploaders)
 	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("unable to generate new scan pod: %w", err)
+		return ctrl.Result{}, client.IgnoreAlreadyExists(err)
 	}
 
 	l = l.WithValues("scan-pod", scanPod.Name)
@@ -482,6 +482,9 @@ func (r *PipelineReconciler) populateScanPod(
 			uploaderOpts...,
 		)
 
+		pod.Spec.Tolerations = pipeline.Spec.Tolerations
+		pod.Spec.Affinity = pipeline.Spec.Affinity
+		pod.Spec.NodeSelector = pipeline.Spec.NodeSelector
 		pod.Spec.ServiceAccountName = pipeline.Spec.ServiceAccountName
 		pod.Spec.RuntimeClassName = pipeline.Spec.RuntimeClassName
 		pod.Spec.RestartPolicy = corev1.RestartPolicyNever

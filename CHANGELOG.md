@@ -1,5 +1,17 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
+
+# [v0.4.1](https://github.com/crashappsec/ocular/releases/tag/v0.4.1) - **August 18th, 2026**
+
+### Added
+
+- Set Node Selector, Afinity and Tolerations for pipeline resources
+
+### Fixes
+
+- Improve stability of FIFOs for search pipeline scheduler
+- Decrease slog spam when awaiting resources
+
 # [v0.4.0](https://github.com/crashappsec/ocular/releases/tag/v0.4.0) - **July 8th, 2026**
 
 ### Changed
