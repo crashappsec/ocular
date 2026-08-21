@@ -237,7 +237,7 @@ var _ = Describe("Pipeline Controller", func() {
 						Name:    uploaderContainerName,
 						Image:   testImage,
 						Command: []string{"/bin/sh", "-c"},
-						Args:    []string{"echo uploading...; cat $OCULAR_RESULTS_DIR/results.txt; echo done."},
+						Args:    []string{"echo uploader"},
 					},
 					Parameters: []v1beta1.ParameterDefinition{
 						{
@@ -276,6 +276,7 @@ var _ = Describe("Pipeline Controller", func() {
 								Image: testImage,
 								Name:  doNotIncludeContainerName,
 							},
+							Artifacts: []string{v1beta1.PipelineResultsDirectory + "/do-not-include"},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_SET",
 							},
@@ -285,6 +286,7 @@ var _ = Describe("Pipeline Controller", func() {
 								Image: testImage,
 								Name:  includeContainerName,
 							},
+							Artifacts: []string{v1beta1.PipelineResultsDirectory + "/include"},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_EMPTY",
 							},
@@ -444,12 +446,13 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 				map[string]func(corev1.Container){
 					scannerContainerName: func(c corev1.Container) {
+						Expect(c.Command).To(Equal([]string{sidecarBinaryPath, "scanner"}))
 						Expect(c.Name).To(Equal(scanContainerPrefix + scannerContainerName))
 						Expect(c.Image).To(Equal(testImage))
 						Expect(c.Env).To(ContainElements(expectedScannerParams...))
 					},
 					includeContainerName: func(c corev1.Container) {
-
+						Expect(c.Command).To(Equal([]string{sidecarBinaryPath, "scanner"}))
 						Expect(c.Env).To(ContainElements(expectedScannerParams...))
 					},
 				},
@@ -460,6 +463,13 @@ var _ = Describe("Pipeline Controller", func() {
 							Name:  v1beta1.EnvVarUploaderName,
 							Value: uploader.Name,
 						}))
+						Expect(c.Command).To(Equal([]string{sidecarBinaryPath, "await-scanners"}))
+						expectedArgs := make([]string, 0, len(uploader.Spec.Container.Command)+len(uploader.Spec.Container.Args)+3)
+						expectedArgs = append(
+							append(append(expectedArgs, uploader.Spec.Container.Command...), uploader.Spec.Container.Args...),
+							"--", v1beta1.PipelineResultsDirectory+"/results.txt", v1beta1.PipelineResultsDirectory+"/include",
+						)
+						Expect(c.Args).To(Equal(expectedArgs))
 					},
 				},
 			)

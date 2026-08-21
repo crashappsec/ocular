@@ -35,7 +35,8 @@ func WithNamePrefix(prefix string) Option {
 
 func WrapCommand(newEntrypoint ...string) Option {
 	return func(c *corev1.Container) {
-		c.Args = append(c.Command, c.Args...)
+		wrapped := make([]string, 0, len(c.Command)+len(c.Args))
+		c.Args = append(append(wrapped, c.Command...), c.Args...)
 		c.Command = newEntrypoint
 	}
 }
@@ -67,6 +68,20 @@ func ApplyOptionsToAll(
 	options ...Option,
 ) []corev1.Container {
 	for i := range containers {
+		for _, option := range options {
+			option(&containers[i])
+		}
+	}
+	return containers
+}
+
+func ApplyOptionsToAllConditional(
+	conditionalContainers []v1beta1.ConditionalContainer,
+	options ...Option,
+) []corev1.Container {
+	containers := make([]corev1.Container, len(conditionalContainers))
+	for i := range conditionalContainers {
+		containers[i] = conditionalContainers[i].Container
 		for _, option := range options {
 			option(&containers[i])
 		}

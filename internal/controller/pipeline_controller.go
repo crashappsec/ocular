@@ -436,8 +436,10 @@ func (r *PipelineReconciler) populateScanPod(
 			}),
 			containers.WithNamePrefix(scanContainerPrefix),
 		)
-		scannerContainers := containers.ApplyOptionsToAll(
-			containers.FilterConditionalContainers(profile.Spec.Containers, profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters),
+
+		filteredScanners := containers.FilterConditionalContainers(profile.Spec.Containers, profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters)
+		scannerContainers := containers.ApplyOptionsToAllConditional(
+			filteredScanners,
 			scannerOptions...,
 		)
 
@@ -453,7 +455,7 @@ func (r *PipelineReconciler) populateScanPod(
 
 		// aritfactArgs are the arguments passed to
 		// uploaders to specify which artifacts to extract
-		artifactArgs := generateArtifactArguments(downloader.Spec.MetadataFiles, profile.Spec.Artifacts)
+		artifactArgs := generateArtifactArguments(downloader.Spec.MetadataFiles, profile.Spec.Artifacts, filteredScanners)
 
 		uploaderContainers := make([]corev1.Container, 0, len(uploaders))
 		uploaderLabels, uploaderAnnotations := make(map[string]string), make(map[string]string)
@@ -532,8 +534,9 @@ func (r *PipelineReconciler) populateScanPod(
 	return ctrl.SetControllerReference(pipeline, pod, r.Scheme)
 }
 
-func generateArtifactArguments(metadataFiles []string, artifacts []string) []string {
+func generateArtifactArguments(metadataFiles []string, artifacts []string, containerArtifacts []v1beta1.ConditionalContainer) []string {
 	args := []string{"--"}
+	// global artifacts from profile
 	for _, artifact := range artifacts {
 		artifactPath := path.Clean(artifact)
 		if path.IsAbs(artifactPath) {
@@ -542,12 +545,25 @@ func generateArtifactArguments(metadataFiles []string, artifacts []string) []str
 			args = append(args, path.Join(v1beta1.PipelineResultsDirectory, artifactPath))
 		}
 	}
+	// metadataArtifacts from downloader
 	for _, artifact := range metadataFiles {
 		artifactPath := path.Clean(artifact)
 		if path.IsAbs(artifactPath) {
 			args = append(args, artifactPath)
 		} else {
 			args = append(args, path.Join(v1beta1.PipelineMetadataDirectory, artifactPath))
+		}
+	}
+
+	// conditional aritfacts from containers
+	for _, container := range containerArtifacts {
+		for _, artifact := range container.Artifacts {
+			artifactPath := path.Clean(artifact)
+			if path.IsAbs(artifactPath) {
+				args = append(args, artifactPath)
+			} else {
+				args = append(args, path.Join(v1beta1.PipelineMetadataDirectory, artifactPath))
+			}
 		}
 	}
 	return args

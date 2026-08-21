@@ -73,6 +73,18 @@ spec:
                         type: string
                       type: array
                       x-kubernetes-list-type: atomic
+                    artifacts:
+                      description: |-
+                        Artifacts is a list of paths to the artifacts that will be produced
+                        by the this container. This differs from [Profile.Artifacts] by
+                        not reporting these artifacts if the container is not included.
+                        These paths are relative to the results directory.
+                      items:
+                        type: string
+                      maxItems: 10
+                      minItems: 0
+                      type: array
+                      x-kubernetes-list-type: set
                     command:
                       description: |-
                         Entrypoint array. Not executed within a shell.
