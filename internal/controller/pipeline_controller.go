@@ -11,8 +11,10 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,9 +27,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -82,12 +86,21 @@ type PipelineReconciler struct {
 	SidecarPullPolicy corev1.PullPolicy
 }
 
+const ConcurrentPipelineReconcilesEnvVar = "OCULAR_CONCURRENT_PIPELINE_RECONCILES"
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *PipelineReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	concurrentReonciles := 1
+	if userConcurrent, err := strconv.Atoi(os.Getenv(ConcurrentPipelineReconcilesEnvVar)); err == nil {
+		concurrentReonciles = userConcurrent
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Pipeline{}).
 		Named("pipeline").
 		Owns(&corev1.Pod{}, builder.WithPredicates(podStateChangedPredicate)).
+		WithOptions(controller.TypedOptions[reconcile.Request]{
+			MaxConcurrentReconciles: concurrentReonciles,
+		}).
 		Complete(r)
 }
 
