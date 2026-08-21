@@ -443,6 +443,8 @@ helm-build: kubebuilder helmpatch-plugin yq ## Generate a helm-chart using kubeb
 	@"$(YQ)" -ie '(.sidecar | key) head_comment="Configure Ocular sidecar image"' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '.scheduler.image =  {"repository": strenv(OCULAR_SCHEDULER_REPOSITORY), "pullPolicy": "IfNotPresent", "tag": "v{{ .Chart.AppVersion }}"}' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '(.scheduler | key) head_comment="Configure Ocular scheduler image"' $(HELM_CHART_DIR)/values.yaml
+	@"$(YQ)" -ie '.manager.concurrentReconciles =  {"pipelines": 1, "searches": 1, "cronSearches": 1}' $(HELM_CHART_DIR)/values.yaml
+	@"$(YQ)" -ie '(.manager.concurrentReconciles | key) head_comment="Configure Ocular max concurrent reconciles image"' $(HELM_CHART_DIR)/values.yaml
 	@"$(YQ)" -ie '.appVersion = (strenv(OCULAR_VERSION) | sub("^v", ""))' $(HELM_CHART_DIR)/Chart.yaml
 
 

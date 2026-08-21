@@ -11,7 +11,9 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"os"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -20,7 +22,9 @@ import (
 	ref "k8s.io/client-go/tools/reference"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -51,7 +55,7 @@ type CronSearchReconciler struct {
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches/status,verbs=get
 
-var (
+const (
 	scheduledTimeAnnotation = "ocular.crashoverride.run/scheduled-at"
 )
 
@@ -349,6 +353,8 @@ var (
 	apiGVStr       = v1beta1.GroupVersion.String()
 )
 
+const ConcurrentCronSearchReconcilesEnvVar = "OCULAR_CONCURRENT_CRONSEARCH_RECONCILES"
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *CronSearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.Clock == nil {
@@ -371,9 +377,17 @@ func (r *CronSearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
+	concurrentReonciles := 1
+	if userConcurrent, err := strconv.Atoi(os.Getenv(ConcurrentCronSearchReconcilesEnvVar)); err == nil {
+		concurrentReonciles = userConcurrent
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.CronSearch{}).
 		Owns(&v1beta1.Search{}).
 		Named("cronsearch").
+		WithOptions(controller.TypedOptions[reconcile.Request]{
+			MaxConcurrentReconciles: concurrentReonciles,
+		}).
 		Complete(r)
 }

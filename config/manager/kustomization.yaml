@@ -14,5 +14,8 @@ configMapGenerator:
       - OCULAR_SEARCH_CLUSTER_ROLE=ocular-search-cluster-role
       - OCULAR_SCHEDULER_PULLPOLICY=IfNotPresent
       - OCULAR_SCHEDULER_IMG=ghcr.io/crashappsec/ocular-scheduler:latest
+      - OCULAR_CONCURRENT_PIPELINE_RECONCILES=1
+      - OCULAR_CONCURRENT_SEARCH_RECONCILES=1
+      - OCULAR_CONCURRENT_CRONSEARCH_RECONCILES=1
     options:
       disableNameSuffixHash: true

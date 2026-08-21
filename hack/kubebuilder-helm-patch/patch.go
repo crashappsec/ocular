@@ -96,6 +96,18 @@ var replacements = map[string][]replacement{
 			Replacement: "${1}OCULAR_SCHEDULER_PULLPOLICY: {{ .Values.scheduler.image.pullPolicy }}",
 		},
 		{
+			Pattern:     regexp.MustCompile(`(?m)^([ ]+)OCULAR_CONCURRENT_PIPELINE_RECONCILES:.*$`),
+			Replacement: "${1}OCULAR_CONCURRENT_PIPELINE_RECONCILES: {{ .Values.manager.concurrentReconciles.pipelines }}",
+		},
+		{
+			Pattern:     regexp.MustCompile(`(?m)^([ ]+)OCULAR_CONCURRENT_SEARCH_RECONCILES:.*$`),
+			Replacement: "${1}OCULAR_CONCURRENT_SEARCH_RECONCILES: {{ .Values.manager.concurrentReconciles.searches }}",
+		},
+		{
+			Pattern:     regexp.MustCompile(`(?m)^([ ]+)OCULAR_CONCURRENT_CRONSEARCH_RECONCILES:.*$`),
+			Replacement: "${1}OCULAR_CONCURRENT_CRONSEARCH_RECONCILES: {{ .Values.manager.concurrentReconciles.cronSearches }}",
+		},
+		{
 			Pattern:     regexp.MustCompile(`\.Values`),
 			Replacement: "$$values",
 		},
