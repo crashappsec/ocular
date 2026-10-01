@@ -39,7 +39,7 @@ jobs:
           make build-installer OCULAR_VERSION="$RELEASE_NAME$SUFFIX"
           mv dist/install.yaml ocular${SUFFIX}.yaml
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # ratchet:softprops/action-gh-release@v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # ratchet:softprops/action-gh-release@v3.0.3
         with:
           files: ocular${{ env.SUFFIX }}.yaml
   publish-docker:
@@ -70,12 +70,12 @@ jobs:
         uses: crashappsec/setup-chalk-action@0966e85f08bfbabbe3075892881331384819cbc5 # ratchet:crashappsec/setup-chalk-action@v0.0.3
         continue-on-error: true
       - name: setup qemu
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # ratchet:docker/setup-qemu-action@v4.2.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # ratchet:docker/setup-qemu-action@v4.4.0
       - name: setup buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # ratchet:docker/setup-buildx-action@v4.2.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # ratchet:docker/setup-buildx-action@v4.4.1
       - name: docker build
         id: docker-build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # ratchet:docker/build-push-action@v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # ratchet:docker/build-push-action@v7.4.0
         with:
           platforms: linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
           push: true
