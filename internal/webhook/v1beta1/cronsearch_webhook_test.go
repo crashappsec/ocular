@@ -20,8 +20,8 @@ var _ = Describe("CronSearch Webhook", func() {
 	var (
 		obj       *v1beta1.CronSearch
 		oldObj    *v1beta1.CronSearch
-		validator CronSearchCustomValidator
-		defaulter CronSearchCustomDefaulter
+		validator CronSearchValidator
+		defaulter CronSearchDefaulter
 	)
 
 	const validCronSearchName = "valid-cronsearch-name"
@@ -50,8 +50,8 @@ var _ = Describe("CronSearch Webhook", func() {
 		*oldObj.Spec.SuccessfulJobsHistoryLimit = 3
 		*oldObj.Spec.FailedJobsHistoryLimit = 1
 
-		validator = CronSearchCustomValidator{}
-		defaulter = CronSearchCustomDefaulter{
+		validator = CronSearchValidator{}
+		defaulter = CronSearchDefaulter{
 			DefaultConcurrencyPolicy:          v1beta1.AllowConcurrent,
 			DefaultSuspend:                    false,
 			DefaultSuccessfulJobsHistoryLimit: 3,

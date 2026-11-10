@@ -29,8 +29,8 @@ var _ = Describe("Pipeline Webhook", func() {
 		profile    *v1beta1.Profile
 		downloader *v1beta1.Downloader
 		svcAccount *corev1.ServiceAccount
-		validator  PipelineCustomValidator
-		defaulter  PipelineCustomDefaulter
+		validator  PipelineValidator
+		defaulter  PipelineDefaulter
 	)
 
 	BeforeEach(func() {
@@ -83,11 +83,11 @@ var _ = Describe("Pipeline Webhook", func() {
 			},
 		}
 		oldObj = &v1beta1.Pipeline{}
-		validator = PipelineCustomValidator{
+		validator = PipelineValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
-		defaulter = PipelineCustomDefaulter{}
+		defaulter = PipelineDefaulter{}
 		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")

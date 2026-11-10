@@ -31,7 +31,7 @@ var _ = Describe("Downloader Webhook", func() {
 		pipeline   *v1beta1.Pipeline
 		profile    *v1beta1.Profile
 		svcAccount *corev1.ServiceAccount
-		validator  DownloaderCustomValidator
+		validator  DownloaderValidator
 	)
 
 	BeforeEach(func() {
@@ -85,7 +85,7 @@ var _ = Describe("Downloader Webhook", func() {
 				ServiceAccountName: svcAccount.Name,
 			},
 		}
-		validator = DownloaderCustomValidator{
+		validator = DownloaderValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")

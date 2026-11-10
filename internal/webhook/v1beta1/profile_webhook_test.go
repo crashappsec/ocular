@@ -28,7 +28,7 @@ var _ = Describe("Profile Webhook", func() {
 		namespace         = "default"
 		obj               *v1beta1.Profile
 		oldObj            *v1beta1.Profile
-		validator         ProfileCustomValidator
+		validator         ProfileValidator
 		uploader1         *v1beta1.Uploader
 		uploader2         *v1beta1.Uploader
 		pipeline          *v1beta1.Pipeline
@@ -133,7 +133,7 @@ var _ = Describe("Profile Webhook", func() {
 				},
 			},
 		}
-		validator = ProfileCustomValidator{
+		validator = ProfileValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")

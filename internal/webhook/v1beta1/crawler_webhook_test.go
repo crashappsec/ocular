@@ -29,7 +29,7 @@ var _ = Describe("Crawler Webhook", func() {
 		search    *ocularcrashoverriderunv1beta1.Search
 		obj       *ocularcrashoverriderunv1beta1.Crawler
 		oldObj    *ocularcrashoverriderunv1beta1.Crawler
-		validator CrawlerCustomValidator
+		validator CrawlerValidator
 	)
 
 	BeforeEach(func() {
@@ -63,7 +63,7 @@ var _ = Describe("Crawler Webhook", func() {
 				},
 			},
 		}
-		validator = CrawlerCustomValidator{
+		validator = CrawlerValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")

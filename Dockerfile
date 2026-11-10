@@ -7,8 +7,8 @@
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
 ARG BUILDPLATFORM
-
-FROM --platform=${BUILDPLATFORM} golang:1.26@sha256:01aa404fa56b604b6f48e90c1d6e2c79fe5cd78f9592f78d80303fbe171cdcc0 AS builder
+ARG BASE_IMAGE=golang:1.26@sha256:01aa404fa56b604b6f48e90c1d6e2c79fe5cd78f9592f78d80303fbe171cdcc0
+FROM --platform=${BUILDPLATFORM} ${BASE_IMAGE} AS builder
 
 ARG TARGETOS
 ARG TARGETARCH

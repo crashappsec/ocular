@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -525,7 +526,8 @@ func (r *SearchReconciler) handlePostCompletion(ctx context.Context, search *v1b
 		deleteTime := finishTime.Add(ttl)
 		if time.Now().After(deleteTime) {
 			l.Info("search has exceeded its TTL, deleting",
-				"completionTime", search.Status.CompletionTime, "ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
+				"completionTime", klog.SafePtr(search.Status.CompletionTime),
+				"ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
 			if err := r.Delete(ctx, search); err != nil {
 				l.Error(err, "error deleting search after TTL exceeded")
 				return ctrl.Result{}, err
@@ -533,10 +535,11 @@ func (r *SearchReconciler) handlePostCompletion(ctx context.Context, search *v1b
 			return ctrl.Result{}, nil
 		} else {
 			l.Info("search has completed, checking TTL before next reconciliation",
-				"completionTime", search.Status.CompletionTime, "ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
+				"completionTime", klog.SafePtr(search.Status.CompletionTime),
+				"ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
 			return ctrl.Result{RequeueAfter: time.Until(deleteTime)}, nil
 		}
 	}
-	l.Info("search has completed, skipping reconciliation", "completionTime", search.Status.CompletionTime)
+	l.Info("search has completed, skipping reconciliation", "completionTime", klog.SafePtr(search.Status.CompletionTime))
 	return ctrl.Result{}, nil
 }

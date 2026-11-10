@@ -33,7 +33,7 @@ var uploaderlog = logf.Log.WithName("uploader-resource")
 // SetupUploaderWebhookWithManager registers the webhook for Uploader in the manager.
 func SetupUploaderWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.Uploader{}).
-		WithValidator(&UploaderCustomValidator{
+		WithValidator(&UploaderValidator{
 			c:      mgr.GetClient(),
 			scheme: mgr.GetScheme(),
 		}).
@@ -48,15 +48,15 @@ func SetupUploaderWebhookWithManager(mgr ctrl.Manager) error {
 // 3) ensure that entry point is set for container (on create/update)
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-uploader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=uploaders,verbs=create;delete;update,versions=v1beta1,name=vuploader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// UploaderCustomValidator struct is responsible for validating the Uploader resource
+// UploaderValidator struct is responsible for validating the Uploader resource
 // when it is created, updated, or deleted.
-type UploaderCustomValidator struct {
+type UploaderValidator struct {
 	c      client.Client
 	scheme *runtime.Scheme
 }
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
-func (v *UploaderCustomValidator) ValidateCreate(ctx context.Context, uploader *v1beta1.Uploader) (admission.Warnings, error) {
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type Uploader.
+func (v *UploaderValidator) ValidateCreate(ctx context.Context, uploader *v1beta1.Uploader) (admission.Warnings, error) {
 	uploaderlog.Info("validating uploader creation", "name", uploader.GetName())
 
 	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), uploader.Spec.Container)
@@ -70,8 +70,8 @@ func (v *UploaderCustomValidator) ValidateCreate(ctx context.Context, uploader *
 		uploader.Name, fieldErrs)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
-func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldUploader, newUploader *v1beta1.Uploader) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type Uploader.
+func (v *UploaderValidator) ValidateUpdate(ctx context.Context, oldUploader, newUploader *v1beta1.Uploader) (admission.Warnings, error) {
 	uploaderlog.Info("validating uploader update", "name", newUploader.GetName())
 
 	newRequiredParams := parseNewRequiredParameters(oldUploader.Spec.Parameters, newUploader.Spec.Parameters)
@@ -116,8 +116,8 @@ func (v *UploaderCustomValidator) ValidateUpdate(ctx context.Context, oldUploade
 
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Uploader.
-func (v *UploaderCustomValidator) ValidateDelete(ctx context.Context, uploader *v1beta1.Uploader) (admission.Warnings, error) {
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type Uploader.
+func (v *UploaderValidator) ValidateDelete(ctx context.Context, uploader *v1beta1.Uploader) (admission.Warnings, error) {
 	uploaderlog.Info("validating no profile references deleted uploader", "name", uploader.GetName())
 
 	dependantProfiles, err := v.getDependantProfiles(ctx, uploader)
@@ -138,7 +138,7 @@ func (v *UploaderCustomValidator) ValidateDelete(ctx context.Context, uploader *
 	return nil, nil
 }
 
-func (v *UploaderCustomValidator) getDependantProfiles(ctx context.Context, uploader *v1beta1.Uploader) ([]v1beta1.Profile, error) {
+func (v *UploaderValidator) getDependantProfiles(ctx context.Context, uploader *v1beta1.Uploader) ([]v1beta1.Profile, error) {
 	var profilesInNamespace v1beta1.ProfileList
 	if err := v.c.List(ctx, &profilesInNamespace, client.InNamespace(uploader.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list profiles in namespace %s: %w", uploader.Namespace, err)

@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -555,7 +556,7 @@ func generateArtifactArguments(metadataFiles []string, artifacts []string, conta
 		}
 	}
 
-	// conditional aritfacts from containers
+	// conditional artifacts from containers
 	for _, container := range containerArtifacts {
 		for _, artifact := range container.Artifacts {
 			artifactPath := path.Clean(artifact)
@@ -628,7 +629,8 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 		"pipeline", pipeline.Name, "namespace", pipeline.Namespace,
 		"profile", pipeline.Spec.ProfileRef.Name, "downloader", pipeline.Spec.DownloaderRef.Name,
 		"target", pipeline.Spec.Target, "phase", pipeline.Status.Phase,
-		"completion-time", pipeline.Status.CompletionTime, "start-time", pipeline.Status.StartTime,
+		"completion-time", klog.SafePtr(pipeline.Status.CompletionTime),
+		"start-time", klog.SafePtr(pipeline.Status.StartTime),
 	)
 	l.Info("handling post completion")
 	if controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {

@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"time"
 
@@ -64,6 +64,7 @@ const (
 // a CronJob controller is implemented.
 // https://github.com/kubernetes-sigs/kubebuilder/blob/master/docs/book/src/cronjob-tutorial/testdata/project/internal/controller/cronjob_controller.go
 // why re-invent the wheel?
+// nolint:gocyclo
 func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -107,12 +108,24 @@ func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if cronSearch.Spec.FailedJobsHistoryLimit != nil {
-		sort.Slice(categorizedChildSearches.failed, func(i, j int) bool {
-			if categorizedChildSearches.failed[i].Status.StartTime == nil {
-				return categorizedChildSearches.failed[j].Status.StartTime != nil
+		slices.SortFunc(categorizedChildSearches.failed, func(a, b *v1beta1.Search) int {
+			at, bt := a.Status.StartTime, b.Status.StartTime
+			switch {
+			case at == nil && bt == nil:
+				return 0
+			case at == nil:
+				return -1 // nil start times sort first
+			case bt == nil:
+				return 1
 			}
-			return categorizedChildSearches.failed[i].Status.StartTime.Before(categorizedChildSearches.failed[j].Status.StartTime)
+			return at.Compare(bt.Time)
 		})
+		// sort.Slice(categorizedChildSearches.failed, func(i, j int) bool {
+		// 	if categorizedChildSearches.failed[i].Status.StartTime == nil {
+		// 		return categorizedChildSearches.failed[j].Status.StartTime != nil
+		// 	}
+		// 	return categorizedChildSearches.failed[i].Status.StartTime.Before(categorizedChildSearches.failed[j].Status.StartTime)
+		// })
 		for i, search := range categorizedChildSearches.failed {
 			if int32(i) >= int32(len(categorizedChildSearches.failed))-*cronSearch.Spec.FailedJobsHistoryLimit {
 				break
@@ -126,12 +139,24 @@ func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if cronSearch.Spec.SuccessfulJobsHistoryLimit != nil {
-		sort.Slice(categorizedChildSearches.successful, func(i, j int) bool {
-			if categorizedChildSearches.successful[i].Status.StartTime == nil {
-				return categorizedChildSearches.successful[j].Status.StartTime != nil
+		slices.SortFunc(categorizedChildSearches.successful, func(a, b *v1beta1.Search) int {
+			at, bt := a.Status.StartTime, b.Status.StartTime
+			switch {
+			case at == nil && bt == nil:
+				return 0
+			case at == nil:
+				return -1 // nil start times sort first
+			case bt == nil:
+				return 1
 			}
-			return categorizedChildSearches.successful[i].Status.StartTime.Before(categorizedChildSearches.successful[j].Status.StartTime)
+			return at.Compare(bt.Time)
 		})
+		// sort.Slice(categorizedChildSearches.successful, func(i, j int) bool {
+		// 	if categorizedChildSearches.successful[i].Status.StartTime == nil {
+		// 		return categorizedChildSearches.successful[j].Status.StartTime != nil
+		// 	}
+		// 	return categorizedChildSearches.successful[i].Status.StartTime.Before(categorizedChildSearches.successful[j].Status.StartTime)
+		// })
 		for i, search := range categorizedChildSearches.successful {
 			if int32(i) >= int32(len(categorizedChildSearches.successful))-*cronSearch.Spec.SuccessfulJobsHistoryLimit {
 				break

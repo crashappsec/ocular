@@ -30,8 +30,8 @@ var _ = Describe("Search Webhook", func() {
 		oldObj    *v1beta1.Search
 		crawler   *v1beta1.Crawler
 		customSA  *v1.ServiceAccount
-		validator SearchCustomValidator
-		defaulter SearchCustomDefaulter
+		validator SearchValidator
+		defaulter SearchDefaulter
 	)
 
 	BeforeEach(func() {
@@ -89,7 +89,7 @@ var _ = Describe("Search Webhook", func() {
 				Namespace: metav1.NamespaceDefault,
 			},
 		}
-		validator = SearchCustomValidator{
+		validator = SearchValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")

@@ -247,6 +247,7 @@ docker-build-scheduler: docker-build-img-scheduler ## Build docker image for the
 
 docker-build-img-%: ## Builds the docker image
 	$(CONTAINER_TOOL) build \
+		$(if $(BASE_IMAGE),--build-arg BASE_IMAGE=$(BASE_IMAGE)) \
 		--build-arg LDFLAGS="$(LDFLAGS)" \
 		--build-arg COMMAND=$* \
 		--tag $(OCULAR_$(shell echo '$*' | tr '[:lower:]' '[:upper:]')_IMG) \
@@ -305,7 +306,7 @@ HELMPATCH_SOURCES ?= $(wildcard hack/kubebuilder-helm-patch/*.go)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
-CONTROLLER_TOOLS_VERSION ?= v0.21.0
+CONTROLLER_TOOLS_VERSION ?= v0.22.0
 GOLANGCI_LINT_VERSION ?= v2.15.0
 YQ_VERSION ?= v4.54.3
 CODE_GENERATOR_VERSION ?= v0.36.0
@@ -316,7 +317,7 @@ RATCHET_VERSION ?= v0.12.0
 #ENVTEST_VERSION is the controller-runtime version to use for setup-envtest, derived from go.mod
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }; \
-  printf '%s\n' "$$v")
+  printf '%s\n' "$$v" | sed -E 's/^v?([0-9]+)\.([0-9]+).*/\1.\2/')
 
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
@@ -344,7 +345,7 @@ setup-envtest: envtest ## Download the binaries required for ENVTEST in the loca
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
 $(ENVTEST): $(LOCALBIN)
-	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
+	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,release-$(ENVTEST_VERSION))
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
@@ -457,7 +458,7 @@ install-helm: ## Install the latest version of Helm.
 
 .PHONY: helm-deploy
 helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify an image with IMG.
-	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
+	IMG="$(IMG)"; $(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
 		--namespace $(HELM_NAMESPACE) \
 		--create-namespace \
 		--set manager.image.repository=$${OCULAR_CONTROLLER_IMG%:*} \

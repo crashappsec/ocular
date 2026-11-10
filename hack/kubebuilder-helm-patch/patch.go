@@ -104,8 +104,9 @@ var replacements = map[string][]replacement{
 			Replacement: "${1}OCULAR_CONCURRENT_SEARCH_RECONCILES: {{ quote .Values.manager.concurrentReconciles.searches }}",
 		},
 		{
-			Pattern:     regexp.MustCompile(`(?m)^([ ]+)OCULAR_CONCURRENT_CRONSEARCH_RECONCILES:.*$`),
-			Replacement: "${1}OCULAR_CONCURRENT_CRONSEARCH_RECONCILES: {{ quote .Values.manager.concurrentReconciles.cronSearches }}",
+			Pattern: regexp.MustCompile(`(?m)^([ ]+)OCULAR_CONCURRENT_CRONSEARCH_RECONCILES:.*$`),
+			Replacement: "${1}OCULAR_CONCURRENT_CRONSEARCH_RECONCILES: " +
+				"{{ quote .Values.manager.concurrentReconciles.cronSearches }}",
 		},
 		{
 			Pattern:     regexp.MustCompile(`\.Values`),

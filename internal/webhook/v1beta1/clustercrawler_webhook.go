@@ -31,7 +31,7 @@ var clustercrawlerlog = logf.Log.WithName("clustercrawler-resource")
 // SetupClusterCrawlerWebhookWithManager registers the webhook for ClusterCrawler in the manager.
 func SetupClusterCrawlerWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.ClusterCrawler{}).
-		WithValidator(&ClusterCrawlerCustomValidator{
+		WithValidator(&ClusterCrawlerValidator{
 			c: mgr.GetClient(),
 		}).
 		Complete()
@@ -39,18 +39,21 @@ func SetupClusterCrawlerWebhookWithManager(mgr ctrl.Manager) error {
 
 // NOTE: the validator is configured to run as a validating webhook
 // during the create, update and/or deletion of a ClusterCrawler resource to validate that
-// 1) no new required parameters have been added that are not defined in
-//    existing (Cron)?Search resources that reference it (on update), and
-// 2) no (Cron)?Search resources referring to it exist (on delete).
-// 3) the crawler specified an entrypoint (on update/create)
+//  1. no new required parameters have been added that are not defined in
+//     existing (Cron)?Search resources that reference it (on update), and
+//  2. no (Cron)?Search resources referring to it exist (on delete).
+//  3. the crawler specified an entrypoint (on update/create)
+//
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-clustercrawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=clustercrawlers,verbs=create;update;delete,versions=v1beta1,name=vclustercrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
-
-type ClusterCrawlerCustomValidator struct {
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as this struct is used only for temporary operations and does not need to be deeply copied.
+type ClusterCrawlerValidator struct {
 	c client.Client
 }
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type ClusterCrawler.
-func (v *ClusterCrawlerCustomValidator) ValidateCreate(ctx context.Context, obj *v1beta1.ClusterCrawler) (admission.Warnings, error) {
+func (v *ClusterCrawlerValidator) ValidateCreate(ctx context.Context, obj *v1beta1.ClusterCrawler) (admission.Warnings, error) {
 	clustercrawlerlog.Info("valdiating cluster crawler creation", "name", obj.GetName())
 
 	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), obj.Spec.Container)
@@ -65,7 +68,7 @@ func (v *ClusterCrawlerCustomValidator) ValidateCreate(ctx context.Context, obj 
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type ClusterCrawler.
-func (v *ClusterCrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler, newCrawler *v1beta1.ClusterCrawler) (admission.Warnings, error) {
+func (v *ClusterCrawlerValidator) ValidateUpdate(ctx context.Context, oldCrawler, newCrawler *v1beta1.ClusterCrawler) (admission.Warnings, error) {
 	clustercrawlerlog.Info("validation for cluster crawler upon update", "name", newCrawler.GetName())
 
 	newRequiredParams := parseNewRequiredParameters(oldCrawler.Spec.Parameters, newCrawler.Spec.Parameters)
@@ -118,7 +121,7 @@ func (v *ClusterCrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldC
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type ClusterCrawler.
-func (v *ClusterCrawlerCustomValidator) ValidateDelete(ctx context.Context, clusterCrawler *v1beta1.ClusterCrawler) (admission.Warnings, error) {
+func (v *ClusterCrawlerValidator) ValidateDelete(ctx context.Context, clusterCrawler *v1beta1.ClusterCrawler) (admission.Warnings, error) {
 	clustercrawlerlog.Info("validation for cluster crawler upon deletion", "name", clusterCrawler.GetName())
 
 	dependantSearches, err := v.getDependantSearches(ctx, clusterCrawler)
@@ -154,7 +157,7 @@ func (v *ClusterCrawlerCustomValidator) ValidateDelete(ctx context.Context, clus
 	return nil, nil
 }
 
-func (v *ClusterCrawlerCustomValidator) getDependantSearches(ctx context.Context, crawler *v1beta1.ClusterCrawler) ([]v1beta1.Search, error) {
+func (v *ClusterCrawlerValidator) getDependantSearches(ctx context.Context, crawler *v1beta1.ClusterCrawler) ([]v1beta1.Search, error) {
 	var all v1beta1.SearchList
 	if err := v.c.List(ctx, &all); err != nil {
 		return nil, fmt.Errorf("failed to list searches: %w", err)
@@ -170,7 +173,7 @@ func (v *ClusterCrawlerCustomValidator) getDependantSearches(ctx context.Context
 	return searches, nil
 }
 
-func (v *ClusterCrawlerCustomValidator) getDependantCronSearches(ctx context.Context, crawler *v1beta1.ClusterCrawler) ([]v1beta1.CronSearch, error) {
+func (v *ClusterCrawlerValidator) getDependantCronSearches(ctx context.Context, crawler *v1beta1.ClusterCrawler) ([]v1beta1.CronSearch, error) {
 	var all v1beta1.CronSearchList
 	if err := v.c.List(ctx, &all); err != nil {
 		return nil, fmt.Errorf("failed to list cronSearches: %w", err)
