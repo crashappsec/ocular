@@ -444,8 +444,8 @@ func TestApplyOptionsToAllEmptyInputs(t *testing.T) {
 
 func TestApplyOptionsToAllConditionalReturnsOneContainerPerInput(t *testing.T) {
 	in := []v1beta1.ConditionalContainer{
-		{Container: corev1.Container{Name: "a"}},
-		{Container: corev1.Container{Name: "b"}},
+		{Name: "a"},
+		{Name: "b"},
 	}
 
 	out := ApplyOptionsToAllConditional(in, WithNamePrefix("pre-"))
@@ -462,7 +462,7 @@ func TestApplyOptionsToAllConditionalReturnsOneContainerPerInput(t *testing.T) {
 
 func TestApplyOptionsToAllConditionalCopiesUnderlyingContainerFields(t *testing.T) {
 	in := []v1beta1.ConditionalContainer{
-		{Container: corev1.Container{Name: "a", Image: "example/a:latest"}},
+		{Name: "a", Image: "example/a:latest"},
 	}
 
 	out := ApplyOptionsToAllConditional(in, WithNamePrefix("pre-"))
@@ -477,7 +477,7 @@ func TestApplyOptionsToAllConditionalCopiesUnderlyingContainerFields(t *testing.
 
 func TestApplyOptionsToAllConditionalDoesNotMutateInput(t *testing.T) {
 	in := []v1beta1.ConditionalContainer{
-		{Container: corev1.Container{Name: "a"}},
+		{Name: "a"},
 	}
 
 	ApplyOptionsToAllConditional(in, WithNamePrefix("pre-"))
@@ -489,7 +489,7 @@ func TestApplyOptionsToAllConditionalDoesNotMutateInput(t *testing.T) {
 
 func TestApplyOptionsToAllConditionalAppliesAllOptions(t *testing.T) {
 	in := []v1beta1.ConditionalContainer{
-		{Container: corev1.Container{Name: "a"}},
+		{Name: "a"},
 	}
 
 	out := ApplyOptionsToAllConditional(in,
@@ -512,7 +512,7 @@ func TestApplyOptionsToAllConditionalAppliesAllOptions(t *testing.T) {
 // container is never copied into the result and callers get zero values back.
 func TestApplyOptionsToAllConditionalWithNoOptions(t *testing.T) {
 	in := []v1beta1.ConditionalContainer{
-		{Container: corev1.Container{Name: "a", Image: "example/a:latest"}},
+		{Name: "a", Image: "example/a:latest"},
 	}
 
 	out := ApplyOptionsToAllConditional(in)

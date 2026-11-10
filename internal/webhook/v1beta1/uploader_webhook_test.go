@@ -13,7 +13,6 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -23,19 +22,15 @@ var _ = Describe("Uploader Webhook", func() {
 	var (
 		obj       *v1beta1.Uploader
 		profile   *v1beta1.Profile
-		validator UploaderCustomValidator
+		validator UploaderValidator
 		namespace = "default"
 	)
 
 	BeforeEach(func() {
 		obj = &v1beta1.Uploader{
-			TypeMeta: metav1.TypeMeta{
-				Kind: "Uploader",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "uploader-webhook-test",
-				Namespace: namespace,
-			},
+			Kind:      "Uploader",
+			Name:      "uploader-webhook-test",
+			Namespace: namespace,
 			Spec: v1beta1.UploaderSpec{
 				Container: v1.Container{
 					Name:    "dummy-uploader-container",
@@ -45,10 +40,8 @@ var _ = Describe("Uploader Webhook", func() {
 			},
 		}
 		profile = &v1beta1.Profile{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "uploader-webhook-test-profile",
-				Namespace: namespace,
-			},
+			Name:      "uploader-webhook-test-profile",
+			Namespace: namespace,
 			Spec: v1beta1.ProfileSpec{
 				UploaderRefs: []v1beta1.ParameterizedLocalObjectReference{
 					{
@@ -58,16 +51,14 @@ var _ = Describe("Uploader Webhook", func() {
 				},
 				Containers: []v1beta1.ConditionalContainer{
 					{
-						Container: v1.Container{
-							Name:    "dummy-scan-container",
-							Image:   "dummy-scan-image",
-							Command: []string{"/bin/sh"},
-						},
+						Name:    "dummy-scan-container",
+						Image:   "dummy-scan-image",
+						Command: []string{"/bin/sh"},
 					},
 				},
 			},
 		}
-		validator = UploaderCustomValidator{
+		validator = UploaderValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")

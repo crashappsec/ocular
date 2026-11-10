@@ -37,40 +37,12 @@ const (
 var replacements = map[string][]replacement{
 	managerPath: {
 		{
-			Pattern: regexp.MustCompile(`(?m)^([ ]+)labels:`),
-			Replacement: "${1}labels:\n" +
-				"${1}  {{- range $$key, $$val := .Values.manager.labels }}\n" +
-				"${1}  {{ $$key }}: {{ $$val | quote }}\n" +
-				"${1}  {{- end}}",
-		},
-		{
-			Pattern: regexp.MustCompile(`(?m)^([ ]+)annotations:`),
-			Replacement: "${1}annotations:\n" +
-				"${1}  {{- range $$key, $$val := .Values.manager.annotations }}\n" +
-				"${1}  {{ $$key }}: {{ $$val | quote }}\n" +
-				"${1}  {{- end}}",
-		},
-		{
 			Pattern: regexp.MustCompile(`(?m)^([ ]+)env: \[\]`),
 			Replacement: "${1}env:\n" +
 				"${1}  {{- if .Values.manager.env }}\n" +
 				"${1}  {{- toYaml .Values.manager.env | nindent 8 }}\n" +
 				"${1}  {{- else}}\n" +
 				"${1}  []\n" +
-				"${1}  {{- end}}",
-		},
-		{
-			Pattern: regexp.MustCompile(`(?m)^([ ]+)volumeMounts:`),
-			Replacement: "${1}volumeMounts:\n" +
-				"${1}  {{- if .Values.manager.volumeMounts }}\n" +
-				"${1}  {{- toYaml .Values.manager.volumeMounts | nindent 8}}\n" +
-				"${1}  {{- end}}",
-		},
-		{
-			Pattern: regexp.MustCompile(`(?m)^([ ]+)volumes:`),
-			Replacement: "${1}volumes:\n" +
-				"${1}  {{- if .Values.manager.volumes }}\n" +
-				"${1}  {{- toYaml .Values.manager.volumes | nindent 6}}\n" +
 				"${1}  {{- end}}",
 		},
 		{
@@ -104,8 +76,9 @@ var replacements = map[string][]replacement{
 			Replacement: "${1}OCULAR_CONCURRENT_SEARCH_RECONCILES: {{ quote .Values.manager.concurrentReconciles.searches }}",
 		},
 		{
-			Pattern:     regexp.MustCompile(`(?m)^([ ]+)OCULAR_CONCURRENT_CRONSEARCH_RECONCILES:.*$`),
-			Replacement: "${1}OCULAR_CONCURRENT_CRONSEARCH_RECONCILES: {{ quote .Values.manager.concurrentReconciles.cronSearches }}",
+			Pattern: regexp.MustCompile(`(?m)^([ ]+)OCULAR_CONCURRENT_CRONSEARCH_RECONCILES:.*$`),
+			Replacement: "${1}OCULAR_CONCURRENT_CRONSEARCH_RECONCILES: " +
+				"{{ quote .Values.manager.concurrentReconciles.cronSearches }}",
 		},
 		{
 			Pattern:     regexp.MustCompile(`\.Values`),

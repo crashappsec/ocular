@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -181,7 +182,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	scanPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: pipelineResourcePrefix + pipeline.GetName(), Namespace: pipeline.GetNamespace()}}
+	scanPod := &corev1.Pod{Name: pipelineResourcePrefix + pipeline.GetName(), Namespace: pipeline.GetNamespace()}
 	scanPodOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, scanPod, func() error {
 		return r.populateScanPod(scanPod, pipeline, profile, downloader, uploaders)
 	})
@@ -327,34 +328,24 @@ func (r *PipelineReconciler) populateScanPod(
 	if pod.CreationTimestamp.IsZero() {
 
 		targetVolume := corev1.Volume{
-			Name: pipelineTargetVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     pipelineTargetVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		resultsVolume := corev1.Volume{
-			Name: pipelineResultsVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     pipelineResultsVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		metadataVolume := corev1.Volume{
-			Name: pipelineMetadataVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     pipelineMetadataVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		processVolume := corev1.Volume{
-			Name: runtimeProcVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     runtimeProcVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		binaryVolume := corev1.Volume{
-			Name: runtimeBinaryVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     runtimeBinaryVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 
 		pod.Spec.Volumes = []corev1.Volume{
@@ -555,7 +546,7 @@ func generateArtifactArguments(metadataFiles []string, artifacts []string, conta
 		}
 	}
 
-	// conditional aritfacts from containers
+	// conditional artifacts from containers
 	for _, container := range containerArtifacts {
 		for _, artifact := range container.Artifacts {
 			artifactPath := path.Clean(artifact)
@@ -628,7 +619,8 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 		"pipeline", pipeline.Name, "namespace", pipeline.Namespace,
 		"profile", pipeline.Spec.ProfileRef.Name, "downloader", pipeline.Spec.DownloaderRef.Name,
 		"target", pipeline.Spec.Target, "phase", pipeline.Status.Phase,
-		"completion-time", pipeline.Status.CompletionTime, "start-time", pipeline.Status.StartTime,
+		"completion-time", klog.SafePtr(pipeline.Status.CompletionTime),
+		"start-time", klog.SafePtr(pipeline.Status.StartTime),
 	)
 	l.Info("handling post completion")
 	if controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {

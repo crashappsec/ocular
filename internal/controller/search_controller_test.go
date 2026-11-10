@@ -71,10 +71,8 @@ var _ = Describe("Search Controller", func() {
 			err := k8sClient.Get(ctx, clusterRoleNamespacedName, clusterRole)
 			if err != nil && errors.IsNotFound(err) {
 				clusterRoleResource := &rbacv1.ClusterRole{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      searchClusterRole,
-						Namespace: testNamespace,
-					},
+					Name:      searchClusterRole,
+					Namespace: testNamespace,
 				}
 				Expect(k8sClient.Create(ctx, clusterRoleResource)).To(Succeed())
 				Expect(k8sClient.Get(ctx, clusterRoleNamespacedName, clusterRole)).To(Succeed())
@@ -83,10 +81,8 @@ var _ = Describe("Search Controller", func() {
 			err = k8sClient.Get(ctx, crawlerTypeNamespacedName, crawler)
 			if err != nil && errors.IsNotFound(err) {
 				crawlerResource := &v1beta1.Crawler{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      crawlerName,
-						Namespace: testNamespace,
-					},
+					Name:      crawlerName,
+					Namespace: testNamespace,
 					Spec: v1beta1.CrawlerSpec{
 						Container: corev1.Container{
 							Name:    crawlerContainerName,
@@ -115,10 +111,8 @@ var _ = Describe("Search Controller", func() {
 			err = k8sClient.Get(ctx, typeNamespacedName, search)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &v1beta1.Search{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: testNamespace,
-					},
+					Name:      resourceName,
+					Namespace: testNamespace,
 					Spec: v1beta1.SearchSpec{
 						ServiceAccountName: serviceAccountName,
 						RuntimeClassName:   &runtimeClassName,
@@ -243,10 +237,8 @@ var _ = Describe("Search Controller", func() {
 			if err != nil && errors.IsNotFound(err) {
 				err = nil
 				crawlerResource := &v1beta1.Crawler{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      crawlerName,
-						Namespace: testNamespace,
-					},
+					Name:      crawlerName,
+					Namespace: testNamespace,
 					Spec: v1beta1.CrawlerSpec{
 						Container: corev1.Container{
 							Name:    "crawler",
@@ -263,10 +255,8 @@ var _ = Describe("Search Controller", func() {
 			if err != nil && errors.IsNotFound(err) {
 				err = nil
 				resource := &v1beta1.Search{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: testNamespace,
-					},
+					Name:      resourceName,
+					Namespace: testNamespace,
 					Spec: v1beta1.SearchSpec{
 						CrawlerRef: v1beta1.ParameterizedLocalObjectReference{
 							Name: crawlerName,
@@ -284,19 +274,17 @@ var _ = Describe("Search Controller", func() {
 			if err != nil && errors.IsNotFound(err) {
 				err = nil
 				pipelineResource := &v1beta1.Pipeline{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      childPipelineName,
-						Namespace: testNamespace,
-						Labels: map[string]string{
-							v1beta1.ScheduledByLabelKey: search.Name,
-						},
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion: v1beta1.GroupVersion.String(),
-								Kind:       "Search",
-								Name:       search.Name,
-								UID:        search.UID,
-							},
+					Name:      childPipelineName,
+					Namespace: testNamespace,
+					Labels: map[string]string{
+						v1beta1.ScheduledByLabelKey: search.Name,
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: v1beta1.GroupVersion.String(),
+							Kind:       "Search",
+							Name:       search.Name,
+							UID:        search.UID,
 						},
 					},
 					Spec: v1beta1.PipelineSpec{
@@ -430,10 +418,8 @@ var _ = Describe("Search Controller", func() {
 			err := k8sClient.Get(ctx, clusterRoleNamespacedName, clusterRole)
 			if err != nil && errors.IsNotFound(err) {
 				clusterRoleResource := &rbacv1.ClusterRole{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      searchClusterRole,
-						Namespace: testNamespace,
-					},
+					Name:      searchClusterRole,
+					Namespace: testNamespace,
 				}
 				Expect(k8sClient.Create(ctx, clusterRoleResource)).To(Succeed())
 				Expect(k8sClient.Get(ctx, clusterRoleNamespacedName, clusterRole)).To(Succeed())
@@ -442,10 +428,8 @@ var _ = Describe("Search Controller", func() {
 			err = k8sClient.Get(ctx, crawlerTypeNamespacedName, crawler)
 			if err != nil && errors.IsNotFound(err) {
 				crawlerResource := &v1beta1.Crawler{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      crawlerName,
-						Namespace: testNamespace,
-					},
+					Name:      crawlerName,
+					Namespace: testNamespace,
 					Spec: v1beta1.CrawlerSpec{
 						Container: corev1.Container{
 							Name:    crawlerContainerName,
@@ -463,10 +447,8 @@ var _ = Describe("Search Controller", func() {
 			err = k8sClient.Get(ctx, typeNamespacedName, search)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &v1beta1.Search{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: testNamespace,
-					},
+					Name:      resourceName,
+					Namespace: testNamespace,
 					Spec: v1beta1.SearchSpec{
 						RuntimeClassName: &runtimeClassName,
 						CrawlerRef: v1beta1.ParameterizedLocalObjectReference{

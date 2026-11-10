@@ -32,7 +32,7 @@ var crawlerlog = logf.Log.WithName("crawler-resource")
 // SetupCrawlerWebhookWithManager registers the webhook for Crawler in the manager.
 func SetupCrawlerWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.Crawler{}).
-		WithValidator(&CrawlerCustomValidator{
+		WithValidator(&CrawlerValidator{
 			c: mgr.GetClient(),
 		}).
 		Complete()
@@ -46,14 +46,17 @@ func SetupCrawlerWebhookWithManager(mgr ctrl.Manager) error {
 // 3) validate entrypoint is set on container (update/create)
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-crawler,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=crawlers,verbs=create;delete;update,versions=v1beta1,name=vcrawler-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// CrawlerCustomValidator struct is responsible for validating the Crawler resource
+// CrawlerValidator struct is responsible for validating the Crawler resource
 // when it is created, updated, or deleted.
-type CrawlerCustomValidator struct {
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as this struct is used only for temporary operations and does not need to be deeply copied.
+type CrawlerValidator struct {
 	c client.Client
 }
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateCreate(ctx context.Context, crawler *v1beta1.Crawler) (admission.Warnings, error) {
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type Crawler.
+func (v *CrawlerValidator) ValidateCreate(ctx context.Context, crawler *v1beta1.Crawler) (admission.Warnings, error) {
 	crawlerlog.Info("validating crawler upon creation", "name", crawler.GetName())
 
 	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), crawler.Spec.Container)
@@ -67,8 +70,8 @@ func (v *CrawlerCustomValidator) ValidateCreate(ctx context.Context, crawler *v1
 		crawler.Name, fieldErrs)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler, newCrawler *v1beta1.Crawler) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type Crawler.
+func (v *CrawlerValidator) ValidateUpdate(ctx context.Context, oldCrawler, newCrawler *v1beta1.Crawler) (admission.Warnings, error) {
 	crawlerlog.Info("validation for crawler upon update", "name", newCrawler.GetName())
 
 	newRequiredParams := parseNewRequiredParameters(oldCrawler.Spec.Parameters, newCrawler.Spec.Parameters)
@@ -120,8 +123,8 @@ func (v *CrawlerCustomValidator) ValidateUpdate(ctx context.Context, oldCrawler,
 		newCrawler.Name, fieldErrs)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Crawler.
-func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *v1beta1.Crawler) (admission.Warnings, error) {
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type Crawler.
+func (v *CrawlerValidator) ValidateDelete(ctx context.Context, crawler *v1beta1.Crawler) (admission.Warnings, error) {
 	crawlerlog.Info("validating crawler is no longer referenced by any Search or CronSearch resource", "name", crawler.GetName())
 
 	dependantSearches, err := v.getDependantSearches(ctx, crawler)
@@ -157,7 +160,7 @@ func (v *CrawlerCustomValidator) ValidateDelete(ctx context.Context, crawler *v1
 	return nil, nil
 }
 
-func (v *CrawlerCustomValidator) getDependantSearches(ctx context.Context, crawler *v1beta1.Crawler) ([]v1beta1.Search, error) {
+func (v *CrawlerValidator) getDependantSearches(ctx context.Context, crawler *v1beta1.Crawler) ([]v1beta1.Search, error) {
 	var searchesInNamespace v1beta1.SearchList
 	if err := v.c.List(ctx, &searchesInNamespace, client.InNamespace(crawler.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list searches in namespace %s: %w", crawler.Namespace, err)
@@ -173,7 +176,7 @@ func (v *CrawlerCustomValidator) getDependantSearches(ctx context.Context, crawl
 	return searches, nil
 }
 
-func (v *CrawlerCustomValidator) getDependantCronSearches(ctx context.Context, crawler *v1beta1.Crawler) ([]v1beta1.CronSearch, error) {
+func (v *CrawlerValidator) getDependantCronSearches(ctx context.Context, crawler *v1beta1.Crawler) ([]v1beta1.CronSearch, error) {
 	var cronSearchesInNamespace v1beta1.CronSearchList
 	if err := v.c.List(ctx, &cronSearchesInNamespace, client.InNamespace(crawler.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list cronSearches in namespace %s: %w", crawler.Namespace, err)
