@@ -147,12 +147,6 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
-.PHONY: update-github-actions
-update-github-actions: frizbee ## Update GitHub action versions in workflows
-	@echo "Updating GitHub workflows ..."
-	@"$(FRIZBEEE)" actions .github/workflows
-
-
 ##@ Testing
 
 TEST_TIMEOUT ?= 10m
@@ -312,12 +306,12 @@ HELMPATCH_SOURCES ?= $(wildcard hack/kubebuilder-helm-patch/*.go)
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.21.0
-GOLANGCI_LINT_VERSION ?= v2.12.2
-YQ_VERSION ?= v4.53.2
+GOLANGCI_LINT_VERSION ?= v2.15.0
+YQ_VERSION ?= v4.54.3
 CODE_GENERATOR_VERSION ?= v0.36.0
-LICENSE_EYE_VERSION ?= v0.8.0
-KUBEBUILDER_VERSION ?= v4.13.1
-RATCHET_VERSION ?= v0.11.4
+LICENSE_EYE_VERSION ?= v0.9.0
+KUBEBUILDER_VERSION ?= v4.16.0
+RATCHET_VERSION ?= v0.12.0
 
 #ENVTEST_VERSION is the controller-runtime version to use for setup-envtest, derived from go.mod
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
