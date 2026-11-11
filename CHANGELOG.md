@@ -1,6 +1,18 @@
 # Ocular Release Notes
 <!-- https://keepachangelog.com -->
 
+# [v0.4.2](https://github.com/crashappsec/ocular/releases/tag/v0.4.2) - **November 11th, 2026**
+
+### Added
+
+- Confgure maximum amount of concurrent reconcilers
+- Specify artifacts for conditional containers
+  - These are joined with the artifacts of the profile, if the conditional container is used for pipeline
+
+### Fixes
+
+- Use optimistic lock for metrics finalizer to ensure active pipelines gauge is accurate
+
 # [v0.4.1](https://github.com/crashappsec/ocular/releases/tag/v0.4.1) - **August 18th, 2026**
 
 ### Added
