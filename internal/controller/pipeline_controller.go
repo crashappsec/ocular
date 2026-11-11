@@ -141,7 +141,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	wasDeleted := !pipeline.DeletionTimestamp.IsZero()
 	if wasDeleted && controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
-		patch := client.MergeFrom(pipeline.DeepCopy())
+		patch := client.MergeFromWithOptions(pipeline.DeepCopy(), client.MergeFromWithOptimisticLock{})
 		controllerutil.RemoveFinalizer(pipeline, metricsFinalizer)
 		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to remove metrics finalizer upon deletion: %w", err)
@@ -202,7 +202,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	if !pipeline.Status.StartTime.IsZero() {
 		if !controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
-			patch := client.MergeFrom(pipeline.DeepCopy())
+			patch := client.MergeFromWithOptions(pipeline.DeepCopy(), client.MergeFromWithOptimisticLock{})
 			controllerutil.AddFinalizer(pipeline, metricsFinalizer)
 			if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to add metrics finalizer: %w", err)
@@ -303,7 +303,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		if pipeline.Status.StageStatuses.UploadStatus != v1beta1.PipelineStageSkipped {
 			pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
 		}
-		pipeline.Status.Phase = v1beta1.PipelineSucceeded
+		pipeline.Status.Phase = v1beta1.PipelinePending
 	default:
 		// scan pod in unknown state, requeue for further investigation
 		l.Error(fmt.Errorf("scan pod in unknown state"), "scan pod is in an unknown state", "phase", scanPod.Status.Phase, "name", pipeline.GetName())
@@ -624,7 +624,7 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 	)
 	l.Info("handling post completion")
 	if controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
-		patch := client.MergeFrom(pipeline.DeepCopy())
+		patch := client.MergeFromWithOptions(pipeline.DeepCopy(), client.MergeFromWithOptimisticLock{})
 		controllerutil.RemoveFinalizer(pipeline, metricsFinalizer)
 		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to remove finalizer at completion: %w", err)
@@ -661,7 +661,7 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 func determineScanPodStageStatuses(scanPod *corev1.Pod) (download, scan, upload v1beta1.PipelineStageStatus) {
 	for _, cs := range scanPod.Status.InitContainerStatuses {
 		if cs.Name != sidecarInitContainerName {
-			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
+			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode == 0 {
 				download = v1beta1.PipelineStageCompleted
 			} else if cs.State.Terminated != nil {
 				download = v1beta1.PipelineStageFailed
