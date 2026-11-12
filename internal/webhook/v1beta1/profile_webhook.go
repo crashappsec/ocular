@@ -32,21 +32,21 @@ var profilelog = logf.Log.WithName("profile-resource")
 // SetupProfileWebhookWithManager registers the webhook for Profile in the manager.
 func SetupProfileWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.Profile{}).
-		WithValidator(&ProfileCustomValidator{
+		WithValidator(&ProfileValidator{
 			c: mgr.GetClient(),
 		}).
-		WithDefaulter(&ProfileCustomDefaulter{}).
+		WithDefaulter(&ProfileDefaulter{}).
 		Complete()
 }
 
 // +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-profile,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=profile,verbs=create;update,versions=v1beta1,name=mprofile-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// PipelineCustomDefaulter struct is responsible for setting default values on the custom resource of the
+// PipelineDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind Pipeline when those are created or updated.
-type ProfileCustomDefaulter struct{}
+type ProfileDefaulter struct{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pipeline.
-func (d *ProfileCustomDefaulter) Default(_ context.Context, profile *v1beta1.Profile) error {
+// Default implements webhook.Defaulter so a webhook will be registered for the Kind Pipeline.
+func (d *ProfileDefaulter) Default(_ context.Context, profile *v1beta1.Profile) error {
 	profilelog.Info("defaulting for profile", "name", profile.GetName())
 
 	for i, uploaderRef := range profile.Spec.UploaderRefs {
@@ -58,20 +58,23 @@ func (d *ProfileCustomDefaulter) Default(_ context.Context, profile *v1beta1.Pro
 
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-profile,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=profiles,verbs=create;update;delete,versions=v1beta1,name=vprofile-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// ProfileCustomValidator struct is responsible for validating the Profile resource
+// ProfileValidator struct is responsible for validating the Profile resource
 // when it is created, updated, or deleted.
-type ProfileCustomValidator struct {
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as this struct is used only for temporary operations and does not need to be deeply copied.
+type ProfileValidator struct {
 	c client.Client
 }
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Profile.
-func (v *ProfileCustomValidator) ValidateCreate(ctx context.Context, profile *v1beta1.Profile) (admission.Warnings, error) {
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type Profile.
+func (v *ProfileValidator) ValidateCreate(ctx context.Context, profile *v1beta1.Profile) (admission.Warnings, error) {
 
 	return nil, validators.ValidateProfile(ctx, v.c, profile)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Profile.
-func (v *ProfileCustomValidator) ValidateUpdate(ctx context.Context, oldProfile, newProfile *v1beta1.Profile) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type Profile.
+func (v *ProfileValidator) ValidateUpdate(ctx context.Context, oldProfile, newProfile *v1beta1.Profile) (admission.Warnings, error) {
 	if err := validators.ValidateProfile(ctx, v.c, newProfile); err != nil {
 		return nil, err
 	}
@@ -99,8 +102,8 @@ func (v *ProfileCustomValidator) ValidateUpdate(ctx context.Context, oldProfile,
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Profile.
-func (v *ProfileCustomValidator) ValidateDelete(ctx context.Context, profile *v1beta1.Profile) (admission.Warnings, error) {
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type Profile.
+func (v *ProfileValidator) ValidateDelete(ctx context.Context, profile *v1beta1.Profile) (admission.Warnings, error) {
 	profilelog.Info("Validation for Profile upon deletion", "name", profile.GetName())
 
 	pipelines, err := v.getPipelineReferences(ctx, profile)
@@ -123,7 +126,7 @@ func (v *ProfileCustomValidator) ValidateDelete(ctx context.Context, profile *v1
 	return nil, nil
 }
 
-func (v *ProfileCustomValidator) getPipelineReferences(ctx context.Context, profile *v1beta1.Profile) ([]v1beta1.Pipeline, error) {
+func (v *ProfileValidator) getPipelineReferences(ctx context.Context, profile *v1beta1.Profile) ([]v1beta1.Pipeline, error) {
 	var pipelinesInNamespace v1beta1.PipelineList
 	if err := v.c.List(ctx, &pipelinesInNamespace, client.InNamespace(profile.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list pipelines in namespace %s: %w", profile.Namespace, err)

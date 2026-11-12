@@ -202,13 +202,11 @@ func Schedule(ctx context.Context) (process.Hook, error) {
 			}
 			slog.Info("scheduling search for crawler", slog.Any("crawler", crawler))
 			search := &v1beta1.Search{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: searchName + "-",
-					Namespace:    namespace,
-					Labels:       scheduledByLabels,
-					OwnerReferences: []metav1.OwnerReference{
-						*ownerRef.DeepCopy(),
-					},
+				GenerateName: searchName + "-",
+				Namespace:    namespace,
+				Labels:       scheduledByLabels,
+				OwnerReferences: []metav1.OwnerReference{
+					*ownerRef.DeepCopy(),
 				},
 				Spec: v1beta1.SearchSpec{
 					TTLSecondsAfterFinished: ttlSeconds,
@@ -257,14 +255,12 @@ func Schedule(ctx context.Context) (process.Hook, error) {
 
 			slog.Info("scheduling pipeline for target", "target", target)
 			pipeline := &v1beta1.Pipeline{
-				ObjectMeta: metav1.ObjectMeta{
-					GenerateName: searchName + "-",
-					Namespace:    namespace,
-					Annotations:  maps.Clone(pipelineAnnotations),
-					Labels:       maps.Clone(pipelineLabels),
-					OwnerReferences: []metav1.OwnerReference{
-						*ownerRef.DeepCopy(),
-					},
+				GenerateName: searchName + "-",
+				Namespace:    namespace,
+				Annotations:  maps.Clone(pipelineAnnotations),
+				Labels:       maps.Clone(pipelineLabels),
+				OwnerReferences: []metav1.OwnerReference{
+					*ownerRef.DeepCopy(),
 				},
 			}
 

@@ -20,13 +20,13 @@ var _ = Describe("ClusterUploader Webhook", func() {
 	var (
 		obj       *ocularcrashoverriderunv1beta1.ClusterUploader
 		oldObj    *ocularcrashoverriderunv1beta1.ClusterUploader
-		validator ClusterUploaderCustomValidator
+		validator ClusterUploaderValidator
 	)
 
 	BeforeEach(func() {
 		obj = &ocularcrashoverriderunv1beta1.ClusterUploader{}
 		oldObj = &ocularcrashoverriderunv1beta1.ClusterUploader{}
-		validator = ClusterUploaderCustomValidator{}
+		validator = ClusterUploaderValidator{}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")

@@ -30,16 +30,14 @@ var _ = Describe("Search Webhook", func() {
 		oldObj    *v1beta1.Search
 		crawler   *v1beta1.Crawler
 		customSA  *v1.ServiceAccount
-		validator SearchCustomValidator
-		defaulter SearchCustomDefaulter
+		validator SearchValidator
+		defaulter SearchDefaulter
 	)
 
 	BeforeEach(func() {
 		crawler = &v1beta1.Crawler{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "crawler",
-				Namespace: metav1.NamespaceDefault,
-			},
+			Name:      "crawler",
+			Namespace: metav1.NamespaceDefault,
 			Spec: v1beta1.CrawlerSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 				Parameters: []v1beta1.ParameterDefinition{
@@ -58,10 +56,8 @@ var _ = Describe("Search Webhook", func() {
 			},
 		}
 		obj = &v1beta1.Search{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "search-" + suffix,
-				Namespace: metav1.NamespaceDefault,
-			},
+			Name:      "search-" + suffix,
+			Namespace: metav1.NamespaceDefault,
 			Spec: v1beta1.SearchSpec{
 				CrawlerRef: v1beta1.ParameterizedLocalObjectReference{
 					Name: crawler.Name,
@@ -78,18 +74,14 @@ var _ = Describe("Search Webhook", func() {
 			},
 		}
 		customSA = &v1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "webhook-test-custom-sa",
-				Namespace: metav1.NamespaceDefault,
-			},
+			Name:      "webhook-test-custom-sa",
+			Namespace: metav1.NamespaceDefault,
 		}
 		oldObj = &v1beta1.Search{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "search-" + suffix,
-				Namespace: metav1.NamespaceDefault,
-			},
+			Name:      "search-" + suffix,
+			Namespace: metav1.NamespaceDefault,
 		}
-		validator = SearchCustomValidator{
+		validator = SearchValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"os"
 	"strconv"
 	"time"
 
@@ -25,13 +26,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var (
@@ -68,14 +72,23 @@ type SearchReconciler struct {
 	SidecarPullPolicy corev1.PullPolicy
 }
 
+const ConcurrentSearchReconcilesEnvVar = "OCULAR_CONCURRENT_SEARCH_RECONCILES"
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *SearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	concurrentReonciles := 1
+	if userConcurrent, err := strconv.Atoi(os.Getenv(ConcurrentSearchReconcilesEnvVar)); err == nil {
+		concurrentReonciles = userConcurrent
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Search{}).
 		Named("search").
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.ServiceAccount{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&rbacv1.RoleBinding{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		WithOptions(controller.TypedOptions[reconcile.Request]{
+			MaxConcurrentReconciles: concurrentReonciles,
+		}).
 		Complete(r)
 }
 
@@ -132,7 +145,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	serviceAccount := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: search.Spec.ServiceAccountName, Namespace: search.GetNamespace()}}
+	serviceAccount := &corev1.ServiceAccount{Name: search.Spec.ServiceAccountName, Namespace: search.GetNamespace()}
 	l = l.WithValues("serviceAccount", serviceAccount.Name)
 	serviceAccountOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, serviceAccount, func() error {
 		return r.populateServiceAccount(search, serviceAccount)
@@ -146,7 +159,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		l.Info("serivce account was modified", "op", serviceAccountOp)
 	}
 
-	roleBinding := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: searchResourcePrefix + search.GetName(), Namespace: search.Namespace}}
+	roleBinding := &rbacv1.RoleBinding{Name: searchResourcePrefix + search.GetName(), Namespace: search.Namespace}
 	l = l.WithValues("roleBinding", roleBinding.Name)
 	roleBindingOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, roleBinding, func() error {
 		return r.populateRoleBinding(search, serviceAccount, roleBinding)
@@ -159,7 +172,7 @@ func (r *SearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		l.Info("role binding was modified", "op", roleBindingOp)
 	}
 
-	searchPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: searchResourcePrefix + search.GetName(), Namespace: search.Namespace}}
+	searchPod := &corev1.Pod{Name: searchResourcePrefix + search.GetName(), Namespace: search.Namespace}
 	l = l.WithValues("pod", searchPod.Name)
 	searchPodOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, searchPod, func() error {
 		return r.populateSearchPod(search, searchPod, crawler)
@@ -239,23 +252,21 @@ func (r *SearchReconciler) populateSearchPod(search *v1beta1.Search, pod *corev1
 		envVars := generateBaseSearchEnvironment(search)
 		templateVolume := corev1.Volume{
 			Name: searchTemplatesVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				DownwardAPI: &corev1.DownwardAPIVolumeSource{
-					Items: []corev1.DownwardAPIVolumeFile{{
-						Path: pipelineTemplateName,
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: "metadata.annotations['" + v1beta1.PipelineTemplateAnnotation + "']"},
-					}},
-				},
+			DownwardAPI: &corev1.DownwardAPIVolumeSource{
+				Items: []corev1.DownwardAPIVolumeFile{{
+					Path: pipelineTemplateName,
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.annotations['" + v1beta1.PipelineTemplateAnnotation + "']"},
+				}},
 			},
 		}
 		fifoVolume := corev1.Volume{
-			Name:         searchFIFOVolumeName,
-			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+			Name:     searchFIFOVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		binaryVolume := corev1.Volume{
-			Name:         runtimeBinaryVolumeName,
-			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+			Name:     runtimeBinaryVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		containerOpts := make([]containers.Option, 0, 5)
 		containerOpts = append(containerOpts,
@@ -513,7 +524,8 @@ func (r *SearchReconciler) handlePostCompletion(ctx context.Context, search *v1b
 		deleteTime := finishTime.Add(ttl)
 		if time.Now().After(deleteTime) {
 			l.Info("search has exceeded its TTL, deleting",
-				"completionTime", search.Status.CompletionTime, "ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
+				"completionTime", klog.SafePtr(search.Status.CompletionTime),
+				"ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
 			if err := r.Delete(ctx, search); err != nil {
 				l.Error(err, "error deleting search after TTL exceeded")
 				return ctrl.Result{}, err
@@ -521,10 +533,11 @@ func (r *SearchReconciler) handlePostCompletion(ctx context.Context, search *v1b
 			return ctrl.Result{}, nil
 		} else {
 			l.Info("search has completed, checking TTL before next reconciliation",
-				"completionTime", search.Status.CompletionTime, "ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
+				"completionTime", klog.SafePtr(search.Status.CompletionTime),
+				"ttlSecondsAfterFinished", *search.Spec.TTLSecondsAfterFinished)
 			return ctrl.Result{RequeueAfter: time.Until(deleteTime)}, nil
 		}
 	}
-	l.Info("search has completed, skipping reconciliation", "completionTime", search.Status.CompletionTime)
+	l.Info("search has completed, skipping reconciliation", "completionTime", klog.SafePtr(search.Status.CompletionTime))
 	return ctrl.Result{}, nil
 }

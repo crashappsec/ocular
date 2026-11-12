@@ -11,8 +11,10 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,12 +24,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -82,12 +87,21 @@ type PipelineReconciler struct {
 	SidecarPullPolicy corev1.PullPolicy
 }
 
+const ConcurrentPipelineReconcilesEnvVar = "OCULAR_CONCURRENT_PIPELINE_RECONCILES"
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *PipelineReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	concurrentReonciles := 1
+	if userConcurrent, err := strconv.Atoi(os.Getenv(ConcurrentPipelineReconcilesEnvVar)); err == nil {
+		concurrentReonciles = userConcurrent
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Pipeline{}).
 		Named("pipeline").
 		Owns(&corev1.Pod{}, builder.WithPredicates(podStateChangedPredicate)).
+		WithOptions(controller.TypedOptions[reconcile.Request]{
+			MaxConcurrentReconciles: concurrentReonciles,
+		}).
 		Complete(r)
 }
 
@@ -127,7 +141,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	wasDeleted := !pipeline.DeletionTimestamp.IsZero()
 	if wasDeleted && controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
-		patch := client.MergeFrom(pipeline.DeepCopy())
+		patch := client.MergeFromWithOptions(pipeline.DeepCopy(), client.MergeFromWithOptimisticLock{})
 		controllerutil.RemoveFinalizer(pipeline, metricsFinalizer)
 		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to remove metrics finalizer upon deletion: %w", err)
@@ -168,7 +182,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	scanPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: pipelineResourcePrefix + pipeline.GetName(), Namespace: pipeline.GetNamespace()}}
+	scanPod := &corev1.Pod{Name: pipelineResourcePrefix + pipeline.GetName(), Namespace: pipeline.GetNamespace()}
 	scanPodOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, scanPod, func() error {
 		return r.populateScanPod(scanPod, pipeline, profile, downloader, uploaders)
 	})
@@ -188,7 +202,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	if !pipeline.Status.StartTime.IsZero() {
 		if !controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
-			patch := client.MergeFrom(pipeline.DeepCopy())
+			patch := client.MergeFromWithOptions(pipeline.DeepCopy(), client.MergeFromWithOptimisticLock{})
 			controllerutil.AddFinalizer(pipeline, metricsFinalizer)
 			if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to add metrics finalizer: %w", err)
@@ -289,7 +303,7 @@ func (r *PipelineReconciler) handleCompletion(ctx context.Context, pipeline *v1b
 		if pipeline.Status.StageStatuses.UploadStatus != v1beta1.PipelineStageSkipped {
 			pipeline.Status.StageStatuses.UploadStatus = v1beta1.PipelineStageNotStarted
 		}
-		pipeline.Status.Phase = v1beta1.PipelineSucceeded
+		pipeline.Status.Phase = v1beta1.PipelinePending
 	default:
 		// scan pod in unknown state, requeue for further investigation
 		l.Error(fmt.Errorf("scan pod in unknown state"), "scan pod is in an unknown state", "phase", scanPod.Status.Phase, "name", pipeline.GetName())
@@ -314,34 +328,24 @@ func (r *PipelineReconciler) populateScanPod(
 	if pod.CreationTimestamp.IsZero() {
 
 		targetVolume := corev1.Volume{
-			Name: pipelineTargetVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     pipelineTargetVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		resultsVolume := corev1.Volume{
-			Name: pipelineResultsVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     pipelineResultsVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		metadataVolume := corev1.Volume{
-			Name: pipelineMetadataVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     pipelineMetadataVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		processVolume := corev1.Volume{
-			Name: runtimeProcVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     runtimeProcVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		binaryVolume := corev1.Volume{
-			Name: runtimeBinaryVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     runtimeBinaryVolumeName,
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 
 		pod.Spec.Volumes = []corev1.Volume{
@@ -423,8 +427,10 @@ func (r *PipelineReconciler) populateScanPod(
 			}),
 			containers.WithNamePrefix(scanContainerPrefix),
 		)
-		scannerContainers := containers.ApplyOptionsToAll(
-			containers.FilterConditionalContainers(profile.Spec.Containers, profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters),
+
+		filteredScanners := containers.FilterConditionalContainers(profile.Spec.Containers, profile.Spec.Parameters, pipeline.Spec.ProfileRef.Parameters)
+		scannerContainers := containers.ApplyOptionsToAllConditional(
+			filteredScanners,
 			scannerOptions...,
 		)
 
@@ -440,7 +446,7 @@ func (r *PipelineReconciler) populateScanPod(
 
 		// aritfactArgs are the arguments passed to
 		// uploaders to specify which artifacts to extract
-		artifactArgs := generateArtifactArguments(downloader.Spec.MetadataFiles, profile.Spec.Artifacts)
+		artifactArgs := generateArtifactArguments(downloader.Spec.MetadataFiles, profile.Spec.Artifacts, filteredScanners)
 
 		uploaderContainers := make([]corev1.Container, 0, len(uploaders))
 		uploaderLabels, uploaderAnnotations := make(map[string]string), make(map[string]string)
@@ -519,8 +525,9 @@ func (r *PipelineReconciler) populateScanPod(
 	return ctrl.SetControllerReference(pipeline, pod, r.Scheme)
 }
 
-func generateArtifactArguments(metadataFiles []string, artifacts []string) []string {
+func generateArtifactArguments(metadataFiles []string, artifacts []string, containerArtifacts []v1beta1.ConditionalContainer) []string {
 	args := []string{"--"}
+	// global artifacts from profile
 	for _, artifact := range artifacts {
 		artifactPath := path.Clean(artifact)
 		if path.IsAbs(artifactPath) {
@@ -529,12 +536,25 @@ func generateArtifactArguments(metadataFiles []string, artifacts []string) []str
 			args = append(args, path.Join(v1beta1.PipelineResultsDirectory, artifactPath))
 		}
 	}
+	// metadataArtifacts from downloader
 	for _, artifact := range metadataFiles {
 		artifactPath := path.Clean(artifact)
 		if path.IsAbs(artifactPath) {
 			args = append(args, artifactPath)
 		} else {
 			args = append(args, path.Join(v1beta1.PipelineMetadataDirectory, artifactPath))
+		}
+	}
+
+	// conditional artifacts from containers
+	for _, container := range containerArtifacts {
+		for _, artifact := range container.Artifacts {
+			artifactPath := path.Clean(artifact)
+			if path.IsAbs(artifactPath) {
+				args = append(args, artifactPath)
+			} else {
+				args = append(args, path.Join(v1beta1.PipelineResultsDirectory, artifactPath))
+			}
 		}
 	}
 	return args
@@ -599,11 +619,12 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 		"pipeline", pipeline.Name, "namespace", pipeline.Namespace,
 		"profile", pipeline.Spec.ProfileRef.Name, "downloader", pipeline.Spec.DownloaderRef.Name,
 		"target", pipeline.Spec.Target, "phase", pipeline.Status.Phase,
-		"completion-time", pipeline.Status.CompletionTime, "start-time", pipeline.Status.StartTime,
+		"completion-time", klog.SafePtr(pipeline.Status.CompletionTime),
+		"start-time", klog.SafePtr(pipeline.Status.StartTime),
 	)
 	l.Info("handling post completion")
 	if controllerutil.ContainsFinalizer(pipeline, metricsFinalizer) {
-		patch := client.MergeFrom(pipeline.DeepCopy())
+		patch := client.MergeFromWithOptions(pipeline.DeepCopy(), client.MergeFromWithOptimisticLock{})
 		controllerutil.RemoveFinalizer(pipeline, metricsFinalizer)
 		if err := patchResource(ctx, r.Client, pipeline, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to remove finalizer at completion: %w", err)
@@ -640,7 +661,7 @@ func (r *PipelineReconciler) handlePostCompletion(ctx context.Context, pipeline 
 func determineScanPodStageStatuses(scanPod *corev1.Pod) (download, scan, upload v1beta1.PipelineStageStatus) {
 	for _, cs := range scanPod.Status.InitContainerStatuses {
 		if cs.Name != sidecarInitContainerName {
-			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
+			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode == 0 {
 				download = v1beta1.PipelineStageCompleted
 			} else if cs.State.Terminated != nil {
 				download = v1beta1.PipelineStageFailed

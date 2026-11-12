@@ -31,7 +31,7 @@ var clusteruploaderlog = logf.Log.WithName("clusteruploader-resource")
 // SetupClusterUploaderWebhookWithManager registers the webhook for ClusterUploader in the manager.
 func SetupClusterUploaderWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.ClusterUploader{}).
-		WithValidator(&ClusterUploaderCustomValidator{
+		WithValidator(&ClusterUploaderValidator{
 			c: mgr.GetClient(),
 		}).
 		Complete()
@@ -45,14 +45,17 @@ func SetupClusterUploaderWebhookWithManager(mgr ctrl.Manager) error {
 // 3) that the user specified an entrypoint to the container.
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-clusteruploader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=clusteruploaders,verbs=create;update;delete,versions=v1beta1,name=vclusteruploader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// ClusterUploaderCustomValidator struct is responsible for validating the ClusterUploader resource
+// ClusterUploaderValidator struct is responsible for validating the ClusterUploader resource
 // when it is created, updated, or deleted.
-type ClusterUploaderCustomValidator struct {
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as this struct is used only for temporary operations and does not need to be deeply copied.
+type ClusterUploaderValidator struct {
 	c client.Client
 }
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type ClusterUploader.
-func (v *ClusterUploaderCustomValidator) ValidateCreate(ctx context.Context, obj *v1beta1.ClusterUploader) (admission.Warnings, error) {
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type ClusterUploader.
+func (v *ClusterUploaderValidator) ValidateCreate(ctx context.Context, obj *v1beta1.ClusterUploader) (admission.Warnings, error) {
 	clusteruploaderlog.Info("validating cluster uploader creation", "name", obj.GetName())
 
 	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), obj.Spec.Container)
@@ -66,8 +69,8 @@ func (v *ClusterUploaderCustomValidator) ValidateCreate(ctx context.Context, obj
 		obj.Name, fieldErrs)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type ClusterUploader.
-func (v *ClusterUploaderCustomValidator) ValidateUpdate(ctx context.Context, oldUploader, newUploader *v1beta1.ClusterUploader) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type ClusterUploader.
+func (v *ClusterUploaderValidator) ValidateUpdate(ctx context.Context, oldUploader, newUploader *v1beta1.ClusterUploader) (admission.Warnings, error) {
 	clusteruploaderlog.Info("validating  cluster uploader update", "name", newUploader.GetName())
 
 	newRequiredParams := parseNewRequiredParameters(oldUploader.Spec.Parameters, newUploader.Spec.Parameters)
@@ -108,8 +111,8 @@ func (v *ClusterUploaderCustomValidator) ValidateUpdate(ctx context.Context, old
 
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type ClusterUploader.
-func (v *ClusterUploaderCustomValidator) ValidateDelete(ctx context.Context, uploader *v1beta1.ClusterUploader) (admission.Warnings, error) {
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type ClusterUploader.
+func (v *ClusterUploaderValidator) ValidateDelete(ctx context.Context, uploader *v1beta1.ClusterUploader) (admission.Warnings, error) {
 	clusteruploaderlog.Info("validation for cluster uploader upon deletion", "name", uploader.GetName())
 
 	dependantProfiles, err := v.getDependantProfiles(ctx, uploader)
@@ -130,7 +133,7 @@ func (v *ClusterUploaderCustomValidator) ValidateDelete(ctx context.Context, upl
 	return nil, nil
 }
 
-func (v *ClusterUploaderCustomValidator) getDependantProfiles(ctx context.Context, uploader *v1beta1.ClusterUploader) ([]v1beta1.Profile, error) {
+func (v *ClusterUploaderValidator) getDependantProfiles(ctx context.Context, uploader *v1beta1.ClusterUploader) ([]v1beta1.Profile, error) {
 	var allProfiles v1beta1.ProfileList
 	if err := v.c.List(ctx, &allProfiles); err != nil {
 		return nil, fmt.Errorf("failed to list profiles: %w", err)

@@ -7,8 +7,8 @@
 # visit: <https://www.gnu.org/licenses/gpl-3.0.html>.
 
 ARG BUILDPLATFORM
-
-FROM --platform=${BUILDPLATFORM} golang:1.26@sha256:0d1d3a794be25f809dd2cb3160d8c73276c4056a9f8242a138e908ddeee7b6b6 AS builder
+ARG BASE_IMAGE=golang:1.27@sha256:01aa404fa56b604b6f48e90c1d6e2c79fe5cd78f9592f78d80303fbe171cdcc0
+FROM --platform=${BUILDPLATFORM} ${BASE_IMAGE} AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -32,7 +32,7 @@ COPY pkg/ pkg/
 RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -ldflags="${LDFLAGS}" -o entrypoint cmd/$COMMAND/main.go
 
-FROM gcr.io/distroless/static:nonroot@sha256:f7f8f729987ad0fdf6b05eeeae94b26e6a0f613bdf46feea7fc40f7bd72953e6
+FROM gcr.io/distroless/static:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 
 WORKDIR /
 COPY --from=builder /workspace/entrypoint .

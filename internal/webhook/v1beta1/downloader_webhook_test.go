@@ -16,7 +16,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -31,15 +30,13 @@ var _ = Describe("Downloader Webhook", func() {
 		pipeline   *v1beta1.Pipeline
 		profile    *v1beta1.Profile
 		svcAccount *corev1.ServiceAccount
-		validator  DownloaderCustomValidator
+		validator  DownloaderValidator
 	)
 
 	BeforeEach(func() {
 		profile = &v1beta1.Profile{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "downloader-webhook-test-profile",
-				Namespace: namespace,
-			},
+			Name:      "downloader-webhook-test-profile",
+			Namespace: namespace,
 			Spec: v1beta1.ProfileSpec{
 				Containers: []v1beta1.ConditionalContainer{
 					{
@@ -49,26 +46,20 @@ var _ = Describe("Downloader Webhook", func() {
 			},
 		}
 		obj = &v1beta1.Downloader{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "downloader-webhook-test",
-				Namespace: namespace,
-			},
+			Name:      "downloader-webhook-test",
+			Namespace: namespace,
 			Spec: v1beta1.DownloaderSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 			},
 		}
 		svcAccount = &corev1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "default",
-				Namespace: namespace,
-			},
+			Name:      "default",
+			Namespace: namespace,
 		}
 		oldObj = &v1beta1.Downloader{}
 		pipeline = &v1beta1.Pipeline{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "downloader-webhook-test-pipeline",
-				Namespace: namespace,
-			},
+			Name:      "downloader-webhook-test-pipeline",
+			Namespace: namespace,
 			Spec: v1beta1.PipelineSpec{
 				ProfileRef: v1beta1.ParameterizedLocalObjectReference{
 					Name: profile.Name,
@@ -85,7 +76,7 @@ var _ = Describe("Downloader Webhook", func() {
 				ServiceAccountName: svcAccount.Name,
 			},
 		}
-		validator = DownloaderCustomValidator{
+		validator = DownloaderValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")

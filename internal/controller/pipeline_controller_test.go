@@ -18,8 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/crashappsec/ocular/api/v1beta1"
 	testutils "github.com/crashappsec/ocular/test/utils"
 )
@@ -35,10 +33,8 @@ var _ = Describe("Pipeline Controller", func() {
 	)
 	BeforeEach(func() {
 		downloader = &v1beta1.Downloader{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-downloader",
-				Namespace: namespace,
-			},
+			Name:      "test-downloader",
+			Namespace: namespace,
 			Spec: v1beta1.DownloaderSpec{
 				Container: corev1.Container{
 					Name:  downloadContainerName,
@@ -71,36 +67,28 @@ var _ = Describe("Pipeline Controller", func() {
 		BeforeEach(func() {
 
 			profileResource := &v1beta1.Profile{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      profileName,
-					Namespace: namespace,
-				},
+				Name:      profileName,
+				Namespace: namespace,
 				Spec: v1beta1.ProfileSpec{
 					Containers: []v1beta1.ConditionalContainer{
 						{
-							Container: corev1.Container{
-								Image:   testImage,
-								Name:    scannerContainerName,
-								Command: []string{"/bin/sh", "-c"},
-								Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
-							},
+							Image:   testImage,
+							Name:    scannerContainerName,
+							Command: []string{"/bin/sh", "-c"},
+							Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
 						},
 						{
-							Container: corev1.Container{
-								Image: testImage,
-								// nolint:goconst
-								Name: doNotIncludeContainerName,
-							},
+							Image: testImage,
+							// nolint:goconst
+							Name: doNotIncludeContainerName,
 							IncludeIf: &v1beta1.ContainerCondition{
 								// nolint:goconst
 								WhenParamSet: "DEFAULT_SET",
 							},
 						},
 						{
-							Container: corev1.Container{
-								Image: testImage,
-								Name:  includeContainerName,
-							},
+							Image: testImage,
+							Name:  includeContainerName,
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_EMPTY",
 							},
@@ -120,10 +108,8 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 			}
 			resource := &v1beta1.Pipeline{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      pipelineName,
-					Namespace: namespace,
-				},
+				Name:      pipelineName,
+				Namespace: namespace,
 				Spec: v1beta1.PipelineSpec{
 					DownloaderRef: v1beta1.ParameterizedLocalObjectReference{
 						Name: downloader.Name,
@@ -170,10 +156,8 @@ var _ = Describe("Pipeline Controller", func() {
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      pipeline.Name,
-					Namespace: pipeline.Namespace,
-				},
+				Name:      pipeline.Name,
+				Namespace: pipeline.Namespace,
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -228,16 +212,14 @@ var _ = Describe("Pipeline Controller", func() {
 
 		BeforeEach(func() {
 			uploader = &v1beta1.Uploader{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-uploader-" + suffix,
-					Namespace: namespace,
-				},
+				Name:      "test-uploader-" + suffix,
+				Namespace: namespace,
 				Spec: v1beta1.UploaderSpec{
 					Container: corev1.Container{
 						Name:    uploaderContainerName,
 						Image:   testImage,
 						Command: []string{"/bin/sh", "-c"},
-						Args:    []string{"echo uploading...; cat $OCULAR_RESULTS_DIR/results.txt; echo done."},
+						Args:    []string{"echo uploader"},
 					},
 					Parameters: []v1beta1.ParameterDefinition{
 						{
@@ -257,34 +239,28 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 			}
 			profile = &v1beta1.Profile{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-profile-" + suffix,
-					Namespace: namespace,
-				},
+				Name:      "test-profile-" + suffix,
+				Namespace: namespace,
 				Spec: v1beta1.ProfileSpec{
 					Containers: []v1beta1.ConditionalContainer{
 						{
-							Container: corev1.Container{
-								Image:   testImage,
-								Name:    scannerContainerName,
-								Command: []string{"/bin/sh", "-c"},
-								Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
-							},
+							Image:   testImage,
+							Name:    scannerContainerName,
+							Command: []string{"/bin/sh", "-c"},
+							Args:    []string{"echo scanning...; sha256sum $(cat ./target.txt) > $OCULAR_RESULTS_DIR/results.txt"},
 						},
 						{
-							Container: corev1.Container{
-								Image: testImage,
-								Name:  doNotIncludeContainerName,
-							},
+							Image:     testImage,
+							Name:      doNotIncludeContainerName,
+							Artifacts: []string{v1beta1.PipelineResultsDirectory + "/do-not-include"},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_SET",
 							},
 						},
 						{
-							Container: corev1.Container{
-								Image: testImage,
-								Name:  includeContainerName,
-							},
+							Image:     testImage,
+							Name:      includeContainerName,
+							Artifacts: []string{v1beta1.PipelineResultsDirectory + "/include"},
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_EMPTY",
 							},
@@ -336,10 +312,8 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 			}
 			pipeline = &v1beta1.Pipeline{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pipeline-" + suffix,
-					Namespace: namespace,
-				},
+				Name:      "test-pipeline-" + suffix,
+				Namespace: namespace,
 				Spec: v1beta1.PipelineSpec{
 					DownloaderRef: v1beta1.ParameterizedLocalObjectReference{
 						Name: downloader.Name,
@@ -390,10 +364,8 @@ var _ = Describe("Pipeline Controller", func() {
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      pipeline.Name,
-					Namespace: pipeline.Namespace,
-				},
+				Name:      pipeline.Name,
+				Namespace: pipeline.Namespace,
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -444,12 +416,13 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 				map[string]func(corev1.Container){
 					scannerContainerName: func(c corev1.Container) {
+						Expect(c.Command).To(Equal([]string{sidecarBinaryPath, "scanner"}))
 						Expect(c.Name).To(Equal(scanContainerPrefix + scannerContainerName))
 						Expect(c.Image).To(Equal(testImage))
 						Expect(c.Env).To(ContainElements(expectedScannerParams...))
 					},
 					includeContainerName: func(c corev1.Container) {
-
+						Expect(c.Command).To(Equal([]string{sidecarBinaryPath, "scanner"}))
 						Expect(c.Env).To(ContainElements(expectedScannerParams...))
 					},
 				},
@@ -460,6 +433,13 @@ var _ = Describe("Pipeline Controller", func() {
 							Name:  v1beta1.EnvVarUploaderName,
 							Value: uploader.Name,
 						}))
+						Expect(c.Command).To(Equal([]string{sidecarBinaryPath, "await-scanners"}))
+						expectedArgs := make([]string, 0, len(uploader.Spec.Container.Command)+len(uploader.Spec.Container.Args)+3)
+						expectedArgs = append(
+							append(append(expectedArgs, uploader.Spec.Container.Command...), uploader.Spec.Container.Args...),
+							"--", v1beta1.PipelineResultsDirectory+"/results.txt", v1beta1.PipelineResultsDirectory+"/include",
+						)
+						Expect(c.Args).To(Equal(expectedArgs))
 					},
 				},
 			)
@@ -495,26 +475,20 @@ var _ = Describe("Pipeline Controller", func() {
 
 		BeforeEach(func() {
 			profile = &v1beta1.Profile{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-profile-" + suffix,
-					Namespace: namespace,
-				},
+				Name:      "test-profile-" + suffix,
+				Namespace: namespace,
 				Spec: v1beta1.ProfileSpec{
 					Containers: []v1beta1.ConditionalContainer{
 						{
-							Container: corev1.Container{
-								Image: testImage,
-								Name:  includeContainerName,
-							},
+							Image: testImage,
+							Name:  includeContainerName,
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_SET",
 							},
 						},
 						{
-							Container: corev1.Container{
-								Image: testImage,
-								Name:  doNotIncludeContainerName,
-							},
+							Image: testImage,
+							Name:  doNotIncludeContainerName,
 							IncludeIf: &v1beta1.ContainerCondition{
 								WhenParamSet: "DEFAULT_EMPTY",
 							},
@@ -535,10 +509,8 @@ var _ = Describe("Pipeline Controller", func() {
 				},
 			}
 			pipeline = &v1beta1.Pipeline{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pipeline-" + suffix,
-					Namespace: namespace,
-				},
+				Name:      "test-pipeline-" + suffix,
+				Namespace: namespace,
 				Spec: v1beta1.PipelineSpec{
 					DownloaderRef: v1beta1.ParameterizedLocalObjectReference{
 						Name: downloader.Name,
@@ -571,10 +543,8 @@ var _ = Describe("Pipeline Controller", func() {
 				SidecarPullPolicy: corev1.PullIfNotPresent,
 			}
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      pipeline.Name,
-					Namespace: pipeline.Namespace,
-				},
+				Name:      pipeline.Name,
+				Namespace: pipeline.Namespace,
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(k8sClient.Get(ctx, types.NamespacedName{

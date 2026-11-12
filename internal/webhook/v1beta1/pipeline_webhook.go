@@ -29,21 +29,24 @@ var pipelinelog = logf.Log.WithName("pipeline-resource")
 func SetupPipelineWebhookWithManager(mgr ctrl.Manager) error {
 	c := mgr.GetClient()
 	return ctrl.NewWebhookManagedBy(mgr, &ocularcrashoverriderunv1beta1.Pipeline{}).
-		WithValidator(&PipelineCustomValidator{
+		WithValidator(&PipelineValidator{
 			c: c,
 		}).
-		WithDefaulter(&PipelineCustomDefaulter{}).
+		WithDefaulter(&PipelineDefaulter{}).
 		Complete()
 }
 
 // +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-pipeline,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=pipelines,verbs=create;update,versions=v1beta1,name=mpipeline-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// PipelineCustomDefaulter struct is responsible for setting default values on the custom resource of the
+// PipelineDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind Pipeline when those are created or updated.
-type PipelineCustomDefaulter struct{}
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as it is used only for temporary operations and does not need to be deeply copied.
+type PipelineDefaulter struct{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pipeline.
-func (d *PipelineCustomDefaulter) Default(_ context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) error {
+// Default implements webhook.Defaulter so a webhook will be registered for the Kind Pipeline.
+func (d *PipelineDefaulter) Default(_ context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) error {
 	pipelinelog.Info("defaulting for Pipeline", "name", pipeline.GetName())
 
 	if pipeline.Spec.ServiceAccountName == "" {
@@ -67,20 +70,23 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, pipeline *ocularcra
 // additional options can be specified in the 'verbs' parameter
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-pipeline,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=pipelines,verbs=create;update,versions=v1beta1,name=vpipeline-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// PipelineCustomValidator struct is responsible for validating the Pipeline resource
+// PipelineValidator struct is responsible for validating the Pipeline resource
 // when it is created, updated, or deleted.
-type PipelineCustomValidator struct {
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as this struct is used only for temporary operations and does not need to be deeply copied.
+type PipelineValidator struct {
 	c client.Client
 }
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateCreate(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type Pipeline.
+func (v *PipelineValidator) ValidateCreate(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
 	pipelinelog.Info("validation for Pipeline upon create", "name", pipeline.GetName(), "validator", "create")
 	return nil, validators.ValidatePipeline(ctx, v.c, pipeline)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateUpdate(ctx context.Context, _, newPipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type Pipeline.
+func (v *PipelineValidator) ValidateUpdate(ctx context.Context, _, newPipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
 	pipelinelog.Info("validation for Pipeline upon update", "name", newPipeline.GetName(), "validator", "update")
 
 	// TODO(bthuilot): dont allow certain field updates
@@ -89,8 +95,8 @@ func (v *PipelineCustomValidator) ValidateUpdate(ctx context.Context, _, newPipe
 	return nil, validators.ValidatePipeline(ctx, v.c, newPipeline)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateDelete(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type Pipeline.
+func (v *PipelineValidator) ValidateDelete(ctx context.Context, pipeline *ocularcrashoverriderunv1beta1.Pipeline) (admission.Warnings, error) {
 	pipelinelog.Info("pipeline delete called but should not be registered, see NOTE in webhook/v1beta1/pipeline_webhook.go", "name", pipeline.GetName())
 
 	return nil, nil

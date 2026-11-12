@@ -16,7 +16,6 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/crashappsec/ocular/api/v1beta1"
@@ -28,7 +27,7 @@ var _ = Describe("Profile Webhook", func() {
 		namespace         = "default"
 		obj               *v1beta1.Profile
 		oldObj            *v1beta1.Profile
-		validator         ProfileCustomValidator
+		validator         ProfileValidator
 		uploader1         *v1beta1.Uploader
 		uploader2         *v1beta1.Uploader
 		pipeline          *v1beta1.Pipeline
@@ -38,35 +37,27 @@ var _ = Describe("Profile Webhook", func() {
 
 	BeforeEach(func() {
 		obj = &v1beta1.Profile{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "profile-webhook-test",
-				Namespace: namespace,
-			},
+			Name:      "profile-webhook-test",
+			Namespace: namespace,
 			Spec: v1beta1.ProfileSpec{
 				Containers: []v1beta1.ConditionalContainer{
 					{
-						Container: v1.Container{
-							Name:            "my-image",
-							Image:           "my-test-image:latest",
-							Command:         []string{"testing"},
-							ImagePullPolicy: v1.PullNever,
-						},
-						IncludeIf: nil,
+						Name:            "my-image",
+						Image:           "my-test-image:latest",
+						Command:         []string{"testing"},
+						ImagePullPolicy: v1.PullNever,
+						IncludeIf:       nil,
 					},
 				},
 			},
 		}
 		oldObj = &v1beta1.Profile{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "profile-webhook-test",
-				Namespace: namespace,
-			},
+			Name:      "profile-webhook-test",
+			Namespace: namespace,
 		}
 		uploader1 = &v1beta1.Uploader{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "uploader1",
-				Namespace: namespace,
-			},
+			Name:      "uploader1",
+			Namespace: namespace,
 			Spec: v1beta1.UploaderSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 				Parameters: []v1beta1.ParameterDefinition{
@@ -81,10 +72,8 @@ var _ = Describe("Profile Webhook", func() {
 			},
 		}
 		uploader2 = &v1beta1.Uploader{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "uploader2",
-				Namespace: namespace,
-			},
+			Name:      "uploader2",
+			Namespace: namespace,
 			Spec: v1beta1.UploaderSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 				Parameters: []v1beta1.ParameterDefinition{
@@ -99,25 +88,19 @@ var _ = Describe("Profile Webhook", func() {
 			},
 		}
 		downloader = &v1beta1.Downloader{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "some-downloader",
-				Namespace: namespace,
-			},
+			Name:      "some-downloader",
+			Namespace: namespace,
 			Spec: v1beta1.DownloaderSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 			},
 		}
 		defaultSVCAccount = &v1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "default",
-				Namespace: namespace,
-			},
+			Name:      "default",
+			Namespace: namespace,
 		}
 		pipeline = &v1beta1.Pipeline{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pipeline-webhook-test",
-				Namespace: namespace,
-			},
+			Name:      "pipeline-webhook-test",
+			Namespace: namespace,
 			Spec: v1beta1.PipelineSpec{
 				ProfileRef: v1beta1.ParameterizedLocalObjectReference{
 					Name: obj.Name,
@@ -133,7 +116,7 @@ var _ = Describe("Profile Webhook", func() {
 				},
 			},
 		}
-		validator = ProfileCustomValidator{
+		validator = ProfileValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
@@ -254,11 +237,11 @@ var _ = Describe("Profile Webhook", func() {
 			By("defining the same volume name in two referenced uploaders")
 			uploader1.Spec.Parameters = []v1beta1.ParameterDefinition{}
 			uploader1.Spec.Volumes = []v1.Volume{
-				{Name: "shared-volume", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
+				{Name: "shared-volume", EmptyDir: &v1.EmptyDirVolumeSource{}},
 			}
 			uploader2.Spec.Parameters = []v1beta1.ParameterDefinition{}
 			uploader2.Spec.Volumes = []v1.Volume{
-				{Name: "shared-volume", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
+				{Name: "shared-volume", EmptyDir: &v1.EmptyDirVolumeSource{}},
 			}
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())
@@ -356,11 +339,11 @@ var _ = Describe("Profile Webhook", func() {
 			By("defining the same volume name in two referenced uploaders")
 			uploader1.Spec.Parameters = []v1beta1.ParameterDefinition{}
 			uploader1.Spec.Volumes = []v1.Volume{
-				{Name: "shared-volume", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
+				{Name: "shared-volume", EmptyDir: &v1.EmptyDirVolumeSource{}},
 			}
 			uploader2.Spec.Parameters = []v1beta1.ParameterDefinition{}
 			uploader2.Spec.Volumes = []v1.Volume{
-				{Name: "shared-volume", VolumeSource: v1.VolumeSource{EmptyDir: &v1.EmptyDirVolumeSource{}}},
+				{Name: "shared-volume", EmptyDir: &v1.EmptyDirVolumeSource{}},
 			}
 			Expect(k8sClient.Create(ctx, uploader1)).To(Succeed())
 			Expect(k8sClient.Create(ctx, uploader2)).To(Succeed())

@@ -32,7 +32,7 @@ var downloaderlog = logf.Log.WithName("downloader-resource")
 // SetupDownloaderWebhookWithManager registers the webhook for Downloader in the manager.
 func SetupDownloaderWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.Downloader{}).
-		WithValidator(&DownloaderCustomValidator{
+		WithValidator(&DownloaderValidator{
 			c: mgr.GetClient(),
 		}).
 		Complete()
@@ -46,14 +46,14 @@ func SetupDownloaderWebhookWithManager(mgr ctrl.Manager) error {
 // 3) validate entrypoint is set on container (update/create)
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-downloader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=downloaders,verbs=create;update;delete,versions=v1beta1,name=vdownloader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// DownloaderCustomValidator struct is responsible for validating the Downloader resource
+// DownloaderValidator struct is responsible for validating the Downloader resource
 // when it is created, updated, or deleted.
-type DownloaderCustomValidator struct {
+type DownloaderValidator struct {
 	c client.Client
 }
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Downloader.
-func (v *DownloaderCustomValidator) ValidateCreate(ctx context.Context, downloader *v1beta1.Downloader) (admission.Warnings, error) {
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type Downloader.
+func (v *DownloaderValidator) ValidateCreate(ctx context.Context, downloader *v1beta1.Downloader) (admission.Warnings, error) {
 	downloaderlog.Info("valdiating downloader creation", "name", downloader.GetName())
 
 	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), downloader.Spec.Container)
@@ -68,8 +68,8 @@ func (v *DownloaderCustomValidator) ValidateCreate(ctx context.Context, download
 
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Downloader.
-func (v *DownloaderCustomValidator) ValidateUpdate(ctx context.Context, oldDownloader, newDownloader *v1beta1.Downloader) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type Downloader.
+func (v *DownloaderValidator) ValidateUpdate(ctx context.Context, oldDownloader, newDownloader *v1beta1.Downloader) (admission.Warnings, error) {
 	downloaderlog.Info("validation for downloader upon update", "name", newDownloader.GetName())
 
 	newRequiredParams := parseNewRequiredParameters(oldDownloader.Spec.Parameters, newDownloader.Spec.Parameters)
@@ -103,8 +103,8 @@ func (v *DownloaderCustomValidator) ValidateUpdate(ctx context.Context, oldDownl
 		newDownloader.Name, fieldErrs)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Downloader.
-func (v *DownloaderCustomValidator) ValidateDelete(ctx context.Context, downloader *v1beta1.Downloader) (admission.Warnings, error) {
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type Downloader.
+func (v *DownloaderValidator) ValidateDelete(ctx context.Context, downloader *v1beta1.Downloader) (admission.Warnings, error) {
 	downloaderlog.Info("validation for downloader upon deletion", "name", downloader.GetName())
 	dependantPipelines, err := v.getDependantPipelines(ctx, downloader)
 	if err != nil {
@@ -124,7 +124,7 @@ func (v *DownloaderCustomValidator) ValidateDelete(ctx context.Context, download
 	return nil, nil
 }
 
-func (v *DownloaderCustomValidator) getDependantPipelines(ctx context.Context, downloader *v1beta1.Downloader) ([]v1beta1.Pipeline, error) {
+func (v *DownloaderValidator) getDependantPipelines(ctx context.Context, downloader *v1beta1.Downloader) ([]v1beta1.Pipeline, error) {
 	var pipelinesInNamespace v1beta1.PipelineList
 	if err := v.c.List(ctx, &pipelinesInNamespace, client.InNamespace(downloader.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list pipelines in namespace %s: %w", downloader.Namespace, err)

@@ -31,7 +31,7 @@ var clusterdownloaderlog = logf.Log.WithName("clusterdownloader-resource")
 // SetupClusterDownloaderWebhookWithManager registers the webhook for ClusterDownloader in the manager.
 func SetupClusterDownloaderWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.ClusterDownloader{}).
-		WithValidator(&ClusterDownloaderCustomValidator{
+		WithValidator(&ClusterDownloaderValidator{
 			c: mgr.GetClient(),
 		}).
 		Complete()
@@ -44,14 +44,17 @@ func SetupClusterDownloaderWebhookWithManager(mgr ctrl.Manager) error {
 // 2) no Pipeline resources referring to it exist (on delete).
 // 3) the entrypoint is set (on create/update)
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-clusterdownloader,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=clusterdownloaders,verbs=create;update;delete,versions=v1beta1,name=vclusterdownloader-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as this struct is used only for temporary operations and does not need to be deeply copied.
 
-// ClusterDownloaderCustomValidator struct is responsible for validating the ClusterDownloader resource
-type ClusterDownloaderCustomValidator struct {
+// ClusterDownloaderValidator struct is responsible for validating the ClusterDownloader resource
+type ClusterDownloaderValidator struct {
 	c client.Client
 }
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type ClusterDownloader.
-func (v *ClusterDownloaderCustomValidator) ValidateCreate(ctx context.Context, obj *v1beta1.ClusterDownloader) (admission.Warnings, error) {
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type ClusterDownloader.
+func (v *ClusterDownloaderValidator) ValidateCreate(ctx context.Context, obj *v1beta1.ClusterDownloader) (admission.Warnings, error) {
 	clusterdownloaderlog.Info("validating cluster downloader creation", "name", obj.GetName())
 
 	fieldErrs := validators.ValidateContainerDefinition(ctx, field.NewPath("spec").Child("container"), obj.Spec.Container)
@@ -65,8 +68,8 @@ func (v *ClusterDownloaderCustomValidator) ValidateCreate(ctx context.Context, o
 		obj.Name, fieldErrs)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type ClusterDownloader.
-func (v *ClusterDownloaderCustomValidator) ValidateUpdate(ctx context.Context, oldDownloader, newDownloader *v1beta1.ClusterDownloader) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type ClusterDownloader.
+func (v *ClusterDownloaderValidator) ValidateUpdate(ctx context.Context, oldDownloader, newDownloader *v1beta1.ClusterDownloader) (admission.Warnings, error) {
 	clusterdownloaderlog.Info("validation for cluster downloader upon update", "name", newDownloader.GetName())
 
 	newRequiredParams := parseNewRequiredParameters(oldDownloader.Spec.Parameters, newDownloader.Spec.Parameters)
@@ -100,8 +103,8 @@ func (v *ClusterDownloaderCustomValidator) ValidateUpdate(ctx context.Context, o
 		newDownloader.Name, fieldErrs)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type ClusterDownloader.
-func (v *ClusterDownloaderCustomValidator) ValidateDelete(ctx context.Context, downloader *v1beta1.ClusterDownloader) (admission.Warnings, error) {
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type ClusterDownloader.
+func (v *ClusterDownloaderValidator) ValidateDelete(ctx context.Context, downloader *v1beta1.ClusterDownloader) (admission.Warnings, error) {
 	clusterdownloaderlog.Info("validation for cluster downloader upon deletion", "name", downloader.GetName())
 	dependantPipelines, err := v.getDependantPipelines(ctx, downloader)
 	if err != nil {
@@ -121,7 +124,7 @@ func (v *ClusterDownloaderCustomValidator) ValidateDelete(ctx context.Context, d
 	return nil, nil
 }
 
-func (v *ClusterDownloaderCustomValidator) getDependantPipelines(ctx context.Context, downloader *v1beta1.ClusterDownloader) ([]v1beta1.Pipeline, error) {
+func (v *ClusterDownloaderValidator) getDependantPipelines(ctx context.Context, downloader *v1beta1.ClusterDownloader) ([]v1beta1.Pipeline, error) {
 	var allPipelines v1beta1.PipelineList
 	if err := v.c.List(ctx, &allPipelines, client.InNamespace(downloader.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list pipelines in namespace %s: %w", downloader.Namespace, err)

@@ -32,21 +32,24 @@ var searchlog = logf.Log.WithName("search-resource")
 // SetupSearchWebhookWithManager registers the webhook for Search in the manager.
 func SetupSearchWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &v1beta1.Search{}).
-		WithValidator(&SearchCustomValidator{
+		WithValidator(&SearchValidator{
 			c: mgr.GetClient(),
 		}).
-		WithDefaulter(&SearchCustomDefaulter{}).
+		WithDefaulter(&SearchDefaulter{}).
 		Complete()
 }
 
 // +kubebuilder:webhook:path=/mutate-ocular-crashoverride-run-v1beta1-search,mutating=true,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=searches,verbs=create;update,versions=v1beta1,name=msearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// SearchCustomDefaulter struct is responsible for setting default values on the custom resource of the
-// Kind Search when those are created
-type SearchCustomDefaulter struct{}
+// SearchDefaulter struct is responsible for setting default values on the custom resource of the
+// Kind Search when those are created or updated.
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as it is used only for temporary operations and does not need to be deeply copied.
+type SearchDefaulter struct{}
 
-// Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Search.
-func (d *SearchCustomDefaulter) Default(_ context.Context, search *v1beta1.Search) error {
+// Default implements webhook.Defaulter so a webhook will be registered for the Kind Search.
+func (d *SearchDefaulter) Default(_ context.Context, search *v1beta1.Search) error {
 	searchlog.Info("defaulting for Search", "name", search.GetName())
 
 	search.Spec.CrawlerRef = resources.ReferenceDefaulter(search.Spec.CrawlerRef, "Crawler")
@@ -63,21 +66,24 @@ func (d *SearchCustomDefaulter) Default(_ context.Context, search *v1beta1.Searc
 // can be added to the verbs in the kubebuilder marker below.
 // +kubebuilder:webhook:path=/validate-ocular-crashoverride-run-v1beta1-search,mutating=false,failurePolicy=fail,sideEffects=None,groups=ocular.crashoverride.run,resources=searches,verbs=create;update,versions=v1beta1,name=vsearch-v1beta1.ocular.crashoverride.run,admissionReviewVersions=v1
 
-// SearchCustomValidator struct is responsible for validating the Search resource
+// SearchValidator struct is responsible for validating the Search resource
 // when it is created, updated, or deleted.
-type SearchCustomValidator struct {
+//
+// NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
+// as this struct is used only for temporary operations and does not need to be deeply copied.
+type SearchValidator struct {
 	c client.Client
 }
 
-// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *SearchCustomValidator) ValidateCreate(ctx context.Context, search *v1beta1.Search) (admission.Warnings, error) {
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type Search.
+func (v *SearchValidator) ValidateCreate(ctx context.Context, search *v1beta1.Search) (admission.Warnings, error) {
 	searchlog.Info("validating Search resource creation", "name", search.GetName())
 
 	return nil, validateSearch(ctx, v.c, search)
 }
 
-// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldSearch, newSearch *v1beta1.Search) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type Search.
+func (v *SearchValidator) ValidateUpdate(ctx context.Context, oldSearch, newSearch *v1beta1.Search) (admission.Warnings, error) {
 	searchlog.Info("validating Search resource update", "name", newSearch.GetName())
 
 	if oldSearch.Spec.ServiceAccountName != "" && oldSearch.Spec.ServiceAccountName != newSearch.Spec.ServiceAccountName {
@@ -94,10 +100,9 @@ func (v *SearchCustomValidator) ValidateUpdate(ctx context.Context, oldSearch, n
 
 func validateSearch(ctx context.Context, c client.Client, search *v1beta1.Search) error {
 	var allErrs field.ErrorList
-	var refErr resources.InvalidObjectReference
 
 	crawler, err := resources.CrawlerInvocationFromReference(ctx, c, search.Namespace, search.Spec.CrawlerRef)
-	if errors.As(err, &refErr) {
+	if refErr, ok := errors.AsType[resources.InvalidObjectReference](err); ok {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef"), search.Spec.CrawlerRef, refErr.Message))
 	} else if apierrors.IsNotFound(err) {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("crawlerRef"), search.Spec.CrawlerRef, "referenced crawler could not be found"))
@@ -118,8 +123,8 @@ func validateSearch(ctx context.Context, c client.Client, search *v1beta1.Search
 		search.Name, allErrs)
 }
 
-// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Search.
-func (v *SearchCustomValidator) ValidateDelete(ctx context.Context, search *v1beta1.Search) (admission.Warnings, error) {
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type Search.
+func (v *SearchValidator) ValidateDelete(ctx context.Context, search *v1beta1.Search) (admission.Warnings, error) {
 	searchlog.Info("crawler validate delete should not be registered, see NOTE in webhook/v1beta1/search_webhook.go", "name", search.GetName())
 
 	return nil, nil

@@ -17,8 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
 
@@ -39,10 +37,8 @@ var _ = Describe("CronSearch Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, cronsearch)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &ocularcrashoverriderunv1beta1.CronSearch{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: testNamespace,
-					},
+					Name:      resourceName,
+					Namespace: testNamespace,
 					Spec: ocularcrashoverriderunv1beta1.CronSearchSpec{
 						Schedule: "*/1 * * * *",
 						SearchTemplate: ocularcrashoverriderunv1beta1.SearchTemplateSpec{

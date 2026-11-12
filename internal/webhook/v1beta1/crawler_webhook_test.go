@@ -14,7 +14,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	ocularcrashoverriderunv1beta1 "github.com/crashappsec/ocular/api/v1beta1"
@@ -29,33 +28,27 @@ var _ = Describe("Crawler Webhook", func() {
 		search    *ocularcrashoverriderunv1beta1.Search
 		obj       *ocularcrashoverriderunv1beta1.Crawler
 		oldObj    *ocularcrashoverriderunv1beta1.Crawler
-		validator CrawlerCustomValidator
+		validator CrawlerValidator
 	)
 
 	BeforeEach(func() {
 		obj = &ocularcrashoverriderunv1beta1.Crawler{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "crawler",
-				Namespace: namespace,
-			},
+			Name:      "crawler",
+			Namespace: namespace,
 			Spec: ocularcrashoverriderunv1beta1.CrawlerSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 			},
 		}
 		oldObj = &ocularcrashoverriderunv1beta1.Crawler{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "crawler",
-				Namespace: namespace,
-			},
+			Name:      "crawler",
+			Namespace: namespace,
 			Spec: ocularcrashoverriderunv1beta1.CrawlerSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 			},
 		}
 		search = &ocularcrashoverriderunv1beta1.Search{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "crawler-webhook-test-search",
-				Namespace: namespace,
-			},
+			Name:      "crawler-webhook-test-search",
+			Namespace: namespace,
 			Spec: ocularcrashoverriderunv1beta1.SearchSpec{
 				CrawlerRef: ocularcrashoverriderunv1beta1.ParameterizedLocalObjectReference{
 					Name: obj.Name,
@@ -63,7 +56,7 @@ var _ = Describe("Crawler Webhook", func() {
 				},
 			},
 		}
-		validator = CrawlerCustomValidator{
+		validator = CrawlerValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")

@@ -11,7 +11,9 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"sort"
+	"os"
+	"slices"
+	"strconv"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -20,7 +22,9 @@ import (
 	ref "k8s.io/client-go/tools/reference"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1beta1 "github.com/crashappsec/ocular/api/v1beta1"
 )
@@ -29,7 +33,7 @@ import (
 // This is done to allow for easier testing
 type realClock struct{}
 
-func (_ realClock) Now() time.Time { return time.Now() } //nolint:staticcheck
+func (realClock) Now() time.Time { return time.Now() } //nolint:staticcheck
 
 // Clock knows how to get the current time.
 // It can be used to fake out timing for testing.
@@ -51,15 +55,16 @@ type CronSearchReconciler struct {
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ocular.crashoverride.run,resources=searches/status,verbs=get
 
-var (
+const (
 	scheduledTimeAnnotation = "ocular.crashoverride.run/scheduled-at"
 )
 
-// This function is designed to behave the same as [k8s.io/api/batch/v1.CronJob] controller,
+// Reconcile function is designed to behave the same as [k8s.io/api/batch/v1.CronJob] controller,
 // The actual implementation is copied and modified from the kubebuilder tutorial, where
 // a CronJob controller is implemented.
 // https://github.com/kubernetes-sigs/kubebuilder/blob/master/docs/book/src/cronjob-tutorial/testdata/project/internal/controller/cronjob_controller.go
 // why re-invent the wheel?
+// nolint:gocyclo
 func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -103,11 +108,17 @@ func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if cronSearch.Spec.FailedJobsHistoryLimit != nil {
-		sort.Slice(categorizedChildSearches.failed, func(i, j int) bool {
-			if categorizedChildSearches.failed[i].Status.StartTime == nil {
-				return categorizedChildSearches.failed[j].Status.StartTime != nil
+		slices.SortFunc(categorizedChildSearches.failed, func(a, b *v1beta1.Search) int {
+			at, bt := a.Status.StartTime, b.Status.StartTime
+			switch {
+			case at == nil && bt == nil:
+				return 0
+			case at == nil:
+				return -1 // nil start times sort first
+			case bt == nil:
+				return 1
 			}
-			return categorizedChildSearches.failed[i].Status.StartTime.Before(categorizedChildSearches.failed[j].Status.StartTime)
+			return at.Compare(bt.Time)
 		})
 		for i, search := range categorizedChildSearches.failed {
 			if int32(i) >= int32(len(categorizedChildSearches.failed))-*cronSearch.Spec.FailedJobsHistoryLimit {
@@ -122,11 +133,17 @@ func (r *CronSearchReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if cronSearch.Spec.SuccessfulJobsHistoryLimit != nil {
-		sort.Slice(categorizedChildSearches.successful, func(i, j int) bool {
-			if categorizedChildSearches.successful[i].Status.StartTime == nil {
-				return categorizedChildSearches.successful[j].Status.StartTime != nil
+		slices.SortFunc(categorizedChildSearches.successful, func(a, b *v1beta1.Search) int {
+			at, bt := a.Status.StartTime, b.Status.StartTime
+			switch {
+			case at == nil && bt == nil:
+				return 0
+			case at == nil:
+				return -1 // nil start times sort first
+			case bt == nil:
+				return 1
 			}
-			return categorizedChildSearches.successful[i].Status.StartTime.Before(categorizedChildSearches.successful[j].Status.StartTime)
+			return at.Compare(bt.Time)
 		})
 		for i, search := range categorizedChildSearches.successful {
 			if int32(i) >= int32(len(categorizedChildSearches.successful))-*cronSearch.Spec.SuccessfulJobsHistoryLimit {
@@ -270,7 +287,7 @@ func getNextSchedule(cronSearch *v1beta1.CronSearch, now time.Time) (lastMissed 
 		starts++
 		if starts > 100 {
 			// We can't get the most recent times so just return an empty slice
-			return time.Time{}, time.Time{}, fmt.Errorf("Too many missed start times (> 100). Set or decrease .spec.startingDeadlineSeconds or check clock skew.") //nolint:staticcheck
+			return time.Time{}, time.Time{}, fmt.Errorf("too many missed start times (> 100), set or decrease .spec.startingDeadlineSeconds or check clock skew") //nolint:staticcheck
 		}
 	}
 	return lastMissed, sched.Next(now), nil
@@ -282,13 +299,11 @@ func constructSearchForCronSearch(cronSearch *v1beta1.CronSearch, scheduledTime 
 
 	searchSpec := *cronSearch.Spec.SearchTemplate.Spec.DeepCopy()
 	search := &v1beta1.Search{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels:      make(map[string]string),
-			Annotations: make(map[string]string),
-			Name:        name,
-			Namespace:   cronSearch.Namespace,
-		},
-		Spec: searchSpec,
+		Labels:      make(map[string]string),
+		Annotations: make(map[string]string),
+		Name:        name,
+		Namespace:   cronSearch.Namespace,
+		Spec:        searchSpec,
 	}
 	maps.Copy(search.Annotations, cronSearch.Spec.SearchTemplate.Annotations)
 	search.Annotations[scheduledTimeAnnotation] = scheduledTime.Format(time.RFC3339)
@@ -349,6 +364,8 @@ var (
 	apiGVStr       = v1beta1.GroupVersion.String()
 )
 
+const ConcurrentCronSearchReconcilesEnvVar = "OCULAR_CONCURRENT_CRONSEARCH_RECONCILES"
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *CronSearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.Clock == nil {
@@ -371,9 +388,17 @@ func (r *CronSearchReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
+	concurrentReonciles := 1
+	if userConcurrent, err := strconv.Atoi(os.Getenv(ConcurrentCronSearchReconcilesEnvVar)); err == nil {
+		concurrentReonciles = userConcurrent
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.CronSearch{}).
 		Owns(&v1beta1.Search{}).
 		Named("cronsearch").
+		WithOptions(controller.TypedOptions[reconcile.Request]{
+			MaxConcurrentReconciles: concurrentReonciles,
+		}).
 		Complete(r)
 }

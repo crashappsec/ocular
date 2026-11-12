@@ -16,7 +16,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -29,16 +28,14 @@ var _ = Describe("Pipeline Webhook", func() {
 		profile    *v1beta1.Profile
 		downloader *v1beta1.Downloader
 		svcAccount *corev1.ServiceAccount
-		validator  PipelineCustomValidator
-		defaulter  PipelineCustomDefaulter
+		validator  PipelineValidator
+		defaulter  PipelineDefaulter
 	)
 
 	BeforeEach(func() {
 		profile = &v1beta1.Profile{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pipeline-webhook-test-profile",
-				Namespace: namespace,
-			},
+			Name:      "pipeline-webhook-test-profile",
+			Namespace: namespace,
 			Spec: v1beta1.ProfileSpec{
 				Containers: []v1beta1.ConditionalContainer{
 					{
@@ -51,25 +48,19 @@ var _ = Describe("Pipeline Webhook", func() {
 			},
 		}
 		svcAccount = &corev1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "default",
-				Namespace: namespace,
-			},
+			Name:      "default",
+			Namespace: namespace,
 		}
 		downloader = &v1beta1.Downloader{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pipeline-webhook-test-downloader",
-				Namespace: namespace,
-			},
+			Name:      "pipeline-webhook-test-downloader",
+			Namespace: namespace,
 			Spec: v1beta1.DownloaderSpec{
 				Container: testutils.GenerateRandomContainer(rnd),
 			},
 		}
 		obj = &v1beta1.Pipeline{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pipeline-webhook-test",
-				Namespace: namespace,
-			},
+			Name:      "pipeline-webhook-test",
+			Namespace: namespace,
 			Spec: v1beta1.PipelineSpec{
 				ProfileRef: v1beta1.ParameterizedLocalObjectReference{
 					Name: profile.Name,
@@ -83,11 +74,11 @@ var _ = Describe("Pipeline Webhook", func() {
 			},
 		}
 		oldObj = &v1beta1.Pipeline{}
-		validator = PipelineCustomValidator{
+		validator = PipelineValidator{
 			c: k8sClient,
 		}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
-		defaulter = PipelineCustomDefaulter{}
+		defaulter = PipelineDefaulter{}
 		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
 		Expect(oldObj).NotTo(BeNil(), "Expected oldObj to be initialized")
 		Expect(obj).NotTo(BeNil(), "Expected obj to be initialized")

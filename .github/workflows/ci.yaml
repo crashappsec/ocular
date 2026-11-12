@@ -31,7 +31,7 @@ jobs:
         with:
           version: v2.11.4
       - name: check license headers
-        uses: apache/skywalking-eyes/header@61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1 # ratchet:apache/skywalking-eyes/header@v0.8.0
+        uses: apache/skywalking-eyes/header@a196742f472feaffafea537ce5a2a4c3c53a8de4 # ratchet:apache/skywalking-eyes/header@v0.9.0
   test:
     name: test
     runs-on: ubuntu-latest

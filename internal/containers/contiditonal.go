@@ -10,7 +10,6 @@ package containers
 
 import (
 	"github.com/crashappsec/ocular/api/v1beta1"
-	v1 "k8s.io/api/core/v1"
 )
 
 func shouldInclude(includeIf *v1beta1.ContainerCondition, setParams map[string]bool) bool {
@@ -25,8 +24,8 @@ func shouldInclude(includeIf *v1beta1.ContainerCondition, setParams map[string]b
 	return true
 }
 
-func FilterConditionalContainers(cs []v1beta1.ConditionalContainer, definitions []v1beta1.ParameterDefinition, settings []v1beta1.ParameterSetting) []v1.Container {
-	var result []v1.Container
+func FilterConditionalContainers(cs []v1beta1.ConditionalContainer, definitions []v1beta1.ParameterDefinition, settings []v1beta1.ParameterSetting) []v1beta1.ConditionalContainer {
+	var result []v1beta1.ConditionalContainer
 
 	var setParams = make(map[string]bool)
 	// Set parameters
@@ -48,7 +47,7 @@ func FilterConditionalContainers(cs []v1beta1.ConditionalContainer, definitions 
 
 	for _, c := range cs {
 		if shouldInclude(c.IncludeIf, setParams) {
-			result = append(result, c.Container)
+			result = append(result, c)
 		}
 	}
 	return result

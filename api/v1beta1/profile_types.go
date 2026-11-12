@@ -82,6 +82,16 @@ type ConditionalContainer struct {
 	// condition, the pipeline will fail to be created.
 	// +optional
 	IncludeIf *ContainerCondition `json:"includeIf,omitempty,omitzero" description:"Give conditions for when the container should be included. Null conditions means always include"`
+
+	// Artifacts is a list of paths to the artifacts that will be produced
+	// by the this container. This differs from [Profile.Artifacts] by
+	// not reporting these artifacts if the container is not included.
+	// These paths are relative to the results directory.
+	// +optional
+	// +kubebuilder:validation:MinItems=0
+	// +kubebuilder:validation:MaxItems=10
+	// +listType=set
+	Artifacts []string `json:"artifacts" yaml:"artifacts" description:"A list of paths to the artifacts that will be produced by this container. These paths are relative to the results directory."`
 }
 
 type ProfileStatus struct {
